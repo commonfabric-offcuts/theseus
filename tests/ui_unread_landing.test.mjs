@@ -30,10 +30,10 @@ function fixture({ renewed = false } = {}) {
     messages: new Map([['old', { id: 'old', seq: 1, stack_position: { root_id: 'root' } }], ['later', { id: 'later', seq: 2 }]]), runOf: () => 'run', sighted() {} },
     loadUntil: async wanted => { transient = true; actions.noteRead(); if (wanted()?.id === 'root' && renewed) { revision = 3; marks.learn('old', 3); } return entry; },
     entries: () => [entry, later], $: id => id === 'main' ? main : {}, reveal: (e, options) => { transient = false; reveals.push(options); return e; }, opened: () => card,
-    topic: { id: 'beds' }, topicUnavailable: false, authorityReviewPending: () => false, review: { open: false }, laidOut: true,
+    topic: { id: 'beds' }, topicUnavailable: false, listAccessEpoch: 0, retired: false, releaseTopArrivals() {}, anchorHold: null, authorityReviewPending: () => false, review: { open: false }, laidOut: true,
     readThrough: { seen: (topic, from, through) => { readReports.push([from, through]); return Promise.resolve(null); } },
     halfShown: new Set([1, 2]), atMiddle: new Set(), seenRanges, bootstrap: { actor: 'fixture-person' },
-    revealSelection() {}, marks, registry: { get disposed() { return !current; } }, document: doc,
+    revealSelection() {}, marks, registry: { generation: 0, get disposed() { return !current; } }, document: doc,
     onScreen: node => visible && (node === card || node === (transient ? later : entry)) };
   const actions = new Function(...Object.keys(bindings), reading + source + '\nreturn { landOnUnread, loadToUnread, noteRead };')(...Object.values(bindings));
   return { ...actions, marks, sent, focus, reveals, readReports, doc, main, revision: () => revision, leave: () => { current = false; }, hide: () => { doc.visibilityState = 'hidden'; }, show: () => { doc.visibilityState = 'visible'; marks.resume(); }, offscreen: () => { visible = false; } };
@@ -72,7 +72,7 @@ test('B1 a background landing waits until shown and a departed landing clears no
 test('B2 Return on an unread topic row reaches the unread landing in both rails', t => {
   const had = globalThis.document, doc = miniDocument(); globalThis.document = doc; t.after(() => { globalThis.document = had; });
   const item = { id: 'beds', title: 'Spring beds', unread: 2 }, opened = [];
-  const rail = { links: new Map(), pages: {}, reader: 'fixture', title: () => item.title, question: () => 'question', open: (...args) => opened.push(args) };
+  const rail = { links: new Map(), rowItems: new WeakMap(), activate: TopicRail.prototype.activate, pages: {}, reader: 'fixture', title: () => item.title, question: () => 'question', open: (...args) => opened.push(args) };
   const outline = TopicRail.prototype.row.call(rail, item);
   outline.onclick({ button: 0, detail: 0, target: outline, preventDefault() {} });
   assert.equal(opened[0]?.[3], 'unread', 'B2: Return on the topic row must reach what its unread count promises');

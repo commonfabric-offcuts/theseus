@@ -55,7 +55,7 @@ test('847 cards use the actual outline rows, held order, CSS filter, marks and n
   f.rail.links.get('a').textContent='An unrelated markup change';f.cards.paint(values);
   const card=f.host.querySelector('a.outcome-topic-card');
   assert.match(card.text,/Topic a/);assert.match(card.text,/7 messages/);assert.equal(card.querySelector('time').dataset.ms,String(a.activity_ms));
-  card.onclick({button:0,target:card,preventDefault(){}});assert.deepEqual(f.opened[0],['a','Topic a','q']);
+  card.onclick({button:0,target:card,preventDefault(){}});assert.deepEqual(f.opened[0],['a','Topic a',null,'unread']);assert.equal(card.href,'?topic=a&at=unread');
   card.onclick({button:0,target:card.querySelector('.unread-count'),preventDefault(){}});assert.equal(f.opened[1][3],'unread');
   card.onclick({button:0,metaKey:true,preventDefault(){throw Error('modified link captured');}});assert.equal(f.opened.length,2);
   f.rail.pointed=true;f.queue.push(f.page([f.item('b',4),a]));await f.rail.load();
