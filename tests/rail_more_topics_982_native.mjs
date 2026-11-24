@@ -5,6 +5,7 @@ import {mkdir,writeFile,readFile,access,rm} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import net from 'node:net';
 import {fixtureControl} from './fixture_control.mjs';
+import {archiveRevealOutcomes} from './fixtures/rail_native_outcomes.mjs';
 const {chromium}=await import(process.env.AIM_PLAYWRIGHT_CORE);
 const evidence=process.argv[2];await mkdir(evidence,{recursive:true});
 const records=[],failures=[],errors=[],marker=`theseus-982-${process.pid}`;
@@ -27,6 +28,8 @@ try{
  records.push({actualEngine:browser.browserType().name(),browserVersion:browser.version()});assert.equal(browser.browserType().name(),'chromium');
  const cdp=await browser.newBrowserCDPSession();profile=(await cdp.send('Browser.getBrowserCommandLine')).arguments.find(x=>x.startsWith('--user-data-dir='))?.slice(16);await cdp.detach();assert.ok(profile);
  await writeFile(evidence+'/ownership.json',JSON.stringify({marker,profile,fixturePid:child.pid,origin:facts.origin},null,2));
+ const nativeOutcomes=await archiveRevealOutcomes({browser,control,facts,evidence});
+ for(const row of nativeOutcomes){records.push(row);if(!row.passed)failures.push({name:row.key,error:row.error??row.drainError});}
  const cells=process.argv.includes('--quick')?[['Bookends','light']]:['Bookends','Paper'].flatMap(look=>['light','dark'].map(theme=>[look,theme]));
  for(const [look,theme]of cells){
   const key=look+'-'+theme,context=await browser.newContext({viewport:{width:1280,height:1000},colorScheme:theme});
