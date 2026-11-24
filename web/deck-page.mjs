@@ -1173,6 +1173,8 @@ export class DeckPage {
       this.fit(asking.field);
     } else if (!asking) this.show(this.list.contains(this.doc.activeElement) || this.doc.activeElement === this.doc.body);
     putBack();
-    this.disclosure?.mount(disclosureFocus);
+    // An editor opened during this paint owns focus; a delayed disclosure
+    // measurement must not return it to the card that Return just left.
+    this.disclosure?.mount(editing ? null : disclosureFocus);
   }
 }
