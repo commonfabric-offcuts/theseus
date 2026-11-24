@@ -228,7 +228,7 @@ for (const label of ['Archive', 'Bring back']) {
 for (const [key, label, expected] of [
   ['star', 'Star for me', [['message.star', { starred: true }]]],
   ['fold', 'Fold', [['message.fold', { folded: true }]]],
-  ['aside', 'Archive', [['stack.aside', { through: 23 }]]],
+  ['aside', 'Archive', [['stack.aside', { through: 23, clear_new: true }]]],
 ]) {
   test('863 loaded-topic ' + label + ' uses the feed owner, including its local state', async () => {
     const f = railFixture(), root = f.messages.get('m-root'), acts = [], undos = [], arranged = [], bypassed = [];
