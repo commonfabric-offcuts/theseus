@@ -60,6 +60,12 @@ The inspected baseline is release 418,
 landing-tool validation. Neither release establishes the new manual refresh. The subsequently observed
 release420 (`1e6c6d788ed49c82e75b32b62361e2475cd882c6`) is the web-only1217
 Undo repair; it also does not establish1213/1216 installation.
+Later receipt23571 and bound releases read record1213 live in release421,
+`b889d17662c059e8427f3f7d64f94e12128f6a36`. Owner refresh admission/pointer
+is installed;1216 role precedence,1218 instructions, migrations and real-model
+cold-start evidence are still separate. The release headline's seat-file wording
+does not establish1216 or a model file read. Current status is dated evidence,
+not permission to refresh a seat.
 An ordinary runner restart resumes the pinned thread. Existing automatic 1104
 recovery can replace one under its qualifying conditions. Installing repository
 seat files did not configure agents to read them.
