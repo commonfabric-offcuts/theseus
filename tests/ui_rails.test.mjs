@@ -656,17 +656,13 @@ test('the right rail\'s Build rows follow the reader\'s own order where they pla
     'the reader\'s order in each group; d, never placed, after c, which Core lists before it');
 });
 
-test('an open outcome\'s row counts only its Build topics, which have no row in the outline; folded, everything', async () => {
-  const { countedWhere } = await import('../web/outline-rail.mjs');
+test('an expanded outcome omits its badge even with unread Build topics; folded, everything', () => {
   const item = { id: 'w1', unread: 9, addressed: 3, build: { unread: 3, addressed: 1 } };
-  assert.deepEqual(rowCount(item, { open: true, conversation: { unread: 2, addressed: 1 } }), { unread: 3, addressed: 1 }, 'the conversation has its own row');
-  assert.deepEqual(rowCount(item, { open: true }), { unread: 3, addressed: 1 }, 'its Build topics\' while its Conversation is not read yet');
+  assert.deepEqual(rowCount(item, { open: true, conversation: { unread: 2, addressed: 1 } }), { unread: 0, addressed: 0 }, 'the conversation has its own row');
+  assert.deepEqual(rowCount(item, { open: true }), { unread: 0, addressed: 0 }, 'Build unread does not create an expanded outcome badge');
   assert.deepEqual(rowCount(item, { open: false, conversation: { unread: 2, addressed: 1 } }), { unread: 9, addressed: 3 }, 'folded: everything, the Build topics\' once');
   assert.deepEqual(rowCount({ id: 'w2', unread: 4, build: { unread: 0, addressed: 0 } }, { open: true, conversation: { unread: 1 } }), { unread: 0, addressed: 0 }, 'nothing new in a Build topic adds nothing');
   assert.deepEqual(rowCount({ id: 'w3', unread: 4, build: { unread: -2, addressed: 'x' } }, { open: true }), { unread: 0, addressed: 0 }, 'what is not a count counts nothing');
-  assert.equal(countedWhere(item, { unread: 2 }), 'its Build topics');
-  assert.equal(countedWhere(item, { unread: 0 }), 'its Build topics');
-  assert.equal(countedWhere({ build: { unread: 0 } }, { unread: 1 }), '');
 });
 
 test('the right rail reads the Build topics a page at a time, as many as asked for, and says whether there are more and what is new in all of them', async () => {
