@@ -216,6 +216,21 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .ol-dossiers>[role=status]{display:block;font-size:.8rem;overflow-wrap:anywhere}
 .ol-dossiers:empty{margin-bottom:0}
 
+/* Option-number assignments (1160). The cap stays in the title's inline
+   flow; existing unread/waiting marks keep their own reserved right edge. */
+#rail .rail-hotkeycap{display:inline-block;float:right;vertical-align:middle;flex:none;margin:.15em 0 0 .45rem;padding:1px 4px 2px;border:1px solid var(--line);border-radius:4px;font:600 .65rem/1.1 -apple-system,BlinkMacSystemFont,sans-serif;font-variant-numeric:tabular-nums;color:var(--muted);letter-spacing:0;text-indent:0}
+#rail a:hover .rail-hotkeycap,#rail a[aria-current=page] .rail-hotkeycap{color:var(--ink)}
+#rail .ol-name-line>.rail-hotkeycap{margin-left:auto}
+.rail-hotkey-row{padding:6px 8px;border-top:1px solid var(--line);margin-top:4px}
+.rail-hotkey-label{display:flex;align-items:center;gap:.6rem;margin-bottom:5px;font-size:.85rem;color:var(--ink)}
+.rail-hotkey-label>span{margin-left:auto;color:var(--muted);font-size:.72rem}
+.rail-hotkey-chips{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:3px}
+.message-menu-list .rail-hotkey-chips>button{display:block;width:100%;min-width:0;min-height:28px;margin:0;padding:2px 4px;border:1px solid var(--line);border-radius:5px;text-align:center;font-size:.78rem;font-weight:600;color:var(--ink)}
+.message-menu-list .rail-hotkey-chips>button.taken{border-style:dashed;color:var(--muted)}
+.message-menu-list .rail-hotkey-chips>button[aria-checked=true]{background:var(--soft);border-color:var(--accent)}
+.rail-hotkey-guide{font-size:.75rem;line-height:1.5}
+@media(pointer:coarse){.message-menu-list .rail-hotkey-chips>button{min-height:44px}}
+
 /* ---- The things rail, in the outcome page's grammar (designer, Redesign right siderail) ----
    Every section heading the same small caps as the outcome page's TOPICS, AGENTS and NOTEBOOK; the Notebook's pages as
    small text pages with their first words; images three to a row. Every screen, the phone's sheet from the bottom too. */

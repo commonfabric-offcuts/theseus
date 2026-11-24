@@ -8,12 +8,31 @@ import { OutlineRail } from './outline-rail.mjs';
 import { ThingsRail } from './things-rail.mjs';
 import { panes, feedKey, inMessages, messagesSideways, onStackControls } from './panes.mjs';
 import { arrowReach, onNothing } from './arrow-reach.mjs';
+import { RailHotkeys } from './rail-hotkeys.mjs';
+import { menuDoor } from './outline-menus.mjs';
+import { openMessageMenu } from './message-menu.mjs';
 
 const storage = win => { try { return win.localStorage; } catch { return null; } };
 
 export const shell = host;
 
 shell.extend((doc, win) => {
+  const left = doc.getElementById('rail');
+  if (left) {
+    const hotkeys = new RailHotkeys({ root:left, doc, storage:storage(win), listen, open:(target,title)=>shell.open(target,title) });
+    shell.follow(hotkeys);
+    // Outline rows keep their confirmed menus. Other rail links (Health,
+    // the home link and non-outline navigation) have this same Key row.
+    menuDoor(left,target=>{
+      const row=target.closest?.('a[href]');
+      return row && !row.closest('#outline') && hotkeys.describe(row) ? row : null;
+    },(row,at)=>{
+      const items=hotkeys.menuItems(row);
+      if (!items.length) return;
+      hotkeys.menu=openMessageMenu({anchor:row,at,items,label:'Rail item',sheet:true,doc,win});
+      hotkeys.decorateMenu(hotkeys.menu,items,at);
+    });
+  }
   const outline = doc.getElementById('outline'), things = doc.getElementById('things');
   if (outline) {
     const rail = new OutlineRail({ host: outline, open: (target, title) => shell.open(target, title), read: (name, args, readClass, current) => shell.view(name, args, readClass, current), storage: storage(win) });
