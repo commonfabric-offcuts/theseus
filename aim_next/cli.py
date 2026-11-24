@@ -301,6 +301,11 @@ def _parser():
     seat_end.add_argument("outcome")
     seat_end.add_argument("seat_request")
     seat_end.add_argument("--operation")
+    seat_refresh = verb("seat-refresh")
+    seat_refresh.add_argument("outcome")
+    seat_refresh.add_argument("seats", nargs="+")
+    seat_refresh.add_argument("--operation")
+    seat_refresh.add_argument("--status", action="store_true")
     seat_status = verb("seat-status")
     seat_status.add_argument("outcome")
     seat_status.add_argument("seat_request", nargs="?")
@@ -889,6 +894,59 @@ class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs,
         from .hosted_seats import END_KIND
         return self._seat_command(END_KIND, {"workspace_id": self.options.outcome,
                                   "seat_request_id": self.options.seat_request}, {})
+
+    def do_seat_refresh(self):
+        options = self.options
+        kind, target = 'workspace.hosted_seat_refresh', {'workspace_id': options.outcome}
+        actors = list(options.seats)
+        if options.status:
+            if options.operation is not None:
+                self.refuse('INVALID_ARGUMENT', 'Status is a read; omit --operation')
+            state = self.view('hosted_seat_refresh', dict(target, actor_ids=actors))
+            for seat in state['seats']:
+                intent = seat.get('intent')
+                if intent:
+                    self._refresh_line(dict(intent, actor_id=seat['actor_id']))
+                else:
+                    self.out.plain('%s: no refresh recorded' % seat['actor_id'])
+                if seat.get('error'):
+                    self.out.plain('%s: %s' % (seat['actor_id'], seat['error']['message']))
+            return
+        operation, saved = self.operation_of(), None
+        if operation is not None:
+            directory = self.outbox()
+            path = directory / (operation + '.request.json')
+            if os.path.lexists(path):
+                saved = _input(str(path), None)
+                envelope = _request(saved, 'command')
+                if saved['binding'] != self.binding:
+                    self.refuse('BINDING_MISMATCH', 'This saved refresh belongs to another binding; nothing was sent')
+                if (envelope['operation_id'] != operation or envelope['kind'] != kind
+                        or envelope['target'] != target
+                        or [s.get('actor_id') for s in envelope['args'].get('seats', [])] != actors):
+                    self.refuse('OPERATION_PAYLOAD_MISMATCH', 'This operation already names another refresh; nothing was sent')
+        if saved is not None:
+            result = self.dispatch(directory, saved)
+        else:
+            state = self.view('hosted_seat_refresh', dict(target, actor_ids=actors))
+            for seat in state['seats']:
+                if seat.get('error'):
+                    self.refuse(seat['error']['code'], seat['error']['message'])
+            seats = [{k: seat[k] for k in ('actor_id', 'execution_revision', 'thread_id')}
+                     for seat in state['seats']]
+            result = self.command(kind, target, {'seats': seats},
+                                  {'workspace_revision': state['workspace_revision']}, operation=operation)
+        # The immutable receipt is the request's result even if activation or a
+        # later distinct refresh wins before this status read.
+        for intent in result['intents']:
+            self._refresh_line(intent)
+
+    def _refresh_line(self, intent):
+        self.out.plain('%s: refresh %s · %s · old %s · new %s · requested %s · activated %s' % (
+            intent['actor_id'], intent['id'], intent['phase'], intent['old']['thread_id'],
+            intent['new']['thread_id'] if intent.get('new') else 'pending',
+            intent.get('trigger', {}).get('requested_ms', intent['created_ms']),
+            intent.get('committed_ms', 'pending')))
 
     def _seat_command(self, kind, target, args):
         options = self.options
