@@ -63,6 +63,18 @@ try{
     const disclosure=heading.locator('.things-disclosure');await disclosure.focus();await page.keyboard.press('Enter');assert.equal(await section.evaluate(s=>s.open),false);await page.keyboard.press('Space');assert.equal(await section.evaluate(s=>s.open),true);
    }
    }
+   // 1203: the real preview opens its existing page menu by native pointer
+   // and keys, without first opening the sheet or moving to another page.
+   await link.scrollIntoViewIfNeeded();const beforeMenu=page.url();
+   await link.click({button:'right'});const menu=page.getByRole('menu',{name:'This page',exact:true});await menu.waitFor();
+   assert.equal(page.url(),beforeMenu);assert.equal(await page.locator('#notebook-sheet-dialog[open]').count(),0);
+   assert.equal(await menu.getByRole('menuitem',{name:'Rename',exact:true}).count(),1);
+   await record('1203 native preview right-click');await page.keyboard.press('Escape');await menu.waitFor({state:'hidden'});
+   assert.equal(await link.evaluate(n=>n===document.activeElement),true,'Escape returns to the exact preview');
+   await page.keyboard.press('Shift+F10');await menu.waitFor();await record('1203 native preview menu key');
+   await page.keyboard.press('Escape');await menu.waitFor({state:'hidden'});
+   await link.click();await page.locator('#notebook-sheet-dialog[open]').waitFor();
+   assert.ok(page.url().includes(first),'ordinary click still opens this page');
    await record('all sections passed');assert.deepEqual(pageErrors,[]);await notebook.scrollIntoViewIfNeeded();await page.screenshot({path:`${evidence}/${key}.png`});
   }catch(e){error=e.stack;await record('failure before close').catch(()=>{});await page.screenshot({path:`${evidence}/${key}-failure.png`}).catch(()=>{});}
   results.push({key,error:error??null,observations,pageErrors});await writeFile(`${evidence}/observations.json`,JSON.stringify(results,null,2));children(owned);await context.close();
