@@ -38,7 +38,7 @@ class OutlineStars(StackCase):
         self.assertEqual(self.scoped(actor="agent-a")["items"], [])
         self.assertEqual(self.scoped(actor="outsider")["error"]["code"], "FORBIDDEN")
         dossier = self.scoped()["items"][0]["dossier"]
-        self.assertEqual(set(dossier), {"id", "name", "body", "attachments", "removal", "withheld"})
+        self.assertEqual(set(dossier), {"id", "name", "body", "attachments", "removal", "withheld", "unread", "oldest_unread"})
         self.assertIsNone(dossier["removal"])
         self.assertIs(dossier["withheld"], False)
         self.assertNotIn("dossier", self.store.view("owner", "stars", {})["items"][0], "existing unscoped shape is unchanged")

@@ -60,7 +60,8 @@ from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
 from .delivery import _now_ms
 from .whispers import VISIBLE, visible
 from .message_edit import words, withheld
-from .topic_reading import message_key
+from .topic_reading import message_key, unread_groups
+from .marks import MARKED
 from . import cover_values, dossier_order
 
 
@@ -448,6 +449,45 @@ def _dossier(db, actor, root):
     row = db.execute(MEMBERS + " SELECT max(m.seq), max(CASE WHEN m.author_id<>:actor THEN m.seq END) FROM members p JOIN messages m ON m.id=p.id",
                      {"root": root, "actor": actor}).fetchone()
     return row[0], row[1]
+
+
+def starred_unread(db, actor, topic_id, roots, wanted):
+    """Unread counts/first messages for the requested starred dossiers (1163).
+
+    Read this topic's eligible pending deliveries and marks, not its message
+    history. The existing group/mark rules and canonical roots own membership;
+    this read records nothing and introduces no independently saved counter.
+    """
+    result = {root: {"unread": 0, "oldest_unread": None} for root in wanted}
+    if not result:
+        return result
+
+    def count(row):
+        entry = result.get(roots.root(row["id"]))
+        if entry is None:
+            return
+        entry["unread"] += 1
+        if entry["oldest_unread"] is None or row["seq"] < entry["oldest_unread"]["seq"]:
+            entry["oldest_unread"] = {key: row[key] for key in ("id", "seq", "sent_ms")}
+
+    for group in unread_groups(db, actor, topic_id):
+        for row in db.execute(
+                "SELECT m.id,m.seq,m.sent_ms FROM deliveries d INDEXED BY pending_group_topic_deliveries "
+                "CROSS JOIN messages m ON m.id=d.message_id "
+                "WHERE d.group_id=:group AND d.topic_id=:topic AND d.state='pending' "
+                "AND m.author_id<>:actor AND " + VISIBLE + " AND NOT EXISTS "
+                "(SELECT 1 FROM message_removals r WHERE r.message_id=m.id AND r.kind='unsent')",
+                {"group": group, "topic": topic_id, "actor": actor}):
+            count(row)
+    for row in db.execute(
+            "SELECT m.id,m.seq,m.sent_ms FROM message_marks k INDEXED BY reader_marks "
+            "CROSS JOIN messages m ON m.id=k.message_id CROSS JOIN topics t ON t.id=k.topic_id "
+            "CROSS JOIN workspaces w ON w.id=t.workspace_id "
+            "WHERE k.actor_id=:actor AND k.topic_id=:topic AND " + MARKED + " AND " + VISIBLE +
+            " AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id AND r.kind='unsent')",
+            {"actor": actor, "topic": topic_id}):
+        count(row)
+    return result
 
 
 def _dossier_through(db, actor, root, message):
@@ -918,6 +958,9 @@ class Stacks:
                     dossiers[root] = {"id": root, "name": name["text"] if name else "", "body": first["preview"], "removal": value(db, root), "withheld": withheld(root),
                                       "attachments": [] if withheld(root) else [{"name": a.get("name", "a file")} for a in json.loads(first["attachments"])]}
                 dossiers[row["id"]] = dossiers[root]
+            unread = starred_unread(db, actor, topic["id"], roots, {dossier["id"] for dossier in dossiers.values()})
+            for dossier in dossiers.values():
+                dossier.update(unread[dossier["id"]])
         return _bounded_page({"instance_id": self.instance_id}, rows, limit, lambda row: dict({
             "message_id": row["id"], "topic_id": row["topic_id"], "seq": row["seq"], "author_id": row["author_id"],
             "sent_ms": row["sent_ms"], "excerpt": row["excerpt"], "withheld": withheld(row["id"]), "topic_title": row["topic_title"],
