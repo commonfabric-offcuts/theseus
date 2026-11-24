@@ -101,7 +101,7 @@ test('1167 singleton and Only new headers keep their prior presentation across r
   f.draw(); assert.equal(f.chevron('m1'), null); assert.equal(f.header('m1').classList.contains('message-fold-header'), false);
 });
 
-test('1167 header and folded row retain the existing saved fold owner and persistent glyph', () => {
+test('1167 header and folded row retain the existing saved fold owner and inert glyph', () => {
   const f = fixture(), id = 'm1', glyph = f.chevron(id), body = f.card(id).querySelector('.message-preview');
   assert.equal(headerClick(f.list, f.entries.get(id), { target: f.header(id).firstElementChild }), true);
   assert.deepEqual(f.records.get(id), { folded: true, fold_revision: 1, starred: false });
@@ -172,19 +172,24 @@ test('1167 a wrapped dossier card uses its own header and existing fold owner', 
   assert.deepEqual(f.commands.map(x => [x.id, x.args.folded]), [['m1', true]]);
 });
 
-test('1167 selected CSS default confines band and chevron to the eligible header', () => {
+test('1176 header effects are gated only by header hover in either fold state', () => {
   const css = readFileSync(new URL('../web/stack-look.css', import.meta.url), 'utf8');
-  const start = css.indexOf('/* 1167:'), end = css.indexOf("/* The star in a message's header", start), rules = css.slice(start, end);
+  const start = css.indexOf('/* 1167'), end = css.indexOf("/* The star in a message's header", start), rules = css.slice(start, end);
   assert.ok(start >= 0 && end > start);
   const scoped = '.reply-stack[data-single=false]:not(.only-new *) .message-header-foldable';
-  assert.ok(rules.includes(scoped + '>.message-fold-header:is(:hover,:active,:focus-within)'));
-  assert.ok(rules.includes(scoped + ':focus-visible>.message-fold-header'));
+  assert.equal(/:active|:focus(?:-within|-visible)?/.test(rules), false, '1176 header effects have no focus or press trigger');
+  assert.equal(/transition:[^;}]*\b(?:opacity|background|color)\b/.test(rules), false, 'pointer exit has no fade-out tail');
+  assert.ok(rules.includes(scoped + '>.message-fold-header:hover'));
+  assert.equal(rules.includes(scoped + ':hover'), false, 'hovering message words does not light the header');
   assert.ok(rules.includes('background:color-mix(in srgb,var(--ink) 7%,transparent)'));
   assert.ok(rules.includes('margin:-1rem -1.15rem .4rem;padding:1rem 1.15rem 0'));
   assert.equal(/border-bottom|box-shadow|text-decoration/.test(rules), false, 'no under-band line or card-outline replacement');
   assert.ok(rules.includes('pointer-events:none')); assert.ok(rules.includes('opacity:0;transform:translateY(-50%) rotate(0deg)'));
-  assert.ok(rules.includes('display:block!important;top:50%;color:var(--muted);opacity:.5;transform:translateY(-50%) rotate(-90deg)'));
-  assert.ok(rules.includes('[data-folded=true]:is(:hover,:active,:focus-visible)>.message-header-chevron{color:var(--ink);opacity:1}'));
+  assert.ok(rules.includes('display:block!important;top:50%;color:var(--muted);opacity:0;transform:translateY(-50%) rotate(-90deg)'));
+  assert.ok(rules.includes('[data-folded=true]:not([data-earlier=true]):has(>.message-folded:hover)>.message-header-chevron{color:var(--ink);opacity:1}'));
+  for (const [, selector, body] of rules.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (/background:|opacity:1(?:[;}\s]|$)/.test(body)) assert.ok(selector.includes(':hover'), 'each visible effect requires header hover');
+  }
   assert.ok(rules.includes('[data-earlier=true]>.message-header-chevron{display:none!important}'));
   assert.ok(rules.includes('transition:transform .16s ease')); assert.ok(rules.includes('@media(prefers-reduced-motion:reduce)'));
 });
