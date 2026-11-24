@@ -529,11 +529,9 @@ test('item 641 activity updates a topic row without changing its stable position
   assert.deepEqual(shown(f.host), before, 'current and other topics keep their positions while activity and counts change');
 });
 
-// Item 613: a press on a topic row's unread count opens the topic at its oldest
-// unread message, with a tooltip saying so; the rest of the row opens the topic
-// as it did (at the question, for one waiting on the reader), and a row with
-// nothing unread has no count to press.
-test('a press on a topic row\'s unread count opens it at its oldest unread message; the rest of the row, and a row with nothing unread, open the topic as before', async t => {
+// Item 1174 extends 613's unread-count destination to the topic row itself.
+// Without unread, the row keeps its existing destination.
+test('a topic row and its unread count open the oldest unread message; a row with nothing unread opens as before', async t => {
   const f = fixture(t), at = f.item('a').activity_ms;
   const unread = (id, count, ask = null) => ({ ...f.item(id), unread: count, addressed: 0, ...(ask ? { asks: [{ actor_id: 'tony', message_id: ask, by: 'fable', since_ms: at }] } : {}) });
   f.queue.push({ instance_id: 'i1', items: [unread('a', 2), unread('b', 1, 'm-ask-b'), unread('c', 0)], next_cursor: null });
@@ -548,15 +546,15 @@ test('a press on a topic row\'s unread count opens it at its oldest unread messa
     row(id).onclick({ button: 0, target: count(id), preventDefault() {} });
     row(id).onclick({ button: 0, target: row(id), preventDefault() {} });
   }
-  assert.deepEqual(opened, [['a', 'a', null, 'unread'], ['a', 'a', null], ['b', 'b', null, 'unread'], ['b', 'b', 'm-ask-b']],
-    'the count lands on the oldest unread message, even where the row would open the question; the row itself opens as before');
+  assert.deepEqual(opened, [['a', 'a', null, 'unread'], ['a', 'a', null, 'unread'], ['b', 'b', null, 'unread'], ['b', 'b', null, 'unread']],
+    'row and count land on the oldest unread message, including a topic waiting on a question');
   assert.equal(count('c'), null, 'a topic with nothing unread shows no count');
   opened.length = 0; row('c').onclick({ button: 0, target: row('c'), preventDefault() {} });
   assert.deepEqual(opened, [['c', 'c', null]]);
-  // A modified press is the browser's own: the row's link, which opens the topic.
+  // A modified press is the browser's own, with the same unread destination.
   let prevented = 0; opened.length = 0;
   row('a').onclick({ button: 0, metaKey: true, target: count('a'), preventDefault() { prevented++; } });
-  assert.deepEqual([opened, prevented, row('a').href], [[], 0, '?topic=a']);
+  assert.deepEqual([opened, prevented, row('a').href], [[], 0, '?topic=a&at=unread']);
 });
 
 test('1005 retired read cannot publish partial lists, erase rows or show a move notice', async t => {
