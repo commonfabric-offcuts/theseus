@@ -162,7 +162,7 @@ function pencil(doc, { id, className, label, tip }) {
 // A topic row's title, without its count and the words read out for it.
 function rowTitle(link) {
   const copy = link.cloneNode(true);
-  for (const part of copy.querySelectorAll('.sr-only, .unread-count, .topic-state, .topic-work')) part.remove();
+  for (const part of copy.querySelectorAll('.sr-only, .unread-count, .topic-state, .topic-work, .rail-hotkeycap')) part.remove();
   return copy.textContent.replace(/\s+/g, ' ').trim();
 }
 const plainClick = event => event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
