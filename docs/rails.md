@@ -253,6 +253,14 @@ supports source reads and revision tracking, but memory updates do not repaint
 the feed. The same current-topic pencil, permission check, paging, changed light,
 creation receipt and retry identity remain owned by the existing Notebook code.
 
+Right-clicking a Notebook page in the minimized right rail opens that page's
+existing Notebook menu (1203). The menu key, Shift-F10 and touch hold use the
+same door. Actions confirm the page's current source and owning topic before
+being offered; navigating away closes or cancels the menu. Selected text keeps
+the browser's menu, and an ordinary click still opens the shared Notebook sheet.
+The rail uses the shared Notebook action adapter, so new page actions appear in
+the same menu on each surface.
+
 - **Pipeline** lists the outcome's Build topics, each once, with stages from
   the `pipeline` view: under
   Now each topic a piece is being built in, one row for it however many
