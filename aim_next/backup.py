@@ -101,7 +101,7 @@ def _backup(db_path, instance_id, expected_binding, bundle_path, timings):
                     with io.opened(media_root, True, code='BUNDLE_INVALID'):
                         for row in media:
                             io.copy_file(media_root/row['name'], root/'media'/row['name'],
-                                         {k: row[k] for k in ('size','sha256')})
+                                         {k: row[k] for k in ('size','sha256')}, clone=True)
             fence.verify()
         with timings.phase('verification'):
             manifest = dict(v=1, metadata=metadata, database=io.hash_file(target), media=media)

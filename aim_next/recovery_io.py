@@ -173,9 +173,47 @@ def hash_file(path, *, expected=None, code='CANDIDATE_INVALID'):
     return result
 
 
-def copy_file(source, dest, expected):
+def _clone_file(source_fd, dest):
+    """Try Darwin's atomic, exclusive CoW creation from an already checked fd."""
+    if sys.platform != 'darwin':
+        return False
+    import ctypes
+    try:
+        clonefile = ctypes.CDLL(None, use_errno=True).fclonefileat
+    except (AttributeError, OSError):
+        return False
+    clonefile.argtypes = (ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32)
+    clonefile.restype = ctypes.c_int
+    dest = Path(dest)
+    with opened(dest.parent, True, code='BUNDLE_INVALID') as parent_fd:
+        # CLONE_NOFOLLOW=1 also selects NOFOLLOW for XNU's destination CREATE;
+        # an occupied final component is EEXIST, including a dangling symlink.
+        # This must hold at native entry, including a name arriving after the
+        # parent was opened; the fallback cannot undo native path side effects.
+        # CLONE_NOOWNERCOPY=2 keeps the existing private ownership behavior.
+        return clonefile(source_fd, parent_fd, os.fsencode(dest.name), 1 | 2) == 0
+
+
+def copy_file(source, dest, expected, *, clone=False):
     with opened(source, code='BUNDLE_INVALID') as source_fd:
         before = facts(os.fstat(source_fd))
+        if clone and _clone_file(source_fd, dest):
+            with opened(dest, write=True, code='CANDIDATE_INVALID') as target_fd:
+                require(identity(os.fstat(target_fd)) != identity(os.fstat(source_fd)), 'BUNDLE_INVALID')
+                target_before = facts(os.fstat(target_fd))
+                total, digest = 0, hashlib.sha256()
+                while True:
+                    chunk = os.read(target_fd, 65536)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    require(total <= expected['size'], 'BUNDLE_INVALID')
+                    digest.update(chunk)
+                require({'size': total, 'sha256': digest.hexdigest()} == expected, 'BUNDLE_INVALID')
+                require(facts(os.fstat(target_fd)) == target_before
+                        and facts(os.fstat(source_fd)) == before, 'BUNDLE_INVALID')
+                full_flush(target_fd)
+            return
         fd = os.open(str(dest), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, 'wb') as target:
             check_info(os.fstat(target.fileno()), code='CANDIDATE_INVALID')
