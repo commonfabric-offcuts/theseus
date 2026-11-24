@@ -59,6 +59,17 @@ test('1207 dismissing with a topic click keeps the existing TopicRail navigation
   assert.equal(f.opens[0][0], link.dataset.topicId);
 });
 
+test('1207 a hover-capable narrow screen can touch an already revealed topic on its first press', t => {
+  const f = fixture(t, { phone: true }), link = f.host.children[7];
+  f.doc.defaultView.matchMedia = () => ({ matches: true });
+  f.emit(link, 'pointermove', { pointerType: 'mouse', clientY: 320 });
+  assert.equal(f.revealed(), true);
+  f.emit(link, 'pointerdown', { pointerType: 'touch' });
+  const event = f.action('click', link);
+  assert.equal(f.revealed(), false); assert.equal(event.prevented, false); assert.equal(event.stopped, false);
+  assert.equal(f.opens[0][0], link.dataset.topicId);
+});
+
 test('1207 touch movement does not start pointer reveal', t => {
   const f = fixture(t, { phone: true }); f.move(320); assert.equal(f.revealed(), false);
 });

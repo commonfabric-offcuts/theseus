@@ -12,7 +12,8 @@ export class RailTopicFold {
     this.down = event => {
       this.pending = null;
       if (event.pointerType !== 'touch' || !this.win.matchMedia('(max-width: 760px)').matches ||
-          !area.hasAttribute('data-topic-fold') || area.hasAttribute('data-topic-current') || area.contains(doc.activeElement)) return;
+          !area.hasAttribute('data-topic-fold') || area.hasAttribute('data-topic-revealed') ||
+          area.hasAttribute('data-topic-current') || area.contains(doc.activeElement)) return;
       const link = event.target.closest('a[data-topic-id]');
       if (link?.dataset.railFold === 'peek') this.pending = link;
     };
