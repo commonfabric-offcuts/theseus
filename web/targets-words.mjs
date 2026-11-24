@@ -157,10 +157,10 @@ export function writeHowWords({ hasTarget, youOwn, owner }) {
   if (!hasTarget) return `Your words are the target as soon as you save; ${owner} can change them.`;
   return `${owner} decides on new words. Saving asks ${owner} in:`;
 }
-export const WRITE_KEYS = 'Return saves · Shift+Return for a new line · Esc cancels';
+export const WRITE_KEYS = 'Return or Esc saves · Shift+Return for a new line';
 // The two deliberate reasons: Reached, and shipping a worse result. Return sends the words; nothing is sent without them.
-export const REACH_KEYS = 'Return marks it reached · Shift+Return for a new line · Esc for not yet';
-export const ACCEPT_KEYS = 'Return accepts it · Shift+Return for a new line · Esc closes';
+export const REACH_KEYS = 'Return or Esc marks it reached · Shift+Return for a new line';
+export const ACCEPT_KEYS = 'Return or Esc accepts it · Shift+Return for a new line';
 export const REACH_WHY_FIRST = 'Say why it is reached first, in your own words.';
 export const ACCEPT_WHY_FIRST = 'Say why the trade is worth it first, in your own words.';
 export const askWords = text => `New words for the target, for you to use or keep the current ones (on the outcome page):\n\n${text}`;

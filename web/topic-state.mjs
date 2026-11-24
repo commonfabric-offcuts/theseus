@@ -1,3 +1,4 @@
+import { keepOnEscape } from './keep-on-escape.mjs';
 // Where a topic stands, as its participants say: a row mark in topic lists,
 // its chips and lines in Topic settings, set in place, and the topics that
 // wait on the reader. Core keeps every value; nothing here decides one.
@@ -166,17 +167,15 @@ const chip = (label, onclick) => {
 };
 const lit = (button, on) => button.setAttribute('aria-pressed', on ? 'true' : 'false');
 
-// A one-line field that saves itself: Return or leaving it saves what was
-// typed (leave, when leaving it means something else), and Escape cancels:
-// cancel() puts back what is saved and says whether it did anything. An
-// Escape with nothing to cancel closes the dialog as usual.
-function lineField(props, { touch, save, cancel, leave = save }) {
+// Each completion uses the same save owner; an empty title closes without a
+// write. Notes may deliberately be empty. The first Escape stays in the field.
+function lineField(props, { touch, save, cancel, escape = save, empty = 'save', leave = save }) {
   const input = element('input', { type: 'text', autocomplete: 'off', enterKeyHint: 'done', ...props });
   input.oninput = touch;
   input.onkeydown = event => {
-    if (event.isComposing) return;
+    if (event.isComposing || event.keyCode === 229) return;
+    if (keepOnEscape(event, { value: input.value, save: escape, close: cancel, empty })) return;
     if (event.key === 'Enter') { event.preventDefault(); save(); }
-    else if (event.key === 'Escape' && cancel()) { event.preventDefault(); event.stopPropagation(); }
   };
   input.onblur = leave;
   return input;
@@ -301,11 +300,12 @@ export class TopicStatePanel {
     this.controls = { says, chips, states, waiting, people, personChips: new Map(), note, by, part, duties, actions, duty: null, managed: null };
   }
 
-  // A line by name: its first key begins a change, Return or leaving saves
-  // it, and Escape puts back what is saved.
+  // A line by name: its first key begins a change; Return, Escape and leaving
+  // use the same fenced save. A refused field keeps its words and focus.
   line(name, props, events = {}) {
     const input = lineField(props, { touch: () => { const field = this.fields[name]; if (field) field.start ??= this.snapshot(name); },
-      save: () => this.save(name), cancel: () => this.cancel(name), ...events });
+      save: () => this.save(name), cancel: () => this.cancel(name), empty: name === 'title' ? 'close' : 'save',
+      escape: async () => { await this.save(name); if (!this.fields[name]?.start) input.blur?.(); }, ...events });
     this.fields[name] = { name, line: input };
     return input;
   }

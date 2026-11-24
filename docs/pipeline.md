@@ -139,8 +139,8 @@ Without a note it is refused
 (`NOTE_REQUIRED`: "4 is being built now, so moving it to Later sets its piece
 aside, with 3: say why in a short note"), and a note on any other move is
 refused (`INVALID_ARGUMENT`). On the page, Set aside to Later… opens one line
-under the item, "Why set it aside?": Return sets the piece aside, Escape keeps
-it as it is.
+under the item, "Why set it aside?": Return or Escape sets the piece aside;
+an empty Escape closes without moving it.
 
 A stage gated on the owner's word is entered only with an ask to the owner,
 written by whoever enters it, in the piece's topic (`ASK_REQUIRED`), and left
@@ -362,12 +362,12 @@ tony's word, …".
 
 Turn on is one tap, for the owner or the coordinator: the pipeline starts as
 "Pipeline", with items sized (or, if it was on before, as it was). The owner then changes the title where it stands
-in the page header (Return or clicking away saves it, Escape puts it back) and
+in the page header (Return, Escape or clicking away saves it) and
 whether items are sized with one chip under it.
 
 Change stages turns each stage into its own line, edited in place: its name and
-what done means save on Return or when you click away, and Escape puts them
-back. Rounds is three chips (no rounds, rounds together, the first round apart)
+what done means save on Return, Escape or when you click away. An empty
+stage name stays open with “A stage needs a name.” Rounds is three chips (no rounds, rounds together, the first round apart)
 and the owner's word one chip, each saved on its tap (the coordinator sees the
 owner's word on a stage but has no chip for it, and no cross on that stage); the arrows move a stage
 and the cross removes it, with Undo. A new stage is one line, "Add a stage…".
@@ -401,7 +401,8 @@ However a change ends unsaved (not sent, refused, too busy), what was typed for 
 stays. A one-line add's line clears on Return and is the person's alone after it;
 each title not added is kept on a line of its own under it, saying why beside its
 words, where it can be corrected, and where Try again (or Return) adds what it says
-then, once; Escape there lets it go. A title whose answer was lost (the connection
+then, once; Escape uses that same retry, while an empty title closes without
+adding. Refusal keeps the words and reason. A title whose answer was lost (the connection
 dropped, or Theseus could not confirm it) may have been added, so it is never said to
 be unsaved: it stays as it was sent, saying "Not known whether this was saved: Theseus
 did not confirm it.", and Try again (or Return) sends that same change under the same

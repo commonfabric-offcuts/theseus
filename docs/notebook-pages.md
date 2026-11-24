@@ -251,6 +251,7 @@ theirs. Return
 creates an empty page in that exact outcome or topic using `memory.create`
 with item revision zero, then opens it in the composer over the page, in Cards
 with the first card ready to write.
+Escape creates from a nonempty title through that same owner; an empty
 Escape or a press outside closes the line. The author, owner scope and item
 identity come from the bound page; there is no implicit fallback to another
 Notebook. The section remains visible when its Notebook is empty.

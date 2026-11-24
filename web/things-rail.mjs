@@ -182,7 +182,7 @@ export class ThingsRail {
     this.host.addEventListener('keydown', event => this.gridKey(event), true);
     this.tree = new KeyTree({ root: this.host, doc, label: 'The topic\'s things', column: this.host, rows: () => this.treeRows(), fallback: (...args) => this.missingRow(...args), act: (action, row, rows) => this.act(action, row, rows) });
     // The sheet closes with Escape, its ✕ and a tap beside it; the shell keeps these across moves.
-    listen(doc, 'keydown', event => { if (event.key === 'Escape' && this.isOpen()) { event.preventDefault(); this.close(true); } });
+    listen(doc, 'keydown', event => { if (!event.defaultPrevented && !event.isComposing && event.keyCode !== 229 && event.key === 'Escape' && this.isOpen()) { event.preventDefault(); this.close(true); } });
     listen(backdrop, 'click', () => this.close(true));
     this.wide = win.matchMedia?.('(min-width: 1181px)') ?? null;
     if (this.wide) listen(this.wide, 'change', () => { if (this.wide.matches) this.close(false); if (this.stale && this.shows()) this.reload(); });
