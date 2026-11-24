@@ -338,7 +338,20 @@ class EffectsLoop:
         items, complete = self._pending(config)
         if items is None:
             return self._finish(claim,'unavailable',reason='deliveries_unavailable')
-        notice = hosted_notice.notice(items,claim.get('handed_seq'),actor,claim['attempt_id'],complete)
+        from . import work_context
+        topic_ids, truncated = work_context.topics(items)
+        context = None
+        if topic_ids:
+            try:
+                context = self._storage(lambda:work_context.fetch(config.profile.store(), actor,
+                    {"topic_ids": topic_ids}, truncated))
+            except Exception as error:
+                if not self._cleanup_known(error):
+                    self.cleanup_uncertain = True
+                raise LoopFault(self._pin_reason(error)) from error
+            if context.get("code") in work_context.BINDING_ERRORS:
+                raise LoopFault('route_binding_changed')
+        notice = hosted_notice.notice(items,claim.get('handed_seq'),actor,claim['attempt_id'],complete,context)
         if notice is None:
             return self._finish(claim,'unavailable',reason='nothing_pending')
         self.host.dispatch(claim,config,notice)

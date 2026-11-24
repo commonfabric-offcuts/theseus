@@ -1,0 +1,254 @@
+{
+  "policy_id": "fast-lane",
+  "notebook_id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+  "rules": [
+    {
+      "id": "build-proof",
+      "summary": "New tests fail once on old code, then pass on candidate; run complete importing/source-reading consumer files and retain interrupted attempts/assertion reachability.",
+      "scope": {},
+      "effect": {
+        "require": [
+          "red_green",
+          "consumers",
+          "source_read"
+        ],
+        "freeze": "required"
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "page-path",
+      "summary": "Small page pieces use exact source, read and freeze, carry/live whole Node comparison; native browser obligations follow landing.",
+      "scope": {
+        "paths": [
+          "page"
+        ]
+      },
+      "effect": {
+        "require": [
+          "freeze",
+          "node_compare"
+        ]
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "core-path",
+      "summary": "Actual Core paths require frontloaded Python consumer comparison and exact freeze/whole Node comparison, even when the mechanical deployment flag says ordinary.",
+      "scope": {
+        "paths": [
+          "core",
+          "database"
+        ]
+      },
+      "effect": {
+        "require": [
+          "freeze",
+          "python_compare",
+          "node_compare"
+        ]
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "database-path",
+      "summary": "Database changes retain the existing judged path and real-data rehearsal.",
+      "scope": {
+        "paths": [
+          "database"
+        ]
+      },
+      "effect": {
+        "require": [
+          "judged_rehearsal"
+        ]
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "source-lifetime",
+      "summary": "Preserve source/evidence for required readers and carry, or Warp explicit clean-tree release; preserve dirty removal refusals.",
+      "scope": {},
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "resource-admission",
+      "summary": "Current hold and actual child/execution admission govern; unknown occupancy is not entry permission.1195 adoption waits for1202 and Warp switch-over.",
+      "scope": {},
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1169-core",
+      "summary": "1169 is actual Core work; its ordinary no-schema mechanical flag never waives Core proof/read/freeze/comparison.",
+      "scope": {
+        "items": [
+          1169
+        ]
+      },
+      "effect": {
+        "work_type": "core"
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1194-size-exception",
+      "summary": "1194 uses1177 carry/read path due1186 freeze-size limit; the prior failed migration preflight and original proof remain. Landed400 retains migrate250ms;1201 carries the writer line with1200 under22759.",
+      "scope": {
+        "items": [
+          1194
+        ]
+      },
+      "effect": {
+        "freeze": "carry_read",
+        "work_type": "core"
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1184-scope",
+      "summary": "Flex alone owns1184 migration fixture/body contracts; rejected206 cohort is not proof,205 consumer successor remains unentered.1138 is duplicate scope.",
+      "scope": {
+        "items": [
+          1184,
+          1138
+        ]
+      },
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1174-browser-waiver",
+      "summary": "1174 retains its existing browser waiver; topic-row and badge first-unread equivalence is the product behavior.",
+      "scope": {
+        "items": [
+          1174
+        ]
+      },
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1160-postlanding-cell",
+      "summary": "1160 final hotkey/Health browser cell stays postlanding/unrun until actual evidence. Earlier proof keeps its original head.",
+      "scope": {
+        "items": [
+          1160
+        ]
+      },
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "1028-prerequisites",
+      "summary": "No1028 preparation until1172,1161,1171,1174,1160 and1190 are all actually live.",
+      "scope": {
+        "items": [
+          1028
+        ]
+      },
+      "effect": {
+        "wait_items_live": [
+          1172,
+          1161,
+          1171,
+          1174,
+          1160,
+          1190
+        ]
+      },
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "independent-followons",
+      "summary": "1199 clock,1180 recovery and1200 jobs are independent and do not hold1198. The separately scheduled restart test requires1198,1196,1180,1199 and1200 all live. No median, invented forecast or restart authorization.",
+      "scope": {},
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    },
+    {
+      "id": "real-failures",
+      "summary": "Actual required failures and unresolved source findings stop this piece. Old packet/lease/grant or unrelated asks do not replace the current rule.",
+      "scope": {},
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 11
+      },
+      "supersedes": []
+    }
+  ],
+  "owners": {
+    "reader": "warp",
+    "carrier": "warp",
+    "freezer": "fable",
+    "lander": "warp"
+  }
+}

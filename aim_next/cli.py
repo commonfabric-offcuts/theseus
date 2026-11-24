@@ -40,6 +40,7 @@ from .cli_targets import WORDS as TARGET_WORDS, TargetVerbs, register as registe
 from .cli_tools import ToolVerbs, register as register_tools
 from .cli_covers import CoverVerbs, register as register_covers
 from .cli_links import LinkVerbs, register as register_links
+from .cli_current_rule import CurrentRuleVerbs, register as register_current_rule
 
 
 class Parser(argparse.ArgumentParser):
@@ -445,6 +446,7 @@ def _parser():
     link.add_argument("item")
     link.add_argument("--revision", type=int)
     link.add_argument("--origin")
+    register_current_rule(verb)
     register_pipeline(verb)
     register_targets(verb)
     register_tools(verb)
@@ -578,7 +580,7 @@ class Failed(Exception):
         self.code, self.recorded = code, recorded
 
 
-class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
+class Agent(CurrentRuleVerbs, PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
     """The everyday verbs: each builds its envelopes, saves each request before dispatch."""
 
     def __init__(self, profile, options, stdin, lines):
@@ -1448,6 +1450,7 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
 
     def do_inbox(self):
         items = sorted(self.pages("deliveries", {}), key=lambda item: item["seq"])
+        self.context_deliveries = items
         to_name = set()
         for item in items:
             # Each dossier to name is said once, on its oldest delivery.
@@ -1988,6 +1991,7 @@ def _agent_verb(options, stdin, stdout, stderr):
             _utf8_arguments(options)
             agent = Agent(_selected_profile(options), options, stdin, lines)
             getattr(agent, "do_" + options.verb.replace("-", "_"))()
+            agent.show_work_context()
             return agent.exit
         except BrokerFailure as error:
             if error.exit_code != 1:

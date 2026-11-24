@@ -4,6 +4,7 @@ from .contract import LIMITS, Refusal, _identifier, _json
 
 
 COMMANDS = {
+    "current_rule.update": "_command_current_rule_update",
     **{"assessment."+name: "_command_assessment_"+name for name in ("request","attach","finish","renew","abandon")},
     "agent.execution": "_command_agent_execution",
     "workspace.create": "_command_workspace_create",
@@ -76,7 +77,7 @@ COMMANDS = {
     "stack.cover_refresh": "_command_stack_cover_refresh",
     "tool.use": "_command_tool_use", "tool.link": "_command_tool_link", "tool.record": "_command_tool_record",
 }
-EXPECTED = {"workspace.link_set": {"link_revision"},**{"assessment."+name:set() for name in ("request","attach","finish","renew","abandon")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
+EXPECTED = {"current_rule.update": {"rule_revision", "item_revision"},"workspace.link_set": {"link_revision"},**{"assessment."+name:set() for name in ("request","attach","finish","renew","abandon")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"}, "submission.set_aside": set(),
             "participation.set": {"topic_revision"}, "topic.update": {"topic_revision", "topic_fields"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
             "message.post": set(), "message.withdraw": set(), "message.unsend": set(), "message.retract": set(), "message.resolve": set(), "topic.read_through": set(), "message.edit": {"message_revision"}, "message.refresh": {"message_revision"},
@@ -124,7 +125,7 @@ EXPECTED = {"workspace.link_set": {"link_revision"},**{"assessment."+name:set() 
             "stack.cover": {"cover_revision"}, "stack.cover_refresh": {"cover_revision"},
             "stack.move": {"move_revision", "source_topic_id"},
             "tool.use": set(), "tool.link": set(), "tool.record": set()}
-REQUIRED_EXPECTED = {"workspace.link_set": "link_revision","agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
+REQUIRED_EXPECTED = {"current_rule.update": "rule_revision","workspace.link_set": "link_revision","agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision", "memory.star": "star_revision", "memory.delete": "item_revision",
                      "memory.move": "item_revision", "memory.copy": "item_revision", "memory.transfer.undo": "item_revision",
@@ -146,6 +147,8 @@ REQUIRED_EXPECTED = {"workspace.link_set": "link_revision","agent.execution": "e
                      "stack.place": "place_revision", "stack.level": "level_revision", "stack.name": "name_revision", "stack.join": "join_revision",
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 VIEWS = {
+    "current_rule": {"workspace_id", "history"},
+    "work_context": {"workspace_id", "piece_id", "topic_id", "topic_ids"},
     "workspace_links": {"workspace_id", "cursor", "limit"},
     "submission_mention_reach": {"submission_id", "cursor", "limit"},
     "rail_dimming": {"candidate"},
