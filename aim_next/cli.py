@@ -196,7 +196,7 @@ USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
-         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch [--once] | retry OPERATION | releases [--limit N] | health "
+         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch [--once] | reconcile OPERATION | retry OPERATION | releases [--limit N] | health "
          "| attachment ATTACHMENT (--message MESSAGE | --page PAGE) --out FILE "
          "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE|- "
          "| note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE|- "
@@ -404,6 +404,7 @@ def _parser():
     through.add_argument("seq", type=int)
     verb("watch").add_argument("--once", action="store_true")
     verb("retry").add_argument("operation")
+    verb("reconcile").add_argument("operation")
     verb("releases").add_argument("--limit", type=int)
     verb("health")
     attachment = verb("attachment")
@@ -1756,7 +1757,7 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
         result = self.command("topic.read_through", {"topic_id": self.options.topic}, {"seq": self.options.seq})
         self.out.plain("read %s through #%s (%s acknowledged)" % (result["topic_id"], result["seq"], result["acknowledged"]))
 
-    def do_retry(self):
+    def _saved_operation(self):
         operation = self.options.operation
         if not SAFE_NAME.fullmatch(operation):
             raise UsageError()
@@ -1765,7 +1766,47 @@ class Agent(PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
         envelope = _request(request, "command")
         if request["binding"] != self.binding or envelope["operation_id"] != operation:
             self.refuse("BINDING_MISMATCH", "This saved request belongs to another binding or operation")
-        result = self.dispatch(directory, request)
+        return directory, request, envelope
+
+    def _reconcile_operation(self, directory, envelope):
+        operation = envelope['operation_id']
+        self.operation = operation
+        from .validation import _command_envelope
+        from .contract import _json
+        fingerprint = hashlib.sha256(_json(_command_envelope(envelope)).encode('utf-8')).hexdigest()
+        result = self.store.view(self.actor, 'operation', {'operation_id': operation, 'expected_fingerprint': fingerprint})
+        if (type(result) is not dict or result.get('instance_id') != self.profile.instance_id
+                or 'error' not in result and result.get('operation_id') != operation):
+            self.refuse('RECOVERY_UNKNOWN', 'The original operation could not be reconciled; nothing was sent')
+        if result.get('recorded') is not True and result.get('error'):
+            # Preserve the actual bound refusal. It never authorizes replay.
+            self.out.raw(result)
+            self.fail(result['error'])
+        if result.get('recorded') is True:
+            try:
+                local = json.loads((directory / (operation + '.receipt.json')).read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                local = None
+            return ('terminal' if local == result else 'committed_unseen'), result
+        if result.get('recorded') is False and result.get('status') == 'unknown':
+            return 'pending_intent', result
+        self.refuse('RECOVERY_UNKNOWN', 'The original operation could not be reconciled; nothing was sent')
+
+    def do_reconcile(self):
+        directory, request, envelope = self._saved_operation()
+        state, result = self._reconcile_operation(directory, envelope)
+        self.out.raw({'instance_id': self.profile.instance_id, 'operation_id': envelope['operation_id'],
+                      'recovery_state': state, 'result': result})
+        self.out.plain('%s: %s; no request was sent' % (envelope['operation_id'], state))
+
+    def do_retry(self):
+        directory, request, envelope = self._saved_operation()
+        state, receipt = self._reconcile_operation(directory, envelope)
+        # Core's immutable result wins over a lost local receipt. Only an
+        # absent result re-enters command(), with the exact saved identity.
+        result = self.dispatch(directory, request, send=(lambda actor, command: receipt)
+                               if state in ('committed_unseen', 'terminal') else None)
+        operation = envelope['operation_id']
         self.out.plain("recorded %s (%s)" % (operation, envelope["kind"]))
         if envelope["kind"] == "opening.save":
             self.out.plain(self.publish_hint(envelope["target"].get("opening_id"), envelope["args"].get("topic_id"), recorded=True))

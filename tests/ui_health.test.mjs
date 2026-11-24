@@ -374,3 +374,12 @@ test('1104 incomplete recovery is named separately and never claims a replacemen
   assert.match(line.details.join(' '), /recovery.*unconfirmed/i);
   assert.deepEqual(healthProblems(page, { now: NOW }), [], 'Core continues to own what is red');
 });
+
+test('1180: the attempt read diagnosis stays separate from delivered wake evidence', () => {
+  const read = { category: 'complete', state: 'pending_intent', why: 'Pending page 2: the pending pages were read; this does not prove wake delivery' };
+  const value = answer({ agents: [agent('hosted-a', { reached_ms: null, wake_read: read })] });
+  const line = healthLines(value, { now: NOW }).find(item => item.key === 'agent:hosted-a');
+  assert.ok(line.details.includes(read.why + '.'));
+  assert.ok(line.details.includes('No wake has got through yet.'));
+  assert.equal(line.bad, false, 'a read observation creates no Health red or delivery claim');
+});

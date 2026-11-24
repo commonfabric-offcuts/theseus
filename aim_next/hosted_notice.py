@@ -165,6 +165,14 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True):
                              _named(request["message_id"]), _named(request["root_id"]), request["observed_revision"], _named(item["id"])))
             continue
         message = item["message"]
+        recovered = item.get('answer_recovery', {})
+        if recovered.get('state') == 'answered' and recovered.get('source_revision') == message.get('revision'):
+            lines.append('%d. source %s revision %d already has your answer %s in topic %s; '
+                         'read that existing answer, then acknowledge delivery %s. Redelivery does not request another answer; '
+                         'a deliberate later reply remains possible.' % (
+                             number, _named(message['id']), recovered['source_revision'], _named(recovered['message_id']),
+                             _named(item['topic']['id']), _named(item['id'])))
+            continue
         if item.get("correction"):
             # Core's words: its author edited a message this agent was sent (docs/message-edit.md). It is not new work, and
             # a whisper's privacy still holds; its new words travel only in the untrusted context.
