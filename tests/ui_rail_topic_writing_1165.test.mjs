@@ -74,7 +74,7 @@ test('1165 a late refusal after newer navigation cannot steal focus', async t =>
 
 test('1165 cancelling and reopening a pending title does not resurrect its old focus request', async t => {
   const gate = deferred(); const f = fixture(t, { answer: request => request.kind === 'opening.save' ? receipt(request, { opening_revision: 1 }) : gate.promise });
-  f.press('Enter'); await settle(); f.press('Escape'); f.outcome.newTopic.onclick();
+  f.press('Enter'); await settle(); f.outcome.newTopic.onclick(); f.outcome.newTopic.onclick();
   f.input().value = 'Later title';
   gate.resolve(receipt(f.commands.at(-1), { topic: { id: 'made' } })); await settle();
   assert.deepEqual(f.opened, []); assert.equal(f.sheet.open, false); assert.equal(f.input().value, 'Later title');

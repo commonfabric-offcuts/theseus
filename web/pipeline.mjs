@@ -1,3 +1,4 @@
+import { keepOnEscape } from './keep-on-escape.mjs';
 import { literalLinkNodes } from './message-format.mjs';
 // The pipeline page, an item's record, the steer menu, the one-line add at the top
 // of each section with words and size set on the item in place, Change stages,
@@ -408,16 +409,17 @@ export class PipelinePage {
       el('button', { type: 'button', 'data-role': 'drop-keep', text: 'Keep it', onclick: () => { this.confirming = null; this.paint(); this.host.querySelector(`[data-key="${key}"] [data-role="steer"]`)?.focus(); } }));
   }
 
-  // Set aside to Later… asks why in one line (the form rule): Return sets the whole piece aside, Escape keeps it as it is.
+  // Set aside to Later… asks why in one line: Return or Escape uses the same move owner.
   asideLine(item, piece) {
     const key = `item:${item.number}`, one = piece.items.length === 1, later = this.answer?.pipeline?.section_words?.later ?? 'Later';
     // The why being typed is kept per piece, as the add lines keep theirs, so a live repaint leaves its words alone;
     // a piece set aside is closed for good, so its words are never offered for another.
     const close = () => { this.asiding = null; this.paint(); this.host.querySelector(`[data-key="${key}"] [data-role="steer"]`)?.focus(); };
     return titleLine({ key: `aside:${item.number}`, role: 'aside-note', label: `Why set ${listWords(piece.items)} aside to ${later}`, placeholder: 'Why set it aside?',
-      hint: `Return sets ${listWords(piece.items)} aside to ${later}, with ${one ? 'its' : 'their'} stages so far · Escape keeps ${one ? 'it' : 'them'}`,
+      hint: `Return or Escape sets ${listWords(piece.items)} aside to ${later}, with ${one ? 'its' : 'their'} stages so far`,
       value: this.asideDrafts.get(piece.id) ?? '', input: value => { this.asideDrafts.set(piece.id, value); },
-      submit: note => { this.asiding = null; this.act(key, () => this.move(item, { section: 'later', note })); }, cancel: close });
+      submit: note => this.act(key, async () => { await this.move(item, { section: 'later', note }); this.asiding = null; }, false)
+        .then(() => { const saved = !this.errors.has(key); if (saved) close(); return saved; }), cancel: close });
   }
 
   // The ⋯ button and, while it is open, its menu.
@@ -586,13 +588,15 @@ export class PipelinePage {
     }, false, said => { entry.said = said; })
       .then(() => {
         // Focus was on what the add took away (the Try again, or the held line itself): it goes back to the title, or the line.
-        if (this.host.contains?.(document.activeElement)) return;
+        const saved = !this.held.get(key)?.includes(entry);
+        if (this.host.contains?.(document.activeElement)) return saved;
         const kept = this.held.get(key)?.includes(entry) ? `held:${key}:${entry.id}` : key;
         this.host.querySelector(`[data-key="${CSS.escape(kept)}"] input`)?.focus({ preventScroll: true });
+        return saved;
       });
   }
 
-  // A held title let go: added, emptied, or the person's Escape.
+  // A held title let go: added, or explicitly emptied.
   letGo(key, entry) {
     const rest = (this.held.get(key) ?? []).filter(other => other !== entry);
     if (rest.length) this.held.set(key, rest); else this.held.delete(key);
@@ -602,12 +606,12 @@ export class PipelinePage {
   // The titles held under a one-line add that are not added, each a line of its own,
   // with why and, when Theseus was busy, Try again. A title whose answer was lost is
   // not known to be saved: it says so, with Try again, and stays as it was sent.
-  // Escape lets it go.
+  // Return or Escape retries it through its existing exact request owner.
   heldLines(key, label, placeholder) {
     return (this.held.get(key) ?? []).filter(entry => entry.said).map(entry => {
       const unknown = entry.change?.unconfirmed === true;
       const line = titleLine({ key: `held:${key}:${entry.id}`, value: entry.text, role: 'held-title', readonly: unknown, placeholder,
-        label: `${label}, ${unknown ? 'not known if saved' : 'not saved'}`, hint: `Return ${unknown ? 'sends it again' : 'adds it'} · Escape lets it go`,
+        label: `${label}, ${unknown ? 'not known if saved' : 'not saved'}`, hint: `Return or Escape ${unknown ? 'sends it again' : 'adds it'}`,
         input: value => { entry.text = value; }, submit: () => this.sendHeld(key, entry),
         cancel: () => { this.letGo(key, entry); this.host.querySelector(`[data-key="${CSS.escape(key)}"] input`)?.focus(); } });
       line.append(notSaved(unknown ? BUSY_WORDS.unconfirmed : entry.said.words, this.heldAgain(entry) ? () => this.sendHeld(key, entry) : null, { className: 'pl-line-note' }));
@@ -734,7 +738,7 @@ export class PipelinePage {
       return this.stagesChange(list => { list.push(stage); }, () => { this.removed = null; this.stageNote = { id: stage.stage_id, text: 'Added. Its done-when and chips are optional.' }; });
     });
     const add = titleLine({
-      key: 'add-stage', value: this.newStage, label: 'Add a stage', placeholder: 'Add a stage…', hint: 'Return adds it last · Escape clears',
+      key: 'add-stage', value: this.newStage, label: 'Add a stage', placeholder: 'Add a stage…', hint: 'Return or Escape adds it last',
       input: value => { this.newStage = value; },
       cancel: (had, input) => { if (!had) input.blur(); },
       submit,
@@ -750,7 +754,7 @@ export class PipelinePage {
     return el('div', { class: 'pl-stage-editing' }, list, undo, add, held);
   }
 
-  // One line of a stage, saved on Return or blur; Escape puts back what was saved.
+  // One line of a stage, saved by its existing owner on Return, Escape or blur.
   stageField(stage, field, attrs) {
     const id = stage.stage_id, key = `${id}:${field}`;
     const input = el('input', { type: 'text', class: `pl-stage-${field}`, 'data-role': `stage-${field}`, autocomplete: 'off', enterkeyhint: 'done', spellcheck: 'true', ...attrs });
@@ -758,12 +762,11 @@ export class PipelinePage {
     input.oninput = () => { this.stageDrafts.set(key, input.value); if (this.stageNote?.id === id) this.stageNote = null; };
     input.onblur = () => { if (!this.painting) this.saveStageText(id, field); };
     input.onkeydown = event => {
-      if (event.isComposing) return;
+      if (event.isComposing || event.keyCode === 229) return;
+      if (keepOnEscape(event, { value: input.value, empty: 'save', save: async () => {
+        await this.saveStageText(id, field); if (!this.stageDrafts.has(key)) input.blur?.();
+      } })) return;
       if (event.key === 'Enter') { event.preventDefault(); this.saveStageText(id, field); }
-      else if (event.key === 'Escape') {
-        event.preventDefault(); event.stopPropagation();
-        this.stageDrafts.delete(key); input.value = stageText(this.stageOf(id) ?? stage, field); input.blur();
-      }
     };
     return input;
   }
@@ -779,7 +782,7 @@ export class PipelinePage {
       const text = this.stageDrafts.get(key), now = this.stageOf(id);
       if (text === undefined || !now) return;
       if (text.trim() !== stageText(now, field)) {
-        if (field === 'name' && !text.trim()) throw Error('A stage needs a name. Escape puts the old one back.');
+        if (field === 'name' && !text.trim()) throw Error('A stage needs a name.');
         await this.setStages(list => { setStageText(stageIn(list, id), field, text.trim()); });
         this.sent.set(key, text.trim()); this.stageNote = { id, text: 'Saved.' };
       }
@@ -842,12 +845,12 @@ export class PipelinePage {
   }
 
   // The one line at the top of a section (the form rule): a title and Return adds it
-  // there, last; Escape clears it. Words and size are set on the item afterwards.
+  // there, last; Escape uses the same form submit. Words and size are set afterwards.
   addLine(pipeline, name) {
     const key = `add:${name}`, label = pipeline.section_words?.[name] ?? sentenceName(name);
     const submit = title => {
       this.added = null;
-      this.lineAct(key, title, () => { this.addDrafts[name] = ''; }, title => {
+      return this.lineAct(key, title, () => { this.addDrafts[name] = ''; }, title => {
         const args = { title, section: name, sources: [{ note: 'the pipeline page' }] }; // "From the pipeline page"; who added it is its `added` event
         if (name === 'candidates') args.candidate_group = '';
         return this.change('pipeline.item_add', { workspace_id: this.workspace }, args, {}, result => {
@@ -858,7 +861,7 @@ export class PipelinePage {
       });
     };
     const form = titleLine({
-      key, value: this.addDrafts[name] ?? '', label: `Add an item to ${label}`, hint: `Return adds it to ${label} · Escape clears`,
+      key, value: this.addDrafts[name] ?? '', label: `Add an item to ${label}`, hint: `Return or Escape adds it to ${label}`,
       input: value => { this.addDrafts[name] = value; },
       cancel: (had, input) => { if (!had) input.blur(); },
       submit,
@@ -876,6 +879,10 @@ export class PipelinePage {
     area.oninput = () => { this.wordDrafts.set(number, area.value); if (this.savedWords === number) this.savedWords = null; };
     area.onblur = () => { if (!this.painting) this.saveWords(number); };
     area.onkeydown = event => {
+      if (event.isComposing || event.keyCode === 229) return;
+      if (record && keepOnEscape(event, { value: area.value, empty: 'save', save: async () => {
+        await this.saveWords(number); if (!this.wordDrafts.has(number)) area.blur?.();
+      } })) return;
       if (event.key === 'Escape' && !record) { event.preventDefault(); this.closeDetails(number); }
       else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); this.saveWords(number); }
     };
@@ -888,7 +895,7 @@ export class PipelinePage {
           onclick: () => this.act(key, () => this.edit(number, { size: item.size === size ? null : size }), `size-${size}`),
         }))));
     }
-    panel.append(el('p', { class: 'pl-details-note muted', text: this.savedWords === number ? 'Saved.' : 'Optional. Words save when you click away or press ⌘Return.' }));
+    panel.append(el('p', { class: 'pl-details-note muted', text: this.savedWords === number ? 'Saved.' : 'Optional. Words save when you click away or press ⌘Return; Escape finishes the field.' }));
     return panel;
   }
 
@@ -938,16 +945,18 @@ export class PipelinePage {
   }
 
   // The owner's title, edited where it stands in the page header: Return or blur saves it,
-  // Escape puts it back. The same element stays across repaints, so typing is never lost.
+  // Escape saves too. The same element stays across repaints, so typing is never lost.
   titleInPlace(pipeline) {
-    const field = this.titleField ??= el('input', { type: 'text', class: 'pl-title-input', 'aria-label': 'Pipeline title', title: 'Return saves · Escape puts it back',
+    const field = this.titleField ??= el('input', { type: 'text', class: 'pl-title-input', 'aria-label': 'Pipeline title', title: 'Return or Escape saves',
       autocomplete: 'off', enterkeyhint: 'done', maxlength: '200', spellcheck: 'true' });
     field.oninput = () => { this.titleDraft = field.value; this.settingsNote = null; };
     field.onblur = () => this.saveTitle();
     field.onkeydown = event => {
-      if (event.isComposing) return;
+      if (event.isComposing || event.keyCode === 229) return;
+      if (keepOnEscape(event, { value: field.value, save: async () => {
+        await this.saveTitle(); if (this.titleDraft === null) field.blur?.();
+      }, close: () => { this.titleDraft = null; field.value = this.answer?.pipeline?.title ?? ''; field.blur?.(); } })) return;
       if (event.key === 'Enter') { event.preventDefault(); this.saveTitle(); }
-      else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.titleDraft = null; field.value = this.answer?.pipeline?.title ?? ''; field.blur(); }
     };
     if (document.activeElement !== field) field.value = this.titleDraft ?? this.sent.get('title') ?? pipeline.title;
     const title = this.header.title;
@@ -1027,23 +1036,22 @@ const tryAgain = onclick => el('button', { type: 'button', 'data-role': 'try-aga
 const notSaved = (words, again, { tag = 'p', className = '', lead = '' } = {}) =>
   el(tag, { class: `pl-error ${className}`.trim(), role: 'status' }, lead + words, again ? ' ' : null, again ? tryAgain(again) : null);
 
-// One line for a title (the form rule): placeholder "Add an item…", Return submits it,
-// Escape clears it (and then `cancel` hears whether it held text). The pipeline page's
-// sections and a message's Add to pipeline both use it.
+// One line for a title: Return and Escape use the same form owner. An empty
+// Escape closes without clearing or sending a title. Pipeline sections and
+// a message's Add to pipeline both use it.
 export function titleLine({ key, value = '', label, hint, placeholder = 'Add an item…', role = 'add-title', readonly = false, input, submit, cancel }) {
   const field = el('input', { type: 'text', class: 'pl-line-input', 'data-role': role, placeholder, 'aria-label': label, autocomplete: 'off',
     enterkeyhint: 'done', maxlength: '500', spellcheck: 'true', readonly });
   field.value = value;
+  let completion;
   field.oninput = () => input?.(field.value);
   field.onkeydown = event => {
-    if (event.key !== 'Escape' || event.isComposing) return;
-    event.preventDefault(); event.stopPropagation();
-    const had = field.value !== '';
-    if (had) { field.value = ''; input?.(''); }
-    cancel?.(had, field);
+    if (event.isComposing || event.keyCode === 229) return;
+    keepOnEscape(event, { value: field.value, save: () => { form.requestSubmit(); return completion; },
+      finish: () => field.blur?.(), close: () => { cancel?.(false, field); field.blur?.(); } });
   };
   const form = el('form', { class: 'pl-line', 'data-key': key }, field, el('span', { class: 'pl-line-hint muted', text: hint }));
-  form.onsubmit = event => { event.preventDefault(); const title = field.value.trim(); if (title) submit(title, field); };
+  form.onsubmit = event => { event.preventDefault(); const title = field.value.trim(); if (title) completion = submit(title, field); };
   return form;
 }
 

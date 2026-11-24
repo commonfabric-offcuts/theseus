@@ -5,7 +5,9 @@
 // (tests/pipeline_native.mjs).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dom } from './fixtures/ui_dom.mjs';
+import { dom as memoryDom } from './fixtures/ui_dom.mjs';
+// Browser form/focus ports used by the actual shared titleLine owner.
+const dom = () => { const doc=memoryDom(),make=doc.createElement;doc.createElement=tag=>{const node=make(tag);node.requestSubmit=()=>node.onsubmit?.({preventDefault(){}});node.blur=()=>{if(doc.activeElement===node){doc.activeElement=doc.body;node.onblur?.();}};return node;};return doc; };
 import { AttemptError, isBusy, unconfirmed } from '../web/api.mjs';
 import {
   checkPipeline, duration, eventRuns, eventWords, factBoxes, firstLine, heldWords, historyLine, listWords, placedWords, sourceRuns, typicalCell, typicalWords, waitsWords,
@@ -174,21 +176,23 @@ test('the outcome page’s line links the pipeline, or offers Turn on to whoever
   assert.equal(await paint({ error: { message: 'busy' } }), false);
 });
 
-test('the one-line add: Return sends the trimmed title, an empty line sends nothing, Escape clears it first', () => {
+test('the one-line add: Return sends the trimmed title, an empty line sends nothing, Escape uses the same submit and empty Escape closes', () => {
   globalThis.document = dom();
   const sent = [], cancelled = [];
-  const form = titleLine({ key: 'add:next', label: 'Add an item to Next', hint: 'Return adds it to Next · Escape clears', submit: title => sent.push(title),
+  const form = titleLine({ key: 'add:next', label: 'Add an item to Next', hint: 'Return or Esc adds it to Next', submit: title => sent.push(title),
     cancel: had => cancelled.push(had) });
   const [field, hint] = form.children;
-  assert.deepEqual([field.placeholder, field['aria-label'], field.maxlength, hint.text], ['Add an item…', 'Add an item to Next', '500', 'Return adds it to Next · Escape clears']);
+  assert.deepEqual([field.placeholder, field['aria-label'], field.maxlength, hint.text], ['Add an item…', 'Add an item to Next', '500', 'Return or Esc adds it to Next']);
   const submit = () => form.onsubmit({ preventDefault() {} });
   field.value = '   '; submit();
   assert.deepEqual(sent, []);
   field.value = '  Say which release is live  '; submit();
   assert.deepEqual(sent, ['Say which release is live']);
   const escape = () => field.onkeydown({ key: 'Escape', isComposing: false, preventDefault() {}, stopPropagation() {} });
-  escape(); escape();
-  assert.deepEqual([field.value, cancelled], ['', [true, false]]);
+  escape();
+  assert.deepEqual(sent, ['Say which release is live', 'Say which release is live']);
+  field.value = ''; escape();
+  assert.deepEqual(cancelled, [false], 'empty Escape closes without submitting');
 });
 
 test('a refused act says why under its row and reads the page again, so what it shows is how things stand', async () => {
@@ -281,7 +285,7 @@ test('an item being built offers Set aside to Later… only when the server woul
   const form = page.asideLine(item, { id: 'p-1', items: [183, 184], you_set_aside: true });
   const field = walk(form).find(node => node.tagName === 'input');
   assert.deepEqual([field.placeholder, field['aria-label'], walk(form).find(node => node.tagName === 'span').text],
-    ['Why set it aside?', 'Why set 183 and 184 aside to Later', 'Return sets 183 and 184 aside to Later, with their stages so far · Escape keeps them']);
+    ['Why set it aside?', 'Why set 183 and 184 aside to Later', 'Return or Escape sets 183 and 184 aside to Later, with their stages so far']);
   field.value = '   '; form.onsubmit({ preventDefault() {} });
   assert.deepEqual(sent, [], 'an empty line sends nothing');
   field.value = '  The tests miss the real case  '; form.onsubmit({ preventDefault() {} });
@@ -291,8 +295,9 @@ test('an item being built offers Set aside to Later… only when the server woul
   assert.equal(page.asiding, null);
   page.asiding = 183;
   field.onkeydown({ key: 'Escape', isComposing: false, preventDefault() {}, stopPropagation() {} });
-  assert.equal(page.asiding, null, 'Escape keeps the piece as it is');
-  assert.equal(sent.length, 1);
+  await page.chain;
+  assert.equal(page.asiding, null, 'Escape uses the same completed set-aside owner');
+  assert.equal(sent.length, 2);
 });
 
 // ---- a busy Theseus on the pipeline page (item 192) -------------------------------
@@ -789,7 +794,7 @@ test('RVA: two titles sent with Return while Theseus is busy are both kept, each
   assert.equal(tries(), 0);
 });
 
-test('Escape on a title not saved lets that one go, sends nothing, and leaves the line and every other title kept as they are (item 192)', async () => {
+test('Escape on a retained title retries that one and preserves every other title and the writing line (item 192)', async () => {
   const theseus = busyTheseus(), { page, addStage, fieldWith, typeOnLine, line, tries } = busyPage(theseus);
   await page.load(); page.editing = true; page.paint();
   theseus.busySends = true;
@@ -797,8 +802,8 @@ test('Escape on a title not saved lets that one go, sends nothing, and leaves th
   const sends = theseus.sends;
   fieldWith('Ship').onkeydown({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
   await page.chain;
-  assert.equal(fieldWith('Ship'), null, 'Ship is let go');
-  assert.deepEqual([fieldWith('Review')?.['data-role'], line('add-stage'), tries(), theseus.sends], ['held-title', 'Rev', 1, sends], 'Review and the line stay; nothing is sent');
+  assert.ok(fieldWith('Ship'), 'a refused Escape retry keeps Ship');
+  assert.deepEqual([fieldWith('Review')?.['data-role'], line('add-stage'), tries(), theseus.sends], ['held-title', 'Rev', 2, sends + 1], 'Review and the line stay; only Ship is retried');
   theseus.busySends = false; await page.load();
   assert.deepEqual(theseus.stages.map(stage => stage.name), ['Build']);
 });
@@ -819,7 +824,7 @@ test('a stage added whose answer was lost, though Core has it, is said as not kn
   const held = heldWith('Ship');
   assert.ok(held, 'the title is kept, as it was sent');
   assert.deepEqual({ label: held['aria-label'], readonly: held.readonly === '', said: besideField(held), hint: held.parent.text },
-    { label: 'Add a stage, not known if saved', readonly: true, said: [`${UNCONFIRMED} Try again`], hint: `Return sends it again · Escape lets it go${UNCONFIRMED} Try again` },
+    { label: 'Add a stage, not known if saved', readonly: true, said: [`${UNCONFIRMED} Try again`], hint: `Return or Escape sends it again${UNCONFIRMED} Try again` },
     'never said as not saved; its words are what was sent, not to be changed under the same change');
   assert.doesNotMatch(text(), /not saved|Not saved/);
   assert.doesNotMatch(text(), unplain);

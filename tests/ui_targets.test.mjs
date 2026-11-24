@@ -31,7 +31,7 @@ function page(t, answer, { topics = [], refuse = null } = {}) {
   return { dom, hosts, targets, sent, reads, set: value => { current = value; } };
 }
 
-const key = (field, name, more = {}) => field.dispatch('keydown', { key: name, shiftKey: false, isComposing: false, repeat: false, ...more });
+const key = (field, name, more = {}) => field.dispatch('keydown', { key: name, shiftKey: false, isComposing: false, repeat: false, stopPropagation(){}, ...more });
 const type = (field, words) => { field.value = words; field.dispatch('input'); };
 
 test('the owner chooses the kind with two chips, one tap each, and the current one is pressed', async t => {
@@ -78,7 +78,7 @@ test('the coordinator writes the first words in place: Return saves them, and th
   assert.equal(named(f.hosts.target, 'writer'), null, 'the box closes once saved');
 });
 
-test('Escape and Cancel leave the words as they were and send nothing', async t => {
+test('Escape saves exact changed words while explicit Cancel still sends nothing', async t => {
   const f = page(t, view({ target: { text: 'Old words.', revision: 1, written_by: 'tony', written_ms: 1, earlier: [] } }));
   await f.targets.load();
   named(f.hosts.target, 'write-open').click();
@@ -89,11 +89,11 @@ test('Escape and Cancel leave the words as they were and send nothing', async t 
   type(field, 'New words.');
   key(field, 'Escape'); await drain();
   assert.equal(named(f.hosts.target, 'writer'), null);
-  assert.equal(f.dom.document.activeElement, named(f.hosts.target, 'write-open'), 'the focus goes back to the button that opened it');
   named(f.hosts.target, 'write-open').click();
   assert.equal(named(f.hosts.target, 'writer-cancel').className, 'link-button');
   named(f.hosts.target, 'writer-cancel').click(); await drain();
-  assert.deepEqual(f.sent, []);
+  assert.equal(f.dom.document.activeElement, named(f.hosts.target, 'write-open'), 'explicit Cancel returns focus to its opener');
+  assert.deepEqual(f.sent, [{kind:'target.propose',target:{workspace_id:'w1'},args:{text:'New words.'},expected:{target_revision:3}}]);
 });
 
 test('later words by the coordinator carry an ask to the owner in a topic chosen by tapping its name', async t => {

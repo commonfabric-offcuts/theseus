@@ -108,7 +108,7 @@ selects1. The rail menu uses the same choice writer.
   selecting it; hidden, clipped or unringed focus takes no Return. A button
   or link showing its actual focus ring keeps its activation. Return in
   writing stays owned by that field. Click a dossier's name or ✎ to rename;
-  Return in its title field saves and Escape cancels. Space still folds and
+  Return or Escape in its title field saves. Space still folds and
   opens the dossier. (`web/pane-keys.mjs`, `web/message-menu.mjs`, item 784)
 - **⌘C** (Ctrl-C off a Mac, as ⌘A is, `web/writing-input.mjs`) with no words
   selected copies the lit message's words as written: the message the pointer
@@ -144,7 +144,7 @@ selects1. The rail menu uses the same choice writer.
   it: a slow read ahead on the background lane never refuses it.
   (`web/card-scroll.mjs`, item 401)
 - **Rename topic.** A pencil named “Rename topic” beside the topic title
-  edits that title in place: Return or leaving saves, Escape cancels. It
+  edits that title in place: Return, Escape or leaving saves. It
   follows the same permission as Rename in Topic settings, which still works.
   The header and outline keep the saved name through reload. (item 656,
   docs/topic-settings.md)
@@ -512,8 +512,11 @@ rule above. (`web/arrow-reach.mjs`)
 
 ## Everywhere
 
-- **Escape**, or ✕, closes the open pop-up and keeps the writing; a click or tap
-  outside a pop-up closes it too (`web/dismiss.mjs`, docs/links.md).
+- **Escape** in an eligible writing field keeps what was typed through its
+  Return owner; the next Escape closes its container. Messages keep their
+  CmdReturn/draft rule. See [Dismiss without losing work](experience-guidelines.md#dismiss-without-losing-work).
+  Outside writing, Escape or ✕ closes the pop-up and keeps writing; a press
+  outside closes it too (`web/dismiss.mjs`, docs/links.md).
 - **?** opens this guide.
 
 ## The checks that hold these rules

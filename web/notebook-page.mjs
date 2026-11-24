@@ -1,3 +1,4 @@
+import { keepOnEscape } from './keep-on-escape.mjs';
 import { CardTextProjection, cardTextValue } from './notebook-card-text.mjs';
 import { stripDetails } from './card-details.mjs';
 import { pageLink } from './links.mjs';
@@ -159,10 +160,10 @@ export class NotebookPage extends DeckPage {
     this.titleBox=this.node('input','notebook-rename');this.titleBox.setAttribute('aria-label','Page title');this.titleBox.hidden=true;
     this.titleBox.addEventListener('keydown',event=>{
       if(event.defaultPrevented||event.isComposing||event.keyCode===229)return;
-      if(event.key==='Escape'||event.key==='Enter'){
-        event.preventDefault();event.stopPropagation();return this.endRename(true);
-      }
+      if(keepOnEscape(event,{value:this.titleBox.value,save:()=>this.endRename(true),close:()=>this.endRename(false)}))return;
+      if(event.key==='Enter'){event.preventDefault();event.stopPropagation();return this.endRename(true);}
     });
+    this.titleBox.addEventListener('blur',()=>{if(this.renameSeen)this.endRename(true);});
     this.pageNotice=this.node('div','notebook-page-notice');this.pageNotice.setAttribute('role','status');
     const tools=this.node('div','notebook-tools'); tools.append(this.views,this.draft,this.more);
     this.status.before(this.pageNotice);
@@ -824,7 +825,7 @@ export class NotebookPage extends DeckPage {
     if(!seen||w!==this.renameWriter||!this.titleWritable())return false;
     // All UI completion keys save. Retain the old programmatic cancel option
     // for callers without giving Escape a separate rollback meaning.
-    if(save&&this.titleBox.value!==seen.content.title&&
+    if(save&&this.titleBox.value.trim()&&this.titleBox.value!==seen.content.title&&
         !w.edit({title:this.titleBox.value},seen,this.mode))return false;
     if(w.conflict)return false;
     this.renameSeen=null;this.renameWriter=null;this.titleBox.hidden=true;this.sync();

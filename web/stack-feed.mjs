@@ -299,7 +299,7 @@ export class StackFeed {
   }
   arrange() {
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, coordinationHost: this.filterHost, doc: this.doc, on: {
-      navigate: () => this.navigate(), more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
+      navigate: () => this.navigate(), more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), renameFinished: stack => { this.arrange(); this.focusOn(stack.id); }, cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: (count, news) => this.paintCoordination(count, news),
       star: stack => this.starDossier(stack), firstStarred: stack => this.firstStarred(stack),
       split: item => this.split(item), unplace: stack => this.unplace(stack), unfold: id => this.unfoldId(id), fold: id => this.foldId(id),
@@ -717,10 +717,11 @@ export class StackFeed {
     // Unchanged, or the line its head row shows (headOf's preview of the head,
     // messagePreview) where that head is the first message: nothing to record.
     if (!edited || name === typed || !typed && name === messagePreview(stack.head) && item.id === stack.head.id) { this.focusOn(stack.id); return; }
-    this.act('stack.name', item, { name });
+    const saved = this.act('stack.name', item, { name });
     this.remember(() => { this.act('stack.name', item, { name: typed }); this.arrange(); });
     this.arrange(); this.focusOn(stack.id);
     this.say(name ? `Renamed ${name}, for everyone here` : 'Named by its first line again, for everyone here');
+    return saved;
   }
   // The stacks a move or a join of found's stack steps among: those shown on
   // its side of More messages (sideOf, shownView).

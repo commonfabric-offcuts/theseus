@@ -4,8 +4,8 @@ import { NotebookStart, OneLine } from './quick-create.mjs';
 // rail's Notebook section (its summary, which the pencil opens if it is
 // folded), the topic's while it lists the topic's pages and the outcome's
 // while it lists the outcome's, and the outcome's own page beside its list.
-// Nothing is sent until Return; Escape and an outside press close the title
-// line. The new page opens with this pencil as its opener.
+// Return or Escape creates from a nonempty title. An empty Escape and an
+// outside press close the line. The new page keeps this pencil as its opener.
 export class NotebookCreate {
   constructor({ host, scope, api, bootstrap, open }) {
     const doc = host.ownerDocument, heading = host.localName === 'details' ? host.querySelector(':scope > summary') : host.querySelector('.rail-heading,.section-heading');

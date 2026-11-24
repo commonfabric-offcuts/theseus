@@ -1,3 +1,4 @@
+import { keepOnEscape } from './keep-on-escape.mjs';
 import { glyph } from './glyphs.mjs';
 import { openMessageMenu, copyText } from './message-menu.mjs';
 import { menuDoor } from './outline-menus.mjs';
@@ -88,8 +89,17 @@ export class WorkspaceLinks {
     this.cancel.onclick = () => this.close(true);
     this.form.onsubmit = event => { event.preventDefault(); this.submit(); };
     this.form.addEventListener('keydown', event => {
+      if (event.isComposing || event.keyCode === 229) return;
       event.stopPropagation();
-      if (event.key === 'Escape') { event.preventDefault(); this.close(true); }
+      if (event.target === this.url || event.target === this.title) {
+        keepOnEscape(event, { value: this.record ? this.title.value : this.url.value,
+          save: () => this.submit(), close: () => this.close(true) });
+      } else if (event.key === 'Escape') { event.preventDefault(); this.close(true); }
+    });
+    this.title.addEventListener('blur', event => {
+      if (this.record && !this.busy && !this.form.hidden && !this.form.contains(event.relatedTarget)) {
+        if (this.title.value.trim()) this.submit(); else this.close(false);
+      }
     });
     this.url.addEventListener('input', () => { try { this.title.placeholder = new URL(linkURL(this.url.value)).hostname; } catch { this.title.placeholder = 'Title (defaults to the site address)'; } });
   }

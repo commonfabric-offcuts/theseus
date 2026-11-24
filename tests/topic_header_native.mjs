@@ -425,7 +425,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(p.errors, []);
   });
 
-  await check('header the note and your part save on Return or on leaving the line; Escape puts back and a second Escape closes; a tap right after typing saves both, neither waiting on the other', async () => {
+  await check('header the note and your part save on Return, Escape or on leaving the line; a second Escape closes; a tap right after typing saves both, neither waiting on the other', async () => {
     await setState('header-lines-active', { state: 'active', note: '' });
     const p = await page('header-lines', null, true);
     await openByPointer(p);
@@ -433,19 +433,26 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await until(async () => (await held()).state_note === 'Saved on Return', 'Return saves the note');
     await until(async () => (await subtitle(p)).text === 'Saved on Return', 'the subtitle follows');
     assert.deepEqual(await notice(p), ['Saved', true]);
-    await p.send('Input.insertText', { text: ', not this' });
+    await p.send('Input.insertText', { text: ', saved by Escape' });
     await p.key('Escape');
-    assert.deepEqual([await p.evaluate(`document.querySelector('#topic-state-note').value`), await isOpen(p), await focused(p)], ['Saved on Return', true, 'topic-state-note'],
-      'Escape puts back what is saved, and Topic settings stays open');
+    await until(async () => (await held()).state_note === 'Saved on Return, saved by Escape' && await focused(p) !== 'topic-state-note', 'Escape saves the exact note and finishes the field');
+    assert.deepEqual([await p.evaluate(`document.querySelector('#topic-state-note').value`), await isOpen(p)], ['Saved on Return, saved by Escape', true],
+      'the first Escape keeps the words and Topic settings open');
+    await p.key('Escape');
+    await until(async () => !await isOpen(p), 'the second Escape closes Topic settings');
+    await openByPointer(p);
     const parts = () => p.calls.filter(c => c.payload?.kind === 'responsibility.set').map(c => c.payload.args.note);
     await p.point('#topic-responsibility'); await p.key('a', 4); await p.send('Input.insertText', { text: 'Writes the release notes' });
     await p.point('#topic-state-note');
     const mine = async () => (await view('topic', { topic_id: 't1' })).participants.find(row => row.actor_id === facts.actor)?.responsibility;
     await until(async () => await mine() === 'Writes the release notes', 'leaving the line saves your part');
     assert.deepEqual(parts(), ['Writes the release notes']);
-    assert.equal(updates(p).length, 1, 'the note left as saved is not sent again');
+    assert.equal(updates(p).length, 2, 'Return and Escape each saved once; leaving the saved note sends nothing more');
     await p.key('Escape');
-    await until(async () => !await isOpen(p), 'with nothing to put back, Escape closes Topic settings');
+    await until(async () => await focused(p) !== 'topic-state-note', 'Escape finishes the unchanged note');
+    assert.equal(await isOpen(p), true, 'Escape in the unchanged note finishes only the field');
+    await p.key('Escape');
+    await until(async () => !await isOpen(p), 'the next Escape closes Topic settings');
     assert.equal(await focused(p), 'settings-open');
     // Typed, then a chip tapped straight away: leaving the line saves the note as the tap saves the state, side by side
     // (fields are independent, docs/topic-settings.md), so either may reach Core first.
@@ -456,7 +463,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await until(async () => { const t = await held(); return t.state === 'review' && t.state_note === 'Typed then tapped'; }, 'both saved');
     await until(async () => (await notice(p))?.[0] === 'Saved', 'no refusal');
     const sent = updates(p, before).sort((a, b) => ('note' in b.args) - ('note' in a.args));
-    assert.deepEqual(sent.map(u => [u.expected.topic_fields, u.args]), [[{ note: 'Saved on Return' }, { note: 'Typed then tapped' }], [{ state: 'active', waiting_on: [] }, { state: 'review', keep_note: true }]],
+    assert.deepEqual(sent.map(u => [u.expected.topic_fields, u.args]), [[{ note: 'Saved on Return, saved by Escape' }, { note: 'Typed then tapped' }], [{ state: 'active', waiting_on: [] }, { state: 'review', keep_note: true }]],
       'leaving the line saves the note; the tap sends only the state');
     await shot(p, 'header-lines');
     assert.deepEqual(p.errors, []);
@@ -879,7 +886,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(p.errors, []);
   });
 
-  await check('header Rename and Archive are quiet words; Rename puts the title on one line, Escape puts the words back, Return saves it', async () => {
+  await check('header Rename and Archive are quiet words; Rename puts the title on one line, untouched Escape finishes it, Return saves it', async () => {
     const p = await page('header-rename', null, true);
     await openByPointer(p);
     const original = (await held()).title;
@@ -891,7 +898,8 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await until(async () => await focused(p) === 'topic-rename', 'the title line takes the focus');
     assert.deepEqual(await line(), [false, original, 0, original.length, [true, true]], 'the whole title selected, in place of the words');
     await p.key('Escape');
-    assert.deepEqual([(await line())[0], await focused(p), await isOpen(p)], [true, 'Rename', true], 'Escape puts the words back, the focus on Rename, Topic settings open');
+    await until(async () => (await line())[0] && await focused(p) === 'Rename', 'untouched Escape finishes the field');
+    assert.deepEqual([(await line())[0], await focused(p), await isOpen(p)], [true, 'Rename', true], 'untouched Escape keeps the title, the focus on Rename, Topic settings open');
     await p.point(rename);
     await until(async () => await focused(p) === 'topic-rename', 'the title line again');
     await p.send('Input.insertText', { text: 'Renamed in place' }); await p.key('Enter');

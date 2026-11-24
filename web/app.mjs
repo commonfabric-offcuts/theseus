@@ -1936,7 +1936,7 @@ function paintMarks() {
 // "Start a topic from this": one title line right in the Reader, filled from the
 // message's first sentence. Return starts the topic with the message quoted as
 // its opening and its author in it; people and more words come afterwards, in
-// the topic. Escape, or a second press, closes it. Each message keeps its own
+// the topic. Escape starts it too; an empty Escape or second press closes it. Each message keeps its own
 // line, with what was typed in it and its start, until it starts a topic: a
 // line closed by Escape, or by the Reader moving to another message, opens
 // again as it was left.
@@ -1971,7 +1971,7 @@ function openStartLine() {
 }
 // A message's Add to pipeline: one line under the message, its first line as the
 // title; Return adds it to Candidates with the message as where it came from, and
-// Core records the message's author as who raised it. Escape closes the line.
+// Core records the message's author as who raised it. Escape uses that same submit.
 function openPipelineAdd() {
   const p = registry?.current, ref = p?.source?.source_ref, host = $('pipeline-add');
   if (!p || p.sourceUnavailable || ref?.kind !== 'message' || !topic || !mayStartFrom(p.source)) return;
@@ -1979,7 +1979,7 @@ function openPipelineAdd() {
   const workspace = topic.workspace_id;
   pipelineAddFor = ref.id;
   const line = titleLine({ key: 'message-add', value: firstLine(p.source.body), label: 'Title of the new pipeline item',
-    hint: `Return adds it to Candidates${raised} · Escape cancels`,
+    hint: `Return or Escape adds it to Candidates${raised}`,
     cancel: () => closePipelineAdd(true),
     submit: (title, field) => run(async () => {
       field.disabled = true;
@@ -1997,6 +1997,7 @@ function openPipelineAdd() {
       } catch (error) {
         field.disabled = false; field.focus();
         const message = node('p', error.message, 'pl-error'); message.setAttribute('role', 'status'); line.append(message);
+        return false;
       }
     }) });
   host.replaceChildren(line); host.hidden = false;

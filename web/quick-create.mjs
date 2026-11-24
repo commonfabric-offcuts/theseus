@@ -1,9 +1,10 @@
+import { keepOnEscape } from './keep-on-escape.mjs';
 import { deckBody, textCard, cardText, imageLine } from './deck.mjs';
 import { hasTitle } from './creation.mjs';
 import { routeHref } from './topic-navigation.mjs';
 
-// Getting something in is one line: type a title, Return makes it, Escape
-// cancels. Purpose, people and the first message are set afterwards, in
+// Getting something in is one line: type a title, Return or Escape makes it.
+// An empty Escape closes without making anything. Purpose, people and the first message are set afterwards, in
 // place. Each create goes through the same Core commands as before; an answer
 // that never came keeps its exact request, so the next Return sends that same
 // request again, and a refusal shows in plain words with the typed text kept.
@@ -158,8 +159,8 @@ export class OneLine {
     this.root = element('div', { className: ['one-line', className].filter(Boolean).join(' ') }, this.input, this.state);
     this.input.addEventListener('keydown', event => {
       if (event.isComposing || event.keyCode === 229) return;
+      if (keepOnEscape(event, { value: this.input.value, save: () => this.go(), close: () => this.cancel?.() })) return;
       if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); if (!event.repeat) this.go(); }
-      else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.cancel?.(); }
     });
     this.input.addEventListener('input', () => { if (!this.busy) this.show(''); });
   }
@@ -183,7 +184,7 @@ export class OneLine {
 }
 
 // A rail button that opens its one line beneath its heading. A second press, or
-// Escape, closes it and gives the focus back to the button.
+// an empty Escape, closes it and gives the focus back to the button.
 export function lineFromButton({ button, after, line }) {
   const close = () => { line.root.remove(); button.setAttribute('aria-expanded', 'false'); button.focus(); };
   line.cancel = close;

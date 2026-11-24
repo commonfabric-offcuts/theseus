@@ -232,7 +232,7 @@ test('while it waits, its people are chips, you first; each tap adds or takes aw
   assert.deepEqual(peopleShown(host), [['you', 'true'], ['fable', 'false'], ['aim-ux', 'true']]);
 });
 
-test('the note saves on Return or on leaving the line, and Escape puts back what is saved', async t => {
+test('the note saves on Return or on leaving the line, and Escape uses that same save owner', async t => {
   dom(t);
   const { host, sent } = live({ state: 'waiting', waiting_on: ['fable'], state_note: 'Old' }, [{ actor_id: 'tony' }]);
   const note = controls(host).note;
@@ -253,10 +253,9 @@ test('the note saves on Return or on leaving the line, and Escape puts back what
   assert.deepEqual(sent[1], [{ note: 'Which name?' }, { note: 'Which name, really?' }], 'leaving the line saves it');
   type(note, 'Not this');
   assert.deepEqual(key(note, 'Escape'), { prevented: true, stopped: true }, 'Escape with words to put back is the field\'s, so the dialog stays open');
-  assert.equal(note.value, 'Which name, really?');
-  leave(note); await settled();
-  assert.equal(sent.length, 2, 'what was put back is not sent');
-  assert.deepEqual(key(note, 'Escape'), { prevented: false, stopped: false }, 'with nothing to put back, Escape closes the dialog as usual');
+  await settled(); assert.equal(note.value, 'Not this');
+  assert.deepEqual(sent[2], [{ note: 'Which name, really?' }, { note: 'Not this' }]);
+  leave(note); await settled(); assert.equal(sent.length, 3, 'leaving after Escape never sends twice');
 });
 
 test('leaving the note is weighed when its turn comes: words typed back while a change is out are saved after it', async t => {
@@ -378,7 +377,7 @@ test('Rename puts the title on one line in place of the quiet actions; Return sa
   assert.deepEqual([title.hidden, rename.hidden, archive.hidden, archive.textContent], [true, false, false, 'Archive']);
   rename.onclick();
   assert.deepEqual([title.hidden, rename.hidden, archive.hidden, document.activeElement === title, title.selected], [false, true, true, true, true], 'the title line, focused and selected');
-  assert.deepEqual(key(title, 'Escape'), { prevented: true, stopped: true }, 'Escape is the line\'s, so the dialog stays open');
+  assert.deepEqual(key(title, 'Escape'), { prevented: true, stopped: true }, 'Escape is the line\'s, so the dialog stays open'); await settled();
   assert.deepEqual([title.hidden, rename.hidden, document.activeElement === rename, sent], [true, false, true, []], 'the actions are back, the focus on Rename, nothing sent');
   rename.onclick(); leave(title);
   assert.deepEqual([title.hidden, rename.hidden, sent], [true, false, []], 'leaving it unchanged puts the actions back');
@@ -638,7 +637,7 @@ test('every reader sees each participant\'s part, their own first as you, and no
   assert.deepEqual(duties(host).children, []);
 });
 
-test('a participant writes their part on one line under Your part; Return or leaving it saves, fenced on its revision; Escape puts it back', async t => {
+test('a participant writes their part on one line under Your part; Return or leaving it saves, fenced on its revision; Escape saves through the same owner', async t => {
   dom(t);
   const host = new Element('section'), sent = [];
   const panel = new TopicStatePanel({ host, reader: 'fable', send: async () => ({}),
@@ -662,9 +661,9 @@ test('a participant writes their part on one line under Your part; Return or lea
   assert.deepEqual(sent[1], ['t1', 'Drafts and checks', 4], 'leaving the line saves it');
   type(field, 'Not this');
   assert.deepEqual(key(field, 'Escape'), { prevented: true, stopped: true });
-  assert.equal(field.value, 'Drafts and checks', 'Escape puts back what is saved');
-  leave(field); await settled();
-  assert.equal(sent.length, 2, 'and nothing is sent');
+  await settled(); assert.equal(field.value, 'Not this', 'Escape keeps exactly the submitted words');
+  assert.deepEqual(sent[2], ['t1', 'Not this', 5]);
+  leave(field); await settled(); assert.equal(sent.length, 3, 'blur after Escape sends nothing twice');
   // An untouched line follows fresh data.
   panel.paint(topic({ version: 7 }), people(['fable', 'Set on another page', 6]));
   assert.equal(field.value, 'Set on another page');
@@ -891,7 +890,7 @@ const HISTORIES = {
     type(input, 'Mine'); core.next = { hold: true };
     const turn = key(input, 'Enter') && panel.queue;
     await settled(); core.other(name, 'Theirs'); panel.paint(core.view().topic, core.view().participants);
-    key(input, 'Escape'); assert.equal(input.value, 'Theirs');
+    panel.cancel(name); assert.equal(input.value, 'Theirs'); // explicit owner cancellation constructs this history
     type(input, 'Mine more'); core.release(); await turn; await settled();
   } },
   'my own tap on a reopened topic': { mine: 'Mine', reopened: true, shown: 'Old', async before(at) { await reopenedTap(at); } },
@@ -945,15 +944,7 @@ for (const [name, line] of Object.entries(LINES)) for (const [how, trigger] of O
     // R1: a chip sends only where it stands, and keeps the note without sending it.
     for (const entry of core.log.filter(entry => 'state' in entry.args)) assert.deepEqual(Object.keys(entry.args).filter(key => !['state', 'waiting_on', 'keep_note'].includes(key)), [], `a tap sends no line's words: ${JSON.stringify(entry.args)}`);
     const after = core.log.slice(before);
-    if (how === 'Escape') {
-      // The note a tap after a reopen started afresh is empty.
-      // A panel that never learned what Core holds puts back what it last read.
-      const [shown, held] = history.escaped?.[name] ?? [history.reopened && name === 'note' ? '' : history.shown, null];
-      assert.deepEqual(after.filter(entry => lineSends().includes(entry)), [], 'Escape sends nothing');
-      assert.equal(input.value, shown, 'Escape puts back what is saved');
-      assert.equal(core.held(name), held ?? (history.theirs || story.startsWith('typed back') || story.endsWith('begun again') ? 'Theirs' : history.landed && !history.reopened ? 'Mine' : shown));
-      return;
-    }
+    // Escape now has the same fenced send/conflict/history assertions as Return.
     if (history.nochange) {
       // Words that are no change: nothing goes, and the line follows fresh data again.
       assert.deepEqual(lineSends(), [], 'words that are no change are not sent');
@@ -1242,11 +1233,11 @@ for (const [how, tap] of Object.entries(TAPS)) {
 
 // A Return waiting its turn belongs to its edit: put back by Escape, it sends
 // nothing, even when the person has begun again from newer words.
-test('a Return put back by Escape before its turn sends nothing, though the person has begun again', async t => {
+test('an explicit owner cancellation invalidates a queued Return before its turn, though the person has begun again', async t => {
   const { core, panel, fresh, input, said } = lined(t);
   type(input, 'Mine'); core.next = { hold: true }; key(input, 'Enter'); await settled();
   type(input, 'Mine 2'); key(input, 'Enter');
-  key(input, 'Escape');
+  panel.cancel('note');
   core.other('note', 'Theirs'); fresh();
   assert.equal(input.value, 'Theirs', 'put back, the line shows what is saved');
   type(input, 'Other');
@@ -1405,15 +1396,16 @@ test('rv A9: title Return then Escape while in flight; renaming again later save
   assert.equal(r.core.held('title'), 'Newer');
 });
 
-test('rv A10: Escape after a refusal puts back theirs, and the notice no longer says the words are kept', async t => {
+test('rv A10: Escape after a refusal retries the retained words through the confirmed fresh fence', async t => {
   const r = rig(t);
   type(r.note, 'Mine'); r.core.other('note', 'Theirs');
   key(r.note, 'Enter'); await drain(r.panel);
   assert.match(r.notice(), /your words are kept/);
-  key(r.note, 'Escape');
-  assert.deepEqual([r.note.value, controls(r.host).notice.hidden], ['Theirs', true]);
+  key(r.note, 'Escape'); await drain(r.panel);
+  assert.deepEqual([r.note.value, r.core.held('note')], ['Mine', 'Mine']);
+  assert.equal(r.notice(), 'Saved');
   key(r.note, 'Enter'); await drain(r.panel);
-  assert.equal(r.core.log.length, 1, 'Return sends nothing over the words put back');
+  assert.equal(r.core.log.length, 2, 'one refusal and one explicit Escape retry; unchanged Return sends nothing');
 });
 
 test('rv A11: leaving saves; unconfirmed but the read finds it saved: no reopening, nothing blamed', async t => {
@@ -1733,7 +1725,7 @@ test('item 805 touch cancellation returns focus to the visible title handle', t 
   const titleSurface = { host: new Element('div'), title: new Element('h1'), pencil: new Element('button') };
   const { panel, sent } = live({}, [], 'tony', { titleSurface });
   titleSurface.title.onclick(); const input = panel.fields.title.line;
-  type(input, 'Cancel this'); key(input, 'Escape');
+  type(input, ''); key(input, 'Escape');
   assert.equal(document.activeElement, titleSurface.title);
   assert.equal(titleSurface.title.hidden, false);
   assert.equal(sent.length, 0);

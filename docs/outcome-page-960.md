@@ -31,7 +31,7 @@ one message/two at ten. One-message topics get no under-sheet. Follow the
 designer's exact material, spacing, type and agent-colour rules once readable.
 Agents/skills become words; Notebook becomes its own material panel; remove
 Where it stands/Also waiting; put Pipeline off/Turn on and settings at the foot.
-Purpose pencil edits in place, Return saves and Escape restores.
+Purpose pencil edits in place; Return, Escape or leaving the field saves.
 
 Auditor14032 owns957's title colour-ring component and actor-scoped colour
 records. Preserve its integration;960 owns neither957 Core fields nor rail

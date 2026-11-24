@@ -81,10 +81,11 @@ try {
       }
       if (navigationControl) { await page.waitForLoadState('networkidle'); await context.close(); results.push({ key, navigationControl: true }); continue; }
       const title = page.locator('#topic-title'), input = page.locator('#topic-rename');
-      // Native click/tap of title, Escape cancellation, then native pencil/keyboard.
+      // Native click/tap of title, Escape save, then native pencil/keyboard.
       if (width === 390) await title.tap(); else await title.click();
-      await input.fill('Cancel this exact writing'); await input.press('Escape');
-      assert.equal(await input.isVisible(), false); assert.equal((await read('t1')).title, 'Garden'.repeat(25));
+      const escaped = `Saved by Escape — ${key}`; await input.fill(escaped); const escapeSaved = receipt(); await input.press('Escape');
+      assert.equal((await (await escapeSaved).json()).status, 'committed'); await until(async () => (await read('t1')).title === escaped);
+      await input.waitFor({state:'hidden'}); assert.equal((await read('t1')).title, escaped);
       assert.equal(await page.evaluate(() => document.activeElement.id), width === 390 ? 'topic-title' : 'topic-title-rename');
       if (width === 1280) {
         await title.focus(); await page.keyboard.press(engine === 'webkit' ? 'Alt+Tab' : 'Tab');
@@ -118,7 +119,7 @@ try {
         if (width === 390) await title.tap(); else await title.click();
         assert.equal(await page.locator('#topic-title-edit').isVisible(), false);
       }
-      results.push({ key, activationCancelSaveReloadRefusalRestorePermissionsConversation: 'pass' });
+      results.push({ key, activationEscapeSaveReloadRefusalRestorePermissionsConversation: 'pass' });
       await page.waitForLoadState('networkidle'); await context.close();
     }
     await closeBrowser(); if (persistent) await rm(profile, { recursive: true, force: true });

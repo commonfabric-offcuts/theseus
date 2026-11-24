@@ -100,7 +100,8 @@ neither state: it lists the outcome nowhere, and its light, Quiet or Done, says
 ## The target and its word
 
 The owner or the coordinator writes the target with "Write the target": the
-box opens in place, Return saves, and Escape leaves the words as they were.
+box opens in place; Return, Escape or leaving the writer saves. An empty
+Escape closes without a proposal, and a refusal keeps the words and reason.
 There is no Save button. The first wording, and the owner's own, are current
 at once. Anyone else's later wording is an ask to the owner, and keeps his
 Waiting on you lit until he uses the words or keeps the old ones (D8; the ask
