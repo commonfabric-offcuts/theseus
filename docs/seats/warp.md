@@ -38,6 +38,12 @@ From a clone of this repository, with the seat's profile in `P`:
    (`building-theseus` is the config's `workspace`).
 4. `python3 -I tools/lane_lock.py status` — a landing lock held by a previous warp is still running, or its process
    is gone and the lock is free.
-5. In the kit's `work` directory, each `ITEM-land` folder whose newest `attempts/*/phases.txt` or
-   `publish-*/phases.txt` ends in a non-zero exit is finished as [When it stops](../landing-kit.md#when-it-stops)
-   says, before anything new lands.
+5. Finish every landing a previous warp left unfinished or unknown before anything new lands. In the kit's `work`
+   directory that is each `ITEM-land` folder whose newest attempt does not end with `land exit 0` in its `phases.txt`,
+   or whose newest publication does not end with `on-live exit 0`, including one that stops after a successful phase
+   with no receipt for the next; and each release the release record lists whose publication never finished.
+   Reconcile before acting: the release record (`aim-next releases`), `MERGED.json` and the pull request's merge, the
+   deploy's result, and whether the process that held the landing lock still runs (`lane_lock.py status`). Then take
+   the next step [When it stops](../landing-kit.md#when-it-stops) names, under the original request: `publish.sh`
+   sends the saved dossier request again under its first operation id. A missing result is never a reason to run the
+   tests or the deploy again.
