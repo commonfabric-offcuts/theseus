@@ -30,10 +30,20 @@ WRITER_BACKFILL = [
 
 
 class CoverRefresh:
-    def _refresh_recipient(self, db, actor, message, topic):
-        from .stacks import StackRoots
+    def _refresh_recipient(self, db, actor, message, topic, *, first=False):
+        from .stacks import MEMBERS, StackRoots
         writer = db.execute("SELECT actor_id FROM cover_writers WHERE message_id=?", (message["id"],)).fetchone()
-        candidates = [writer[0] if writer else None, topic["coordinator_id"]]
+        candidates = []
+        if first:
+            # Current requester-visible membership, including joins; an agent
+            # opening alone or a newer human reply does not choose the writer.
+            latest = db.execute(MEMBERS + " SELECT m.author_id FROM members p JOIN messages m ON m.id=p.id "
+                                "JOIN actors a ON a.id=m.author_id WHERE m.id<>:root AND m.reply_to IS NOT NULL "
+                                "AND a.kind='agent' ORDER BY m.seq DESC LIMIT 1",
+                                {"root": message["id"], "actor": actor}).fetchone()
+            if latest:
+                candidates.append(latest[0])
+        candidates.extend([writer[0] if writer else None, topic["coordinator_id"]])
         for recipient in dict.fromkeys(candidates):
             row = db.execute("SELECT kind,enabled FROM actors WHERE id=?", (recipient,)).fetchone()
             if row is None or row["kind"] != "agent" or not row["enabled"]:
@@ -87,9 +97,9 @@ class CoverRefresh:
         if envelope["expected"][revision_field] != current:
             raise Refusal("REVISION_CONFLICT", "This changed; read it again before asking for an update", {revision_field: current})
         if is_cover:
-            recipient = self._refresh_recipient(db, actor, message, topic)
             cover = acts["cover"]
             written = cover and (cover['by'] is not None or cover['stands'] or cover['payload'])
+            recipient = self._refresh_recipient(db, actor, message, topic, first=not written)
             opening = ("Please write this dossier's first cover from its latest facts. "
                        if not written else "Please rewrite this dossier's cover from its latest facts. ")
             body = (opening +

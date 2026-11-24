@@ -27,7 +27,11 @@ agent. It creates no reply, unread mark or subscription delivery. Current source
 reach and closed outcome checks apply; instructions are visible only through
 the recipient's delivery. No model call, route discovery or scheduler is introduced.
 
-Recipient default: the recorded current cover writer, when enabled, an agent,
+For a first cover,1206 first prefers the dossier's last visible agent reply;
+see [First cover recipient](cover-recipient-1206.md). An existing written cover
+retains its recorded writer preference and the fallback described below.
+
+Recipient default for a written cover: the recorded current cover writer, when enabled, an agent,
 and still able to read this dossier root as the same root. Otherwise use the
 outcome's explicitly configured coordinator, under those same checks. Neither
 the dossier's human author nor an arbitrary team member is a fallback. A request
