@@ -450,21 +450,40 @@ function readInlineSpans(m, { partial = false, meter } = {}) {
   // only at a ( straight after a ], which no escape here can hold, so from
   // there on both readings agree.
   const closes = new Int32Array(n + 1).fill(-1);
+  const escaped = new Uint8Array(n);
   {
     const open = [];
     for (let k = 0; k < n; k++) {
-      if (escapes(k)) k++;
+      if (escapes(k)) { escaped[k + 1] = 1; k++; }
       else if (isSpace(text[k])) open.length = 0;
       else if (text[k] === '(') open.push(k);
       else if (text[k] === ')' && open.length) closes[open.pop()] = k;
     }
     tick(meter, n);
   }
+  // An angle destination may hold spaces and unmatched parentheses. Find its
+  // nearest unescaped >, followed immediately by ), without rescanning a long
+  // failed destination for every bracket. Line endings and unescaped < or >
+  // inside it are boundaries. Ordinary destinations keep the pass above.
+  const angleCloses = new Int32Array(n + 1).fill(-1);
+  {
+    let to = -1;
+    for (let k = n - 1; k >= 0; k--) {
+      if (escaped[k]) continue;
+      if (text[k] === '\n' || text[k] === '\r') to = -1;
+      else if (text[k] === '>') to = text[k + 1] === ')' ? k + 1 : -1;
+      else if (text[k] === '<') {
+        if (k > 0 && text[k - 1] === '(' && !escaped[k - 1]) angleCloses[k - 1] = to;
+        to = -1;
+      }
+    }
+    tick(meter, n);
+  }
   // named[q]: the [named](link) the [ at q opens, {words: where its words end,
   // end, link}; undefined for a [ that is words. One pass matches brackets as
   // CommonMark does, reading escapes and code: each ] closes the latest open
-  // [, which opens a link when (target) follows with an http(s) address and
-  // no link is among its words. Links never hold links, so every [ open
+  // [, which opens a link when (target) follows with an eligible written
+  // destination and no link is among its words. Links never hold links, so every [ open
   // around a link is words. A target is read once: what a link's target holds
   // is passed over, and a ] inside a target that is no address closes no [.
   const named = new Array(n);
@@ -482,8 +501,10 @@ function readInlineSpans(m, { partial = false, meter } = {}) {
       } else if (k < failedUntil) continue;
       else if (c === '[') open.push({ at: k, holdsLink: false });
       else if (c === ']' && open.length) {
-        const opener = open.pop(), u = k > opener.at + 1 && text[k + 1] === '(' ? closes[k + 1] : -1;
-        const link = u > 0 && !opener.holdsLink ? writtenLink(unescaped(text.slice(k + 2, u)), { meter }) : null;
+        const opener = open.pop(), angled = text[k + 2] === '<';
+        const u = k > opener.at + 1 && text[k + 1] === '(' ? (angled ? angleCloses[k + 1] : closes[k + 1]) : -1;
+        const target = u > 0 ? text.slice(k + (angled ? 3 : 2), u - (angled ? 1 : 0)) : '';
+        const link = u > 0 && !opener.holdsLink ? writtenLink(unescaped(target), { meter, localReference: angled }) : null;
         if (link) {
           named[opener.at] = { words: k, end: u + 1, link };
           // Those open around it hold it; the ones below the first that already did, too.
