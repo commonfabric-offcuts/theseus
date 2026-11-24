@@ -5,8 +5,9 @@
 # <seat>-dossier-RELEASE-ITEM. A run that dies after Core recorded the post, but before this script saw the answer, is
 # finished by running it again: the saved request goes again, unchanged, under the same id, and Core answers with the
 # message it recorded, so a recovery never posts twice (the CLI refuses a different request under that id).
-# The message is then found by its id in the releases topic, read from the seq another release's read-back recorded
-# (read_message.py; this release's own record would start after the message itself), and must be the seat's, in that topic, readable, with the whole saved text as its body.
+# The message is then found by its id in the releases topic (read_message.py), read forward from release-RELEASE.after.
+# That seq is saved with the request, before its first send, as the highest seq any read-back had recorded then: each of
+# those messages existed before this one, so the bound stays below it whatever other releases publish meanwhile. It must be the seat's, in that topic, readable, with the whole saved text as its body.
 # <posts>/release-RELEASE.id ("posted MESSAGE seq SEQ in TOPIC, read back") is written only from that read.
 set -u
 . "$(dirname "$0")/kit.sh"
@@ -17,18 +18,20 @@ REC=$("${AN[@]}" releases --limit 20 2>&1 | /usr/bin/grep -E "^release $N ")
 echo "$REC" | /usr/bin/grep -qE "shipped ([0-9]+, )*$ITEM(,|\$)" || { echo "record for $N not showing $ITEM yet: [$REC]"; exit 1; }
 if [ -f "$SAVED" ]; then
   echo "sending the saved request $SAVED again, unchanged"
+  [ -f "$D/release-$N.after" ] || { echo "STOP: $SAVED has no release-$N.after beside it, so its message cannot be found; read the releases topic by hand"; exit 1; }
 else
   [ -f "$F" ] || { echo "no dossier file $F for release $N (item $ITEM)"; exit 1; }
   sed "s/Release NNN is live/Release $N is live/" "$F" > "$SAVED.new"
   /usr/bin/grep -qE "_TO_FILL|LENS_RESULT|TBD" "$SAVED.new" && { echo "REFUSED: $F still holds a placeholder:"; /usr/bin/grep -nE "_TO_FILL|LENS_RESULT|TBD" "$SAVED.new"; rm -f "$SAVED.new"; exit 1; }
-  mv "$SAVED.new" "$SAVED"
+  for f in "$D"/release-*.id; do [ -f "$f" ] && cat "$f"; done | /usr/bin/grep -oE " seq [0-9]+ in $TOPIC," | awk '{print $2}' | sort -n | tail -1 > "$D/release-$N.after.new"
+  [ -s "$D/release-$N.after.new" ] || echo 0 > "$D/release-$N.after.new"
+  mv "$D/release-$N.after.new" "$D/release-$N.after" && mv "$SAVED.new" "$SAVED" || { echo "STOP: cannot save the request"; exit 1; }
 fi
 REASON=$(head -1 "$SAVED" | sed -E 's/^@[a-z0-9-]+ //; s/^\*\*(.*)\*\*$/\1/; s/\.$//')
 OUT=$("${AN[@]}" post "$TOPIC" --tells "$(cfg dossier_tells)" --divergence-reason "$REASON" --operation "$SEAT-dossier-$N-$ITEM" - < "$SAVED" 2>&1)
 MID=$(echo "$OUT" | /usr/bin/grep -oE "^posted m-[0-9a-f]+" | head -1 | sed 's/^posted //')
 [ -n "$MID" ] || { echo "$OUT" | tail -2; echo "STOP: the post answered with no message; run this again, which sends the saved request under the same operation"; exit 1; }
-AFTER=$(for f in "$D"/release-*.id; do [ "$f" = "$D/release-$N.id" ] || cat "$f"; done 2>/dev/null | /usr/bin/grep -oE " seq [0-9]+ in $TOPIC," | awk '{print $2}' | sort -n | tail -1)
-/usr/bin/python3 -I "$K/read_message.py" "$TOPIC" "$MID" "${AFTER:-0}" > "$D/release-$N.readback.json" 2>&1 || { cat "$D/release-$N.readback.json"; echo "STOP: posted $MID, but it did not read back; run this again"; exit 1; }
+/usr/bin/python3 -I "$K/read_message.py" "$TOPIC" "$MID" "$(cat "$D/release-$N.after")" > "$D/release-$N.readback.json" 2>&1 || { cat "$D/release-$N.readback.json"; echo "STOP: posted $MID, but it did not read back; run this again"; exit 1; }
 SEQ=$(/usr/bin/python3 -I - "$D/release-$N.readback.json" "$MID" "$TOPIC" "$SEAT" "$SAVED" <<'PY'
 import json, sys
 message = json.load(open(sys.argv[1]))

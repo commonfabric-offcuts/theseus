@@ -26,8 +26,8 @@ running landing, and `land_ordinary.sh` refuses to start there.
 2. Fill `SPEC.json`'s null fields: `piece`, `topic`, `release` (live's number plus one), `title`, `review` (what the
    head does and its kind, which becomes the merge body), `review_head` (the head that review was written of),
    `approved_head` (the same head) and `pr`. A node case the piece stops running on purpose (skipped, renamed or
-   removed) goes in `execution_changes` as `{"file", "names", "why"}`, one entry per case, or the node suite refuses
-   the landing.
+   removed) goes in `execution_changes` as `{"file", "names", "why"}`, one entry per case, with `"occurrence"` (from
+   1, in file order) when the file runs that name more than once; otherwise the node suite refuses the landing.
 3. Draft `<posts>/dossier-ITEM.txt` (first line `Release NNN is live: …`, with a line `Evidence: EVIDENCE_TO_FILL`)
    and `<posts>/card-ITEM.md` (with `live as release NNN at TIME`). A landing without both refuses before it starts.
 4. `bash tools/landing/carry_ordinary.sh ITEM APPROVED_HEAD LIVE_COMMIT BRANCH PR` merges live into the head, pushes

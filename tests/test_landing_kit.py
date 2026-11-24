@@ -279,7 +279,8 @@ class Carry(Seat):
 class Execution(Seat):
     def events(self, name, rows):
         path = self.root / name
-        path.write_text(''.join(json.dumps({'file': f, 'names': n, 'occurrence': 1, 'status': s}) + '\n' for f, n, s in rows))
+        path.write_text(''.join(json.dumps({'file': row[0], 'names': row[1], 'occurrence': row[3] if len(row) > 3 else 1,
+                                            'status': row[2]}) + '\n' for row in rows))
         return path
 
     def compare(self, carry_rows, named=None):
@@ -319,6 +320,24 @@ class Execution(Seat):
     def test_an_entry_without_a_reason_refuses(self):
         out = self.compare([('tests/a.test.mjs', 'one', 'pass')], named=[{'file': 'tests/a.test.mjs', 'names': 'two', 'why': ' '}])
         self.assertEqual(out.returncode, 2)
+
+    def test_a_reason_for_a_repeated_name_covers_only_the_occurrence_it_names(self):
+        live = self.events('live.jsonl', [('tests/a.test.mjs', 'dup', 'pass', 1), ('tests/a.test.mjs', 'dup', 'pass', 2)])
+        carry = self.events('carry.jsonl', [('tests/a.test.mjs', 'dup', 'pass', 1), ('tests/a.test.mjs', 'dup', 'skip', 2)])
+        spec = self.root / 'SPEC.json'
+
+        def with_entry(**fields):
+            spec.write_text(json.dumps({'execution_changes': [dict({'file': 'tests/a.test.mjs', 'names': 'dup', 'why': 'on purpose'}, **fields)]}))
+            return self.run_kit('execution_compare.py', carry, live, spec)
+        ambiguous = with_entry()
+        self.assertEqual(ambiguous.returncode, 2, ambiguous.stdout)
+        self.assertIn('names no occurrence', ambiguous.stdout)
+        other = with_entry(occurrence=1)
+        self.assertEqual(other.returncode, 5, other.stdout)
+        self.assertIn('tests/a.test.mjs :: dup #2 -> skip', other.stdout)
+        exact = with_entry(occurrence=2)
+        self.assertEqual(exact.returncode, 0, exact.stdout)
+        self.assertIn('dup #2 -> skip (on purpose)', exact.stdout)
 
     def test_the_reporter_names_each_case_with_its_file_and_how_it_ended(self):
         tests = self.root / 'tree' / 'tests'
@@ -390,6 +409,7 @@ ledger = json.load(open(state)) if os.path.exists(state) else {'posts': {}, 'mes
 args = [a for a in sys.argv[1:] if a not in ('--json',)]
 args = args[2:] if args[:1] == ['--profile'] else args
 if args[0] == 'releases':
+    print('release 10  def5678  2026-11-24T09:41:05-08:00  shipped 1301')
     print('release 9  abc1234  2026-11-24T09:31:05-08:00  shipped 1300')
 elif args[0] == 'post':
     operation = args[args.index('--operation') + 1] if '--operation' in args else 'fresh-%d' % len(ledger['posts'])
@@ -427,9 +447,9 @@ class Publication(Seat):
     def ledger(self):
         return json.loads((self.root / 'ledger.json').read_text())
 
-    def post(self, **env):
+    def post(self, release='9', item='1300', **env):
         self.env.update(env)
-        out = self.run_kit('post_dossier.sh', '9', '1300')
+        out = self.run_kit('post_dossier.sh', release, item)
         for key in env:
             del self.env[key]
         return out
@@ -443,6 +463,18 @@ class Publication(Seat):
         self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
         self.assertEqual(len(self.ledger()['messages']), 1)
         self.assertIn('seq 1001 in t-1, read back', (self.posts_dir / 'release-9.id').read_text())
+
+    def test_an_older_release_recovers_after_a_later_one_published(self):
+        (self.posts_dir / 'dossier-1301.txt').write_text('Release NNN is live: the next thing.\n\nEvidence: read.\n')
+        self.assertNotEqual(self.post(STUB_LOSE_ANSWER='1').returncode, 0)
+        later = self.post('10', '1301')
+        self.assertEqual(later.returncode, 0, later.stdout + later.stderr)
+        self.assertIn('seq 1002 in t-1, read back', (self.posts_dir / 'release-10.id').read_text())
+        for attempt in ('recovery', 'rerun'):
+            out = self.post()
+            self.assertEqual(out.returncode, 0, attempt + ': ' + out.stdout + out.stderr)
+            self.assertIn('seq 1001 in t-1, read back', (self.posts_dir / 'release-9.id').read_text(), attempt)
+        self.assertEqual(len(self.ledger()['messages']), 2)
 
     def test_a_rerun_sends_the_saved_request_not_a_dossier_edited_since(self):
         self.assertEqual(self.post().returncode, 0)
