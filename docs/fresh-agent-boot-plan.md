@@ -15,8 +15,8 @@ as observer or rescuer. Tony initiates and witnesses the reboot. Fresh Warp and
 Auditor reconstruct timing from durable records, not a surviving stopwatch.
 
 This revision follows Tony's clarifications 23423 and 23438. All eight whole-system
-reviews are received and reconciled; the endpoint disposition below remains
-for Warp to confirm before execution. The [review log](fresh-agent-boot-review.md)
+reviews are received and reconciled. Warp23581 confirms the endpoint
+disposition below. The [review log](fresh-agent-boot-review.md)
 keeps the eight reviews of the original draft separate from this review and
 from runtime/trial evidence.
 
@@ -403,9 +403,9 @@ push, handoff and completed publication times. Keep later forecasts/reasons
 separately. For result two, use canonical `first_live` / release `deployed_ms` minus the
 original LIVE prediction for signed error; absolute error is its magnitude.
 Completed first publication remains result one's endpoint. Retain both live and
-publication timestamps, never choosing whichever scores better. Auditor23550
-proposes this literal-live interpretation of rule4; Warp must confirm the
-endpoint disposition before observation. Missing publication is not waived by
+publication timestamps, never choosing whichever scores better. Warp23581 confirms this literal-live interpretation of rule4 after
+Auditor23550: result one ends at the dossier posted/read back (`PUBLISHED`),
+result two at each release record's deployed time (`LIVE`). Missing publication is not waived by
 deployment, and missing originals remain unknown. Report each error, all target hits/misses,
 completion rate and maximum error. Missing originals remain missing; no medians,
 backfill, reset clocks or favorable reselection. Continued pre-boot work retains
