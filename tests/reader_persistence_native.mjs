@@ -108,7 +108,7 @@ for (const filename of ['tests/fixture_teardown_evidence.mjs',...(mode==='--read
   await writeFile(path.join(evidencePath, 'source', filename), source);
 }
 // 1170's selected cell retains its added owners beside the shared inputs above.
-if (mode === '--reading') for (const filename of ['tests/moved_dossiers_1170_native.mjs', 'web/moved-dossiers.mjs', 'web/moved-dossiers.css', 'aim_next/dossier_move.py']) {
+if (mode === '--reading') for (const filename of ['tests/message_changes_1169_native.mjs', 'web/message-changes.mjs', 'aim_next/message_edit.py', 'tests/moved_dossiers_1170_native.mjs', 'web/moved-dossiers.mjs', 'web/moved-dossiers.css', 'aim_next/dossier_move.py']) {
   const source = await readFile(path.join(root, filename));
   hashes[filename] = createHash('sha256').update(source).digest('hex');
   await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });

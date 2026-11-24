@@ -56,6 +56,7 @@ import { presses, questionTarget } from './waiting-questions.mjs';
 import { OutlineDossiers } from './outline-dossiers.mjs';
 import { glyph } from './glyphs.mjs';
 import { RailDimming } from './rail-dimming.mjs';
+import { RailTopicFold } from './rail-topic-fold.mjs';
 
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 // The questions waiting on the reader in one outcome, as its light counts them.
@@ -297,7 +298,7 @@ export class OutlineRail {
   initialize(bootstrap, pageMax = PAGE) {
     if (this.started && this.bootstrap.instance_id === bootstrap.instance_id && this.bootstrap.actor === bootstrap.actor) return;
     if (this.started) {
-      for (const outcome of this.outcomes.values()) outcome.li.remove();
+      for (const outcome of this.outcomes.values()) { outcome.fold.dispose(); outcome.li.remove(); }
       this.outcomes.clear(); this.dossiers.reset(); this.notebookStars.reset();
     }
     this.started = true; this.bootstrap = bootstrap; this.pageMax = pageMax;
@@ -459,10 +460,13 @@ export class OutlineRail {
     };
     const done = group('done'), archived = group('archived');
     const own = part('div', { className: 'ol-own' });
-    own.append(message, host, more, retry, done.details, archived.details);
+    const footer = part('div', { className: 'ol-topic-foot' });
+    footer.append(more, retry, done.details, archived.details);
+    own.append(message, host, footer);
     topics.append(own);
     outcome = { id, item, li, row, disclosure, name, title, standing, waiting: null, topics, own, newTopic, conversation: null, conversationRead: false, rail: null,
       parts: { host, more, retry, message, done, archived } };
+    outcome.fold = new RailTopicFold({ area: own, host, footer, doc });
     disclosure.onclick = event => {
       if (!plainClick(event)) return;
       event.preventDefault(); event.stopPropagation();
@@ -704,7 +708,7 @@ export class OutlineRail {
       // An outcome's Build topics are the right rail's (item 297): its open list here leaves them out.
       pages: new TopicPages(this.bootstrap.instance_id, outcome.id, this.currentTopicIn(outcome.id), 'active', true), ...outcome.parts,
       storage: this.storage, area: outcome.own, denied: error => readFailure(error).kind === 'forbidden',
-      painted: () => this.publishTopics(),
+      painted: () => { outcome.fold.soon(); this.publishTopics(); },
       read: async args => {
         const run = this.run;
         let conversation;
@@ -844,7 +848,7 @@ export class OutlineRail {
         (waits && outcome.waiting ? outcome.waiting : outcome.name).append(outcome.standing);
       }
     });
-    for (const [id, outcome] of this.outcomes) if (!shown.has(id)) { outcome.li.remove(); this.outcomes.delete(id); }
+    for (const [id, outcome] of this.outcomes) if (!shown.has(id)) { outcome.fold.dispose(); outcome.li.remove(); this.outcomes.delete(id); }
     arrange(this.list, items.map(item => this.outcomes.get(item.id).li), focused);
     const sum = totals(this.pages?.items ?? []);
     this.newCount.textContent = String(sum.fresh); this.waitingCount.textContent = String(sum.waiting);
@@ -865,6 +869,7 @@ export class OutlineRail {
     if (this.pages?.started || this.failed) this.handles.outcomeList?.(this.pages.items, this.failed || null, () => this.reload());
     this.publishTopics();
     this.dimming.paintRows();
+    for (const outcome of this.outcomes.values()) outcome.fold.soon();
   }
   // On a phone: "☰ Outcomes" carries the total and the lit light, and a line
   // under the header says how much is new in the other outcomes. Both are the

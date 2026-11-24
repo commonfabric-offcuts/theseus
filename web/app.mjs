@@ -1,3 +1,4 @@
+import { MessageChanges } from './message-changes.mjs';
 import { OlderFeed } from './older-feed.mjs';
 import { topicCloseUI } from './topic-close-ui.mjs';
 import { QuestionStates, configureQuestionStates, questionOf, questionPill, Resolutions } from './question-state.mjs';
@@ -1411,7 +1412,7 @@ function paintViews(kind) {
       const author = node('span', undefined, 'message-author');
       card.append(author);
       paintCardAuthor(author, item);
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, replyBasis: item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() }));
+      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, replyBasis: item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: revisionOf(item), struck: item.struck, showChanges: messageChanges?.shown(item.id, revisionOf(item)) ?? true, displayRules: displayRules() }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
       paintCardImages(card, item, cardImageBytes(item.id));
@@ -1881,7 +1882,11 @@ function paintReplyContext(card, item, messages = feedMessages()) {
   paintReplyLine(line, item, context);
 }
 function paintCardAuthor(author, item) {
-  paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item), carriesOf(item));
+  const struck = cardScroll?.revisions.get(item.id) === revisionOf(item) && cardScroll.wholes.has(item.id)
+    ? cardScroll.strikes.get(item.id) : item.struck;
+  const changes = { struck, shown: () => messageChanges?.shown(item.id, revisionOf(item)) ?? true,
+    toggle: () => toggleMessageChanges(item.id, revisionOf(item)) };
+  paintAuthor(author, displayActor(item.author_id), Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true, wasEdited(item), carriesOf(item), changes);
   paintWithdrawal(author, item, document);
   paintRemoval(author, item, document);
   author.parentElement?.classList.toggle('retracted-message', item.removal?.kind === 'retracted');
@@ -2773,7 +2778,7 @@ function repaintEdited(ids, edits) {
     const preview = card.querySelector(':scope > .message-preview');
     const keepingWhole = reader?.card === card && item.preview;
     if (preview && !keepingWhole) {
-      formatWords(preview, item.body, { partial: item.preview === true, replyBasis: item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: revisionOf(item), struck: item.struck?.cuts, displayRules: displayRules() });
+      formatWords(preview, item.body, { partial: item.preview === true, replyBasis: item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: revisionOf(item), struck: item.struck, showChanges: messageChanges?.shown(item.id, revisionOf(item)) ?? true, displayRules: displayRules() });
       preview.classList.remove('scroll-in-place');
       const cue = card.querySelector(':scope > .message-preview-cue');
       if (item.preview && !cue) preview.after(node('span', CUE, 'message-preview-cue'));
@@ -3289,8 +3294,30 @@ async function reconnect() {
   }
   return true;
 }
-let textDisplayPreferences = null;
+let textDisplayPreferences = null, messageChanges = null;
 const displayRules = () => textDisplayPreferences?.enabled ?? [];
+
+function toggleMessageChanges(id, revision) {
+  messageChanges?.toggle(id, revision);
+  const focus = document.activeElement;
+  let replacement = null;
+  keepListAnchor(() => {
+    const item = views.messages.get(id), entry = messageEntries.get(id), card = entry && cardIn(entry);
+    if (!item || !card || revisionOf(item) !== revision) return;
+    const author = card.querySelector(':scope > .message-author');
+    const focused = author?.contains(focus) && focus?.classList.contains('message-changes-toggle');
+    const preview = card.querySelector(':scope > .message-preview');
+    if (preview) redrawMessageWords(preview, displayRules(), { showChanges: messageChanges.shown(id, revision) });
+    if (author) paintCardAuthor(author, item);
+    if (focused) replacement = author.querySelector('.message-changes-toggle');
+  });
+  if (reader?.dialog.open && reader.source?.source_ref?.kind === 'message' && reader.source.source_ref.id === id && !reader.presentation?.sourceUnavailable) {
+    const origin = $('reader-origin'), focused = origin?.contains(focus) && focus?.classList.contains('message-changes-toggle');
+    reader.redrawSource();
+    if (focused) replacement = origin.querySelector('.message-changes-toggle');
+  }
+  replacement?.focus({ preventScroll: true });
+}
 
 function redrawTextDisplay() {
   keepListAnchor(() => {
@@ -3323,6 +3350,7 @@ async function initialize() {
   let displayStorage;
   try { displayStorage = window.localStorage; } catch { /* device preferences stay in memory */ }
   textDisplayPreferences = new TextDisplayPreferences(bootstrap.instance_id, bootstrap.actor, displayStorage);
+  messageChanges = new MessageChanges(bootstrap.instance_id, bootstrap.actor, displayStorage);
   paragraphSwitch?.dispose();
   paragraphSwitch=new ParagraphSwitch({doc:document,preferences:textDisplayPreferences,changed:redrawTextDisplay,current:()=>!retired&&shell.page===thisRun});
   // Every page, the phone check among them, takes the restarted server's session in place.
@@ -3544,6 +3572,7 @@ async function initialize() {
   questionStates = new QuestionStates(); configureQuestionStates(questionStates);
   reader = new Reader({
     images: topicImages, imageBytes, pageImage, displayRules,
+    messageChanges: () => messageChanges, toggleMessageChanges,
     cardSelection: card => menu?.passages.chosen(messageEntries.get(card.dataset.id)) ?? null,
     actorName: displayActor,
     actorLabel,
@@ -3673,7 +3702,7 @@ async function initialize() {
   mountFeedFences($('messages'));
   keepLineRoom($('main'), $('messages'));
   watchListAnchor();
-  cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold, displayRules });
+  cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold, displayRules, changes: messageChanges, changed: (card, item) => paintCardAuthor(card.querySelector(':scope > .message-author'), item) });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
   // A thumbs-up reads its message in Core (docs/thumbs.md). One that read it
   // (Core settled the person's delivery of it, or cleared their mark on it)
