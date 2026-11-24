@@ -186,6 +186,34 @@ class ClockCase(steering.PipelineCase):
         self.assertEqual(clock["first_push"]["receipt"]["observed_ms"], start+20000)
         self.assertEqual(clock["first_push"]["head"], "4"*40)
 
+    def test_a_wall_clock_rollback_on_resume_cannot_replace_the_first_build_event(self):
+        self.bind()
+        original = self.clock()["clock"]["first_build"]
+        self.now += 1000
+        self.committed(self.command("pipeline.stage_enter", {"stage_id": "review", "left_outcome": "passed"},
+                                   {"piece_id": self.piece}, {"piece_revision": self.item(1)["piece"]["version"]}))
+        # Real public stage entry under an earlier wall reading; no immutable
+        # row is edited and no private record is fabricated.
+        self.now = original["entered_ms"]-1000
+        self.committed(self.command("pipeline.stage_enter", {"stage_id": "build", "round": 2, "left_outcome": "passed"},
+                                   {"piece_id": self.piece}, {"piece_revision": self.item(1)["piece"]["version"]}))
+        self.now = original["entered_ms"]+2000
+        self.assertEqual(self.clock()["clock"]["first_build"], original)
+
+    def test_a_verified_push_before_late_machine_build_is_retained_as_distinct_chronology(self):
+        self.bind(work_class="core")
+        build = self.now
+        self.now += 2000
+        self.push(occurred=build-5000)
+        self.now += 1000
+        self.live()
+        clock = self.clock()["clock"]
+        self.assertEqual(clock["first_build"]["entered_ms"], build)
+        self.assertEqual(clock["first_push"]["occurred_ms"], build-5000)
+        self.assertEqual(clock["build_to_push_ms"], -5000)
+        self.assertTrue(clock["push_precedes_build"])
+        self.assertEqual(clock["first_push"]["recorded_ms"], build+2000)
+
     def test_push_or_an_unrelated_release_cannot_mark_the_live_prediction_achieved(self):
         self.bind()
         self.forecast()

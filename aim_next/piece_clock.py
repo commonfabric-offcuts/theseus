@@ -113,10 +113,10 @@ class PieceClock:
         for row in rows:
             found = db.execute("SELECT e.seq,e.piece_id,e.entered_ms,e.entered_by,e.size FROM pipeline_piece_members m INDEXED BY item_pieces "
                                "JOIN pipeline_stage_entries e INDEXED BY piece_entries ON e.piece_id=m.piece_id "
-                               "WHERE m.workspace_id=? AND m.number=? AND e.stage_id='build' ORDER BY e.entered_ms,e.seq LIMIT 1", (piece["workspace_id"], row[0])).fetchone()
+                               "WHERE m.workspace_id=? AND m.number=? AND e.stage_id='build' ORDER BY e.seq LIMIT 1", (piece["workspace_id"], row[0])).fetchone()
             if found is not None:
                 candidates.append(dict(found))
-        return min(candidates, key=lambda r: (r["entered_ms"], r["seq"])) if candidates else None
+        return min(candidates, key=lambda r: r["seq"]) if candidates else None
 
     def _clock_live(self, db, piece, build):
         pipeline = self._pipeline_row(db, piece["workspace_id"])
@@ -271,8 +271,7 @@ class PieceClock:
                 words(receipt[key], "push " + key)
             observed = moment(receipt["observed_ms"], "observed_ms")
             uncertainty = moment(receipt["uncertainty_ms"], "uncertainty_ms")
-            build = self._clock_build(db, piece)
-            if not occurred <= observed <= now or build is not None and occurred < build["entered_ms"]:
+            if not occurred <= observed <= now:
                 raise Refusal("INVALID_ARGUMENT", "Push occurrence precedes observation and recording")
             if any(r["id"] == identity for r in state["pushes"]):
                 raise Refusal("CLOCK_EVENT_EXISTS", "A push receipt keeps its identity and original time")
@@ -362,6 +361,7 @@ class PieceClock:
                 "estimate_status": "provided" if any(f["revisions"][0].get("source_author") == state["lane"] for f in state["forecasts"]) else "no estimate yet",
                 "original_live_prediction": original, "original_prediction_status": "provided" if original else "unavailable",
                 "build_to_push_ms": None if start is None or push is None else push["occurred_ms"]-start,
+                "push_precedes_build": bool(start is not None and push is not None and push["occurred_ms"] < start),
                 "push_to_live_ms": None if live is None or push is None else live["occurred_ms"]-push["occurred_ms"],
                 "build_to_live_ms": elapsed if live else None, "elapsed_since_build_ms": elapsed,
                 "forecasts": forecasts, "timings": timings(state["intervals"], start, live["occurred_ms"] if live else now),

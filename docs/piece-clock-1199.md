@@ -47,14 +47,18 @@ clock capability is explicitly unavailable in its independent delivery.
 
 ## Anchors, accuracy and intervals
 
-First Build is the earliest immutable `build` stage entry, including a prior
-incarnation of an item; a resume never replaces it. Missing Build is explicit.
+First Build is the first immutable `build` stage event by sequence, including a
+prior incarnation of an item; a resume or wall-clock rollback never replaces
+it. Missing Build is explicit.
 First push is the first authenticated structured push receipt, not a freeze,
 Git commit date or a message. It retains occurrence, observed/recorded times,
 head, evidence, reporter and time uncertainty. Historical pushes without a
 receipt stay missing. Core validates ownership and receipt shape; the external
 push producer is responsible for reporting its real remote result. A late
 report cannot erase the recording time or replace an earlier receipt.
+An actual push reported before a late machine Build remains separate, with
+`push_precedes_build` and its signed chronology; it is not rejected or moved to
+the later machine entry. Those timestamps are not exclusive labor durations.
 
 Live comes only from the immutable release table. Recording a release writes
 an exact per-item clock index in that same transaction. An explicit release
