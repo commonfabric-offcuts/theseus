@@ -11,6 +11,7 @@ import { panes } from './panes.mjs';
 import { stackMenuItems } from './stack-menu-items.mjs';
 import { outcomeMenuItems } from './outcome-menu-items.mjs';
 import { consumeMenuRoute } from './menu-route.mjs';
+import { writeTopicOnArrival } from './topic-writing.mjs';
 import { menuDoor } from './outline-menus.mjs';
 import { configureCoverAnswers } from './cover-answers.mjs';
 import { configureCoverRefresh, firstCoverMenuItem, updateMenuItem, messageUpdateActivity, messageUpdateHost } from './cover-refresh.mjs';
@@ -3377,6 +3378,7 @@ async function initialize() {
     if (list === 'addressable-names') refreshMembers();
   });
   let route = parseRoute(new URL(location.href));
+  const arrivalNavigation = landingSerial;
   if(route.page) {
     try {
       const resolved=await resolveTopicLink(route,{read:(name,args)=>api.view(name,args,{readClass:'foreground'}),instanceId:bootstrap.instance_id,current:()=>!retired});
@@ -3858,6 +3860,7 @@ async function initialize() {
   // message in the Reader; the address then names the page alone, as any does.
   // This run's first marks read establishes what its reading act may clear.
   // The older pages begin only after that baseline, as on a card already shown.
+  writeTopicOnArrival({ route, topic, registry, shell, current: () => !retired && landingSerial === arrivalNavigation });
   if (['topic-rename', 'topic-settings'].includes(route.act) && consumeMenuRoute(route)) run(() => runTopicMenuAction(topic, route.act.slice(6)));
   if (atUnread) run(() => firstReading.then(landOnUnread));
   freshness.invalidate('dossier_move', 0); freshness.request();
@@ -3894,6 +3897,7 @@ function runTopicMenuAction(current, key) {
 }
 function readyRails(workspaceId, handles = {}) {
   shell.ready({ api, bootstrap, live, workspaceId, workspaceTitle: $('workspace-name').textContent, topic: null, pageMax: pageMax(),
+    navigationCurrent: () => { const serial = landingSerial; return () => !retired && landingSerial === serial; },
     view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
     open: (target, title, from) => openDestination(target, title, from), notebookCreate: notebookCreator, dossierMenu: railDossierMenu, dossierMenuChoice: runDossierMenuChoice, topicMenuAction: runTopicMenuAction,
     closeTopic: (current, envelope) => topicClosing.send(current, envelope),
