@@ -2767,7 +2767,8 @@ test('a reply card says quietly which message it answers, and a message answerin
   assert.deepEqual(lines('m2'), ['Replying to fable: Ship the table']);
   assert.deepEqual(lines('m1'), []);
   // The ⋯ is on the one bar over a lit card (message-menu.mjs), not on the card; the words are formatted (message-format.mjs).
-  assert.deepEqual(card('m2').children.map(node => node.className), ['message-author', 'message-reply-to', 'message-preview formatted'], 'the line sits between the author and the words, and the card carries no ⋯ of its own');
+  // A card in a dossier stack has a folding header and its drawn chevron last (reply-stacks.mjs paintFoldHeader).
+  assert.deepEqual(card('m2').children.map(node => node.className), ['message-author message-fold-header', 'message-reply-to', 'message-preview formatted', 'message-header-chevron'], 'the line sits between the author and the words, and the card carries no ⋯ of its own');
 });
 
 test('a reply to someone else\'s message in this topic is offered to its author, once; one to anything else is not', () => {
@@ -3757,10 +3758,10 @@ test('More messages shows the older messages of the dossier it fills where its b
   const before = drawn();
   assert.deepEqual(before.map(([id]) => id), ['m40', 'm41', 'm42', 'm43', 'm44'], 'one stack, its head m40');
   await f.loadOlderMessages(); await settle(); await settle();
-  assert.deepEqual(drawn(), [...before, ['m38', 'message-card agent-card agent-green', true], ['m37', 'message-card own-message', true], ['m36', 'message-card agent-card agent-green', true],
-    ['m1', 'message-card agent-card agent-green', true]],
+  assert.deepEqual(drawn(), [...before, ['m38', 'message-card agent-card agent-green message-header-foldable', true], ['m37', 'message-card own-message message-header-foldable', true], ['m36', 'message-card agent-card agent-green message-header-foldable', true],
+    ['m1', 'message-card agent-card agent-green message-header-foldable', true]],
     'the stack keeps its head and what it showed, then the older messages, newest first, each shown, the reader\'s own its own');
-  assert.equal(drawn().find(([id]) => id === 'm44')[1], 'message-card own-message', 'the reader\'s own live message is a reply, never the head');
+  assert.equal(drawn().find(([id]) => id === 'm44')[1], 'message-card own-message message-header-foldable', 'the reader\'s own live message is a reply, never the head');
   // Where the button was: the filled cards a run of whole cards, none overlapping another or covering the face above
   // it, which keeps the place it had (stack-look.css, data-stack-filled); the faces above still overlap as a stack's do,
   // the head m40 among them, which shows whole though the stack is folded (its first message is not loaded, fix round B2).

@@ -39,6 +39,7 @@ const parts = new WeakMap();
 const headRows = new WeakMap();
 const foldedRows = new WeakMap();
 const earlierRows = new WeakMap();
+const foldHeaders = new WeakMap();
 const coverTools = new WeakMap();
 
 // Every message entry in the list, in the page's order: each stack's head,
@@ -370,10 +371,39 @@ export function headerClick(list, entry, event) {
   if (!header || header.parentElement !== card || card.dataset.folded === 'true') return false;
   const control = event.target.closest('a, button, [role=button], input, textarea, select');
   if (control && control !== card) return false;
-  const section = entry.closest('.reply-stack');
-  if (section?.dataset.single !== 'false' || section.closest('.only-new')) return false;
+  if (!foldHeaderContext(entry)) return false;
   stackState(list).on?.fold?.(entry.dataset.id);
   return true;
+}
+
+// The same dossier context owns the header's act and its visual affordance.
+function foldHeaderContext(entry) {
+  const section = entry?.closest('.reply-stack');
+  return section?.dataset.single === 'false' && !section.closest('.only-new');
+}
+
+// One drawn, noninteractive chevron lives in the card's padding, outside its
+// author fragments and folded row. Reusing it lets CSS turn it when the saved
+// fold changes; no new focus stop, listener or fold state is introduced (1167).
+function paintFoldHeader(entry, doc) {
+  const card = cardIn(entry), header = card.querySelector(':scope > .message-author');
+  const eligible = Boolean(header && foldHeaderContext(entry)), prior = foldHeaders.get(card);
+  card.classList.toggle('message-header-foldable', eligible);
+  if (prior?.header !== header || !eligible) prior?.header.classList.remove('message-fold-header');
+  if (!eligible) { prior?.chevron.remove(); foldHeaders.delete(card); return; }
+  header.classList.add('message-fold-header');
+  let chevron = prior?.chevron;
+  if (!chevron) {
+    const ns = 'http://www.w3.org/2000/svg';
+    chevron = doc.createElementNS(ns, 'svg');
+    chevron.classList.add('message-header-chevron');
+    for (const [key, value] of Object.entries({ viewBox: '0 0 16 16', width: '14', height: '14', 'aria-hidden': 'true', focusable: 'false' })) chevron.setAttribute(key, value);
+    const path = doc.createElementNS(ns, 'path');
+    for (const [key, value] of Object.entries({ d: 'M4.5 6.5L8 10l3.5-3.5', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })) path.setAttribute(key, value);
+    chevron.append(path);
+  }
+  if (chevron.parentElement !== card) card.append(chevron);
+  foldHeaders.set(card, { header, chevron });
 }
 
 // Lets go of the replies kept in view in the stacks where pick(section)
@@ -1025,6 +1055,7 @@ export function arrangeStacks(list, messages, options = {}) {
   for (const [id, entry] of byId) if (messages.get(id)) paintFolded(entry, messages.get(id), state.folded.has(id), { nameOf, doc });
   // An open dossier's earlier messages, once their row is opened, read as rows (item 476).
   for (const [id, entry] of byId) if (messages.get(id)) paintEarlier(entry, messages.get(id), state.earlierRows.has(id), { nameOf, doc });
+  for (const entry of byId.values()) paintFoldHeader(entry, doc);
   // Every admitted entry now has a folder and its cover sheet. Clear any
   // pills left from the former standalone rendering, including apart cards.
   for (const [id, entry] of byId) paintCoverPills(cardIn(entry), null, { viewer, nameOf, topicId: messages.get(id)?.topic_id });
