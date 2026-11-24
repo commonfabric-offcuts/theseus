@@ -141,13 +141,13 @@ class Delivery:
         db.execute("UPDATE recipient_schedule SET pending_count=?,wake_generation=wake_generation+1,last_seq=?,next_due_ms=?,retry_count=?,handed_seq=? WHERE recipient_id=?",
                    (pending, last_seq if last_seq is not None else old["last_seq"], due, retry, handed, actor))
 
-    def _queue_delivery(self, db, message_id, recipient, topic_id, reasons, settled=False, revision=1, request_id=None, retraction_id=None, answer_id=None):
+    def _queue_delivery(self, db, message_id, recipient, topic_id, reasons, settled=False, revision=1, request_id=None, retraction_id=None, answer_id=None, browser_job_id=None):
         """Queue one delivery of a message; settled, it is recorded already acknowledged and waits on nobody.
 
         A correction (reason `correction`, docs/message-edit.md) delivers the message again at a later revision,
         in the recipient's one correction group, which nothing counts as unread or addressed."""
         direct = any(reason != "subscription" for reason in reasons)
-        kind = "retraction" if retraction_id is not None else "answer" if answer_id is not None else "request" if request_id is not None else "correction" if "correction" in reasons else "direct" if direct else "subscription"
+        kind = "browser_job" if browser_job_id is not None else "retraction" if retraction_id is not None else "answer" if answer_id is not None else "request" if request_id is not None else "correction" if "correction" in reasons else "direct" if direct else "subscription"
         key = (recipient, kind, "" if direct else topic_id, 0 if direct else reasons["subscription"])
         db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", key)
         group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind=? AND topic_id=? AND participant_epoch=?", key).fetchone()[0]
@@ -156,8 +156,8 @@ class Delivery:
         # waits in the state 'held', counted nowhere, and its release counts it as an arrival. The one session row's
         # primary key answers whether it is holding.
         held = message_id is not None and request_id is None and answer_id is None and not settled and holding(db, message_id) and db.execute("SELECT kind FROM actors WHERE id=?", (recipient,)).fetchone()[0] == "agent"
-        seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id,state,revision,request_id,retraction_id,answer_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                         (delivery_id, message_id, recipient, group, topic_id, "acknowledged" if settled else "held" if held else "pending", revision, request_id, retraction_id, answer_id)).lastrowid
+        seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id,state,revision,request_id,retraction_id,answer_id,browser_job_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                         (delivery_id, message_id, recipient, group, topic_id, "acknowledged" if settled else "held" if held else "pending", revision, request_id, retraction_id, answer_id, browser_job_id)).lastrowid
         db.executemany("INSERT INTO delivery_reasons VALUES (?,?,?,?)", [(delivery_id, reason, topic_id, epoch) for reason, epoch in reasons.items()])
         if held:
             # Its release counts it and reads the recipient's schedule, so the schedule row exists from now (it counts nothing).
@@ -182,6 +182,10 @@ class Delivery:
         row = db.execute("SELECT d.*,g.active FROM deliveries d JOIN delivery_groups g ON g.id=d.group_id WHERE d.id=? AND d.recipient_id=?", (delivery_id, actor)).fetchone()
         if row is None:
             raise Refusal("FORBIDDEN", "No readable delivery")
+        if row['browser_job_id'] is not None:
+            job = self._browser_job(db, actor, row['browser_job_id'])
+            if job['state'] not in ('passed', 'failed', 'unrun'):
+                raise Refusal('BROWSER_JOB_UNFINISHED', 'Read and finish or explicitly disposition the browser job; acknowledgement is not a result')
         result = {"delivery_id": delivery_id, "acknowledged": row["state"] == "acknowledged"}
         if result["acknowledged"]:
             return dict(result, already_acknowledged=True), []
@@ -385,6 +389,8 @@ class Delivery:
         return row[0] if row else 0
 
     def _delivery_item(self, db, row, active=True):
+        if row['browser_job_id'] is not None:
+            return self._browser_delivery_item(db, row)
         if row["retraction_id"] is not None:
             return self._retraction_delivery_item(db, row)
         if row["request_id"] is not None:
@@ -432,7 +438,10 @@ class Delivery:
         # The item carries the message and its topic, so it is readable only
         # while the message itself is: topic access, or an addressed delivery.
         try:
-            if row["retraction_id"] is not None:
+            if row['browser_job_id'] is not None:
+                if not self._browser_delivery_readable(db, actor, row):
+                    raise Refusal('FORBIDDEN', 'No readable delivery')
+            elif row["retraction_id"] is not None:
                 if not self._retraction_readable(db, actor, row):
                     raise Refusal("FORBIDDEN", "No readable delivery")
             elif row["request_id"] is not None:
@@ -464,7 +473,8 @@ class Delivery:
                     if len(answer["items"]) == limit:
                         answer["next_cursor"] = _cursor(*last)
                         return answer
-                    if ((row["retraction_id"] is not None and not self._retraction_readable(db, actor, row))
+                    if ((row['browser_job_id'] is not None and not self._browser_delivery_readable(db, actor, row))
+                            or (row["retraction_id"] is not None and not self._retraction_readable(db, actor, row))
                             or (row["request_id"] is not None and not self._request_readable(db, actor, row))
                             or not self._correction_readable(db, actor, row)):
                         # A correction of a message the actor can no longer read is never shown, even in a preview.

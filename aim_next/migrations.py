@@ -11,6 +11,7 @@ from .withdrawal import WITHDRAWAL_SCHEMA, WITHDRAWAL_DOWN, WITHDRAWAL_OCCUPIED
 from .answer_delivery import ANSWER_UP, ANSWER_DOWN, ANSWER_OCCUPIED
 from .questions import QUESTION_SCHEMA, QUESTION_DOWN, QUESTION_OCCUPIED
 from .refresh_delivery import REQUEST_UP, REQUEST_DOWN, REQUEST_OCCUPIED
+from .browser_job_schema import UP as BROWSER_JOBS_UP, DOWN as BROWSER_JOBS_DOWN, OCCUPIED as BROWSER_JOBS_OCCUPIED
 from .removal import REMOVAL_UP, REMOVAL_DOWN, REMOVAL_OCCUPIED
 from .authority import Authority, AuthorityError, GuardBusy
 from .contract import StoreError, _identifier
@@ -252,6 +253,8 @@ STEPS = (
     ("67", "68", TEMPLATE_SCHEMA, TEMPLATE_DOWN, TEMPLATE_OCCUPIED),
     # 1060: follows actual368/1040 schema68.
     ("68", "69", MEMORY_TRANSFER_SCHEMA, MEMORY_TRANSFER_DOWN, MEMORY_TRANSFER_OCCUPIED),
+    #1200: isolated-base step; reconcile its number with actual live before carry.
+    ("69", "70", BROWSER_JOBS_UP, BROWSER_JOBS_DOWN, BROWSER_JOBS_OCCUPIED),
 )
 
 
