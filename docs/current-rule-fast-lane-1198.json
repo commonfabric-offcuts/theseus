@@ -4,7 +4,7 @@
   "rules": [
     {
       "id": "build-proof",
-      "summary": "New tests fail once on old code, then pass on candidate; run complete importing/source-reading consumer files and retain interrupted attempts/assertion reachability.",
+      "summary": "New tests fail once on old code, then pass on candidate; run complete importing/source-reading files. Retain original interruptions. Separate process terminal from coverage: reconcile expected identities with body entry or explicit skip/setup/discovery barriers; zero-case or unexplained gaps remain incomplete. Count failure events apart from case outcomes; bare/mock assertions need no counted unittest assertion.",
       "scope": {},
       "effect": {
         "require": [
@@ -17,7 +17,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
@@ -38,7 +38,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
@@ -61,7 +61,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
@@ -81,7 +81,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
@@ -93,19 +93,19 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
     {
       "id": "resource-admission",
-      "summary": "Current hold and actual child/execution admission govern; unknown occupancy is not entry permission.1195 adoption waits for1202 and Warp switch-over.",
+      "summary": "Warp22800 adopts the corrected404 lane lock: every test invocation uses the installed wrapper, three slots, landing priority and load below12. Still-unentered controls/continuations use one complete unfiltered file per lock; retain queue/body/terminal/cleanup and interrupted originals. Unknown occupancy grants no entry.",
       "scope": {},
       "effect": {},
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
@@ -123,7 +123,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
@@ -142,13 +142,13 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
     {
       "id": "1184-scope",
-      "summary": "Flex alone owns1184 migration fixture/body contracts; rejected206 cohort is not proof,205 consumer successor remains unentered.1138 is duplicate scope.",
+      "summary": "Flex alone owns1184 migration fixture/body contracts. Rejected206 and original205 remain visible within the later238 consumer inventory; selected50 and247 migration/witness results are separate, and incomplete/failed consumers are not whole-file readiness.1138 is duplicate scope.",
       "scope": {
         "items": [
           1184,
@@ -159,7 +159,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
@@ -175,7 +175,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
@@ -191,13 +191,13 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
     {
       "id": "1028-prerequisites",
-      "summary": "No1028 preparation until1172,1161,1171,1174,1160 and1190 are all actually live.",
+      "summary": "All six named1028 no-preparation prerequisites are now actually live. Preserve originalBuild4 and failed evidence; reconcile current source when assigned.1203\u20131207 precede1028 as lanes actually free; existing machinery bindings are not interrupted.",
       "scope": {
         "items": [
           1028
@@ -216,19 +216,19 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
     {
       "id": "independent-followons",
-      "summary": "1199 clock,1180 recovery and1200 jobs are independent and do not hold1198. The separately scheduled restart test requires1198,1196,1180,1199 and1200 all live. No median, invented forecast or restart authorization.",
+      "summary": "1199 clock,1180 recovery and1200 jobs are independent, not1198 completion requirements. Restart needs1198/1196/1180/1199/1200 live, five-feature postmortem and a separately scheduled drill; no restart authorization or invented forecast.",
       "scope": {},
       "effect": {},
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
       },
       "supersedes": []
     },
@@ -240,7 +240,39 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 11
+        "revision": 18
+      },
+      "supersedes": []
+    },
+    {
+      "id": "benchmark-cohort",
+      "summary": "The cover KPI cohort is only1203\u20131207. Preserve original Build/source starts, first live forecasts, revisions/reasons and actual receipts; missing originals stay missing.45minute target is only small page pieces; Core/tool clocks stay separate. No median to Tony. Postmortem follows all five before restart.",
+      "scope": {
+        "items": [
+          1203,
+          1204,
+          1205,
+          1206,
+          1207
+        ]
+      },
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 18
+      },
+      "supersedes": []
+    },
+    {
+      "id": "installed-landing-kit",
+      "summary": "1196 is installed in405. Preserve its normalized cause and execution comparison plus original publication refusal/same-operation recovery. Installed tools do not establish each seat configuration or adoption. The actual pipeline/release record owns current source; this bootstrap is not a live-state copy.",
+      "scope": {},
+      "effect": {},
+      "source": {
+        "kind": "memory",
+        "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
+        "revision": 18
       },
       "supersedes": []
     }

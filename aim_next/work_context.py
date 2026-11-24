@@ -52,8 +52,10 @@ def lines(value):
             _token(policy.get("policy_id")), revision if type(revision) is int else "unavailable",
             _token(context.get("piece_id")), action if action in ACTIONS else "unavailable",
             _token(context.get("next_action", {}).get("owner_actor_id"))))
-        result.append("Read: aim-next current-rule %s" % _token(context.get("workspace_id")))
+        workspace = context.get("workspace_id")
+        if isinstance(workspace, str) and TOKEN.fullmatch(workspace):
+            result.append("Read: aim-next current-rule %s" % workspace)
     if value.get("truncated"):
         result.append("Work context is partial; read other delivered topics with work-context.")
-    result.append("Resource admission is unknown here; the current hold and execution tool govern entry.")
+    result.append("Resource admission is unknown here; the adopted execution tool governs entry.")
     return result

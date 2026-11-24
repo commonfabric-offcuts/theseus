@@ -202,6 +202,8 @@ USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute
          "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE|- "
          "| note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE|- "
          "| note read ITEM [--revision N] | note link ITEM [--revision N] [--origin URL] "
+         "| current-rule OUTCOME [--history JSON] | current-rule-update OUTCOME FILE|- --expected N --notebook-expected N [--operation ID] "
+         "| work-context (--outcome OUTCOME | --piece PIECE | --topic TOPIC) "
          "| pipeline OUTCOME [--section S] | item OUTCOME N | item-edit OUTCOME N [--title T] [--size S] [--group G] [--words FILE|-] "
          "| pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
          "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "

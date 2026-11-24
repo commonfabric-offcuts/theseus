@@ -2,8 +2,9 @@
 
 Authority is Fable's assignment22719, accepted Fast lane revision8 and the
 current-rule Notebook n-85ea0961d1fd4e5791fed9024aa9b720. Its revision7 was the
-assignment's starting source; revision8 subsequently replaced1194's obsolete
-19-file carry/default; revision11 records the404 hold,1201 rider and corrected lock adoption condition. The bootstrap keeps those exact sources and scoped
+assignment's starting source; revision18 is the final read used by this bootstrap, including adopted404 execution,
+per-file continuations, scoped1194/1184 exceptions, installed1196, explicit
+process-versus-coverage accounting and the five-feature postmortem. The bootstrap keeps those exact sources and scoped
 exceptions, rather than treating a snapshot of resource occupancy as a grant.
 Flex's full contract is at3eeaf824833969ce4c4e7ec48af8544457cb1f93,
 `docs/fast-lane-runtime-contract.md`. This contract precedes product/test code.
@@ -63,7 +64,7 @@ Missing check evidence is not a pass or a product failure. A cancelled run or
 setup barrier is not behavior proof, and the current names-only landing
 comparison is not claimed to compare normalized diagnostics.
 
-Resource admission remains the execution tool's authority. Optional telemetry
+Resource admission remains the adopted execution tool's authority. Optional telemetry
 is labelled unknown; context does not acquire a slot, lift a hold, manufacture
 capacity or replace1195. Scoped1028 and1184 limitations remain sourced rules.
 
@@ -118,3 +119,10 @@ references with `current-rule OUTCOME --history JSON` to read prior machine reco
 Manual red/green, coverage and writing/repair timing proof stay explicit requirements,
 not inferred passes. Context reports recorded typed check IDs and source approval;
 there is no automatic claim that a prose report established those other proofs.
+
+When1199 is carried with this independent delivery, replace the unavailable clock
+projection with its optional `_piece_clock_context(db, actor, piece_id)` capability.
+That compact clock grants no policy, queue or shipping-action authority. Preserve
+1180's pending-read refusal stop before any optional context lookup, and1200's
+additive job notice branch. These are explicit carry resolutions, not installed
+capabilities or completion dependencies of this standalone source.
