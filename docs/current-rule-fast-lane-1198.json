@@ -17,7 +17,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -38,7 +38,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -61,7 +61,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -81,7 +81,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -93,7 +93,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -105,7 +105,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -123,7 +123,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -142,13 +142,13 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
     {
       "id": "1184-scope",
-      "summary": "Flex alone owns1184 migration fixture/body contracts. Rejected206 and original205 remain visible within the later238 consumer inventory; selected50 and247 migration/witness results are separate, and incomplete/failed consumers are not whole-file readiness.1138 is duplicate scope.",
+      "summary": "1184 is shipped in406. Preserve the rejected206 cohort, original205 and later238/243/witness attempts and their actual body/barrier evidence. Flex owns migration fixture/body contracts with the explicit22988 handoff to Page6 limited to1200 schema70 current_legacy_rows on landed406: empty browser_jobs and null legacy browser_job_id, retaining older rows, frozen-layout checks and1194 forwarding.1200/1201 retain the judged route and real-data rehearsal;1138 remains duplicate scope.",
       "scope": {
         "items": [
           1184,
@@ -159,7 +159,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -175,7 +175,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -191,7 +191,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -216,7 +216,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -228,7 +228,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -240,7 +240,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -260,7 +260,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -272,7 +272,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     },
@@ -290,7 +290,7 @@
       "source": {
         "kind": "memory",
         "id": "n-85ea0961d1fd4e5791fed9024aa9b720",
-        "revision": 19
+        "revision": 20
       },
       "supersedes": []
     }

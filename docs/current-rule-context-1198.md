@@ -2,9 +2,9 @@
 
 Authority is Fable's assignment22719, accepted Fast lane revision8 and the
 current-rule Notebook n-85ea0961d1fd4e5791fed9024aa9b720. Its revision7 was the
-assignment's starting source; revision19 is the final read used by this bootstrap, including adopted404 execution,
+assignment's starting source; revision20 is the final read used by this bootstrap, including adopted404 execution,
 per-file continuations, scoped1194/1184 exceptions, installed1196, explicit
-process-versus-coverage accounting and the five-feature postmortem. The bootstrap keeps those exact sources and scoped
+process-versus-coverage accounting, completed406/407 states, the explicit1200 fixture-ownership handoff and the five-feature postmortem. The bootstrap keeps those exact sources and scoped
 exceptions, rather than treating a snapshot of resource occupancy as a grant.
 Flex's full contract is at3eeaf824833969ce4c4e7ec48af8544457cb1f93,
 `docs/fast-lane-runtime-contract.md`. This contract precedes product/test code.
@@ -61,8 +61,8 @@ carry or source relationship is unknown, not a SHA inferred from chat. A live
 advance yields source reconciliation while preserving the work and operation
 identity; overlap/conflict remains for the existing source tool to establish.
 Missing check evidence is not a pass or a product failure. A cancelled run or
-setup barrier is not behavior proof, and the current names-only landing
-comparison is not claimed to compare normalized diagnostics.
+setup barrier is not behavior proof, and this context does not infer a normalized diagnostic comparison from a
+check name; installed1196 and its actual comparison evidence remain separate facts.
 
 Resource admission remains the adopted execution tool's authority. Optional telemetry
 is labelled unknown; context does not acquire a slot, lift a hold, manufacture
