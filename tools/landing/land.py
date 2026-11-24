@@ -7,7 +7,7 @@ from pathlib import Path
 # MERGE-BODY.txt), with this seat's settings from config.py. --preflight stops before any effect.
 KIT = Path(__file__).resolve().parent
 sys.path.insert(0, str(KIT))
-import config, decisions, runner_visible  # noqa: E402
+import config, decisions, execution_compare, runner_visible  # noqa: E402
 OUT = Path(sys.argv[1]).resolve()
 SETTINGS = config.load()
 CO = Path(SETTINGS['coordinator']); SHIP = Path(SETTINGS['ship']); LIVE = Path(SETTINGS['live']); LANDDIR = Path(SETTINGS['work'])
@@ -62,6 +62,9 @@ try:
     assert not git('status','--porcelain')
     # The review was written of one head; the landing merges exactly that head, or live merged into it.
     _refusal = decisions.carry_refusal(SPEC, git('rev-parse', SOURCE+'^@').split())
+    assert _refusal is None, _refusal
+    # The node comparison reads execution_changes only after the whole suite; a malformed entry refuses here instead.
+    _refusal = execution_compare.entries_problem(SPEC.get('execution_changes') or [])
     assert _refusal is None, _refusal
     # Live may have moved past the source's base by a merge that changed no tree (a judged head landed as the
     # same tree): the merge of SOURCE onto BASE is then exactly SOURCE's tree. Anything else needs a carry first.
