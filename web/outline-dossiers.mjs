@@ -18,8 +18,8 @@ export function dossierRows(stars) {
 const plain = e => e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 
 export class OutlineDossiers {
-  constructor(outline, {pages = false} = {}) {
-    this.pageStars = pages;
+  constructor(outline, {pages = false, timers = globalThis} = {}) {
+    this.pageStars = pages; this.timers = timers;
     this.outline = outline; this.states = new Map(); this.epoch = 0;
     this.observer = new outline.doc.defaultView.MutationObserver(records => {
       const containsRows=node=>node?.nodeType===1&&(node.matches?.('a[data-topic-id]')||node.querySelector?.('a[data-topic-id]'));
@@ -29,19 +29,33 @@ export class OutlineDossiers {
     this.observer.observe(outline.list, {childList:true, subtree:true, attributes:true, attributeFilter:['hidden','inert','open']});
     const rail = outline.host.closest('.rail');
     if (rail) this.observer.observe(rail, {attributes:true, attributeFilter:['class']});
+    outline.doc.addEventListener?.('visibilitychange',()=>{if(outline.doc.visibilityState==='hidden')for(const state of this.states.values())this.clearRetry(state);else this.sync();});
   }
   begin() {
     this.epoch++;
     // Retire reads, retaining drawn stars and their links through a move.
     // The next run refreshes them; a late old reply cannot publish or clear it.
     for (const state of this.states.values()) {
+      this.clearRetry(state); state.retryFailures=0;
       state.busy = null; state.again = false; state.box.setAttribute('aria-busy','false');
     }
   }
   reset() {
     this.epoch++;
-    for (const state of this.states.values()) state.box.remove();
+    for (const state of this.states.values()) {this.clearRetry(state);state.box.remove();}
     this.states.clear();
+  }
+  clearRetry(state) {
+    if(state.retryTimer!=null)(this.timers??globalThis).clearTimeout(state.retryTimer);
+    state.retryTimer=null;
+  }
+  retry(state, more, epoch, handles) {
+    if(state.retryTimer!=null||!this.outline.doc||state.visible===false||this.outline.doc.visibilityState==='hidden'||handles.topicReadAllowed?.()===false)return;
+    state.retryTimer=(this.timers??globalThis).setTimeout(()=>{
+      state.retryTimer=null;
+      if(epoch===this.epoch&&handles===this.outline.handles&&state.visible!==false&&this.outline.doc.visibilityState!=='hidden'&&handles.topicReadAllowed?.()!==false&&this.parents().includes(state.parent))this.load(state,more);
+    },Math.min(5000,500*2**Math.min(state.retryFailures??0,4)));
+    state.retryFailures=(state.retryFailures??0)+1;
   }
   parents() {
     const parents=[...this.outline.list.querySelectorAll('a[data-topic-id]')].filter(el => el.getClientRects().length && !el.closest('[inert]'));
@@ -51,7 +65,7 @@ export class OutlineDossiers {
     if (!this.outline.handles) return;
     const parents = this.parents(), ids = new Set(parents.map(el => el.dataset.topicId));
     for (const [id, state] of this.states) {
-      if (!ids.has(id)) { state.box.remove(); state.visible = false; continue; }
+      if (!ids.has(id)) { this.clearRetry(state); state.box.remove(); state.visible = false; continue; }
     }
     for (const parent of parents) {
       const id = parent.dataset.topicId;
@@ -68,7 +82,7 @@ export class OutlineDossiers {
       // children after its row if that list has just drawn again.
       const after=this.pageStars&&parent.nextElementSibling?.matches('.ol-dossiers:not(.ol-pages)')?parent.nextElementSibling:parent;
       if (after.nextElementSibling !== state.box) after.after(state.box);
-      if (returned || !state.loaded && !state.busy && !state.error) this.load(state);
+      if (returned || (state.dirty || !state.loaded) && !state.busy && !state.error) this.load(state);
     }
   }
   refresh(alreadyReading = null) {
@@ -89,6 +103,7 @@ export class OutlineDossiers {
     if (more && state.next === null) return true;
     const epoch = this.epoch, handles = this.outline.handles;
     const mine = () => epoch === this.epoch && handles === this.outline.handles;
+    this.clearRetry(state);
     state.box.setAttribute('aria-busy','true');
     // Defer the read to a microtask so busy is set before sync can run again.
     state.busy = Promise.resolve().then(async () => {
@@ -105,12 +120,13 @@ export class OutlineDossiers {
         if (!mine()) return true;
         state.stars = stars; state.next = next;
         state.extent = stars.at(-1)?.star ?? null;
-        state.loaded = true; state.error = null;
+        state.loaded = true; state.error = null; state.dirty=false;state.retryFailures=0;
         this.paint(state); accepted = true;
       } catch(error) {
         if (!mine()) return true;
-        if(['retry','defer','superseded'].includes(readFailure(error).kind))return false;
-        state.error = readFailure(error);
+        const failure=readFailure(error?.code==='CLEANUP_DEFERRED'&&error.cause?error.cause:error);
+        if(['retry','defer','superseded'].includes(failure.kind)){state.dirty=true;this.retry(state,more,epoch,handles);return false;}
+        this.clearRetry(state);state.dirty=false;state.error = failure;
         if (state.error.kind === 'forbidden' || state.error.kind === 'reconnect') state.stars = [];
         this.paint(state);
       } finally {

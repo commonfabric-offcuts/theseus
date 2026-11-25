@@ -59,3 +59,9 @@ A full reconnect/resync obligation survives transient failure with no new key.
 
 Count projections and full attention answers name their snapshot commit.
 An older count answer cannot overwrite a later full attention result.
+
+Local first-visible stars and first-open side panels own bounded quiet retry
+even outside a page change window. Hide/close/navigation/authority retirement
+fence those jobs; returning to a visible dirty owner resumes it. Last-good
+sections/stars stay drawn through a transient failure. Typed refusals retain
+precedence and do not start automatic quiet retry, including mixed responses.

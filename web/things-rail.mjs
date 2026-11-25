@@ -158,8 +158,8 @@ const plainClick = event => event.button === 0 && !event.metaKey && !event.ctrlK
 const settle = promise => promise.then(value => ({ value }), error => ({ error }));
 
 export class ThingsRail {
-  constructor({ host, backdrop, storage = null, doc = host.ownerDocument, win = doc.defaultView }) {
-    Object.assign(this, { host, backdrop, storage, doc, win });
+  constructor({ host, backdrop, storage = null, doc = host.ownerDocument, win = doc.defaultView, timers = globalThis }) {
+    Object.assign(this, { host, backdrop, storage, doc, win, timers, retryTimer:null, retryFailures:0 });
     this.handles = null; this.unlisten = null; this.stale = false; this.serial = 0; this.folds = null;
     // The Notebook section's current-topic pencil; how many of its
     // pages the person has asked to see; and the first page More brought, which takes the focus from More.
@@ -169,6 +169,7 @@ export class ThingsRail {
     // Each place's messages and images, with the version of the topic they were read at (readPlace).
     this.kept = new Map();
     this.reload = reloader(() => this.load());
+    listen(doc,'visibilitychange',()=>{if(doc.visibilityState==='hidden')this.clearRetry();else this.shown();});
     this.build();
     this.imageMenus = new ImageRailMenu(this);
     this.links = new WorkspaceLinks(this);
@@ -378,6 +379,18 @@ export class ThingsRail {
   isOpen() { return this.doc.documentElement.hasAttribute('data-things-open'); }
   // Whether the rail is on screen: beside the page, or open as a sheet or panel.
   shows() { return !this.host.hidden && (this.wide?.matches || this.isOpen()); }
+  clearRetry() {
+    if(this.retryTimer!=null)(this.timers??globalThis).clearTimeout(this.retryTimer);
+    this.retryTimer=null;
+  }
+  retryRead(handles, serial) {
+    if(this.retryTimer!=null||!this.shows()||this.doc.visibilityState==='hidden'||handles.readable?.()===false)return;
+    this.retryTimer=(this.timers??globalThis).setTimeout(()=>{
+      this.retryTimer=null;
+      if(handles===this.handles&&serial===this.serial&&this.stale&&this.shows()&&this.doc.visibilityState!=='hidden'&&handles.readable?.()!==false)this.reload();
+    },Math.min(5000,500*2**Math.min(this.retryFailures??0,4)));
+    this.retryFailures=(this.retryFailures??0)+1;
+  }
   open() {
     if (this.host.hidden) return;
     this.doc.documentElement.setAttribute('data-things-open', '');
@@ -389,6 +402,7 @@ export class ThingsRail {
   }
   close(focus) {
     if (!this.isOpen()) return;
+    this.clearRetry();
     this.doc.documentElement.removeAttribute('data-things-open');
     this.backdrop.hidden = true;
     this.cover(false);
@@ -406,6 +420,7 @@ export class ThingsRail {
   // A run starts: on a topic or a Conversation the rail shows, and the page's
   // header gets the button that opens it where it is not beside the page.
   begin(feed, route = null) {
+    this.clearRetry();this.retryFailures=0;
     this.close(false);
     const shown = feed && route?.kind !== 'workspace';
     this.host.hidden = !shown;
@@ -490,6 +505,7 @@ export class ThingsRail {
   async load() {
     const handles = this.handles;
     if (!handles) return true;
+    this.clearRetry();
     const serial = ++this.serial, workspace = handles.workspaceId, topicId = this.topicId;
     const view = (name, args) => handles.view(name, args);
     this.stale = false;
@@ -505,8 +521,10 @@ export class ThingsRail {
     const reads = places.map(place => settle(this.readPlace(view, place, 24)));
     const [pipe, notes, toolsRead, linksRead, ...found] = await Promise.all([pipeline, notebook, tools, links, ...reads]);
     if (serial !== this.serial || handles !== this.handles) return true;
-    const transient=[pipe,notes,toolsRead,linksRead,...found].some(read=>read.error&&['retry','defer','superseded'].includes(readFailure(read.error).kind));
-    if(transient){this.stale=true;return false;}
+    const errors=[pipe,notes,toolsRead,linksRead,...found].filter(read=>read.error);
+    const transient=errors.length>0&&errors.every(read=>['retry','defer','superseded'].includes(readFailure(read.error?.code==='CLEANUP_DEFERRED'&&read.error.cause?read.error.cause:read.error).kind));
+    if(transient){this.stale=true;this.retryRead(handles,serial);return false;}
+    this.retryFailures=0;
     const failed = [pipe, notes, toolsRead, linksRead, ...found].filter(read => read.error && !denied(read.error));
     const messages = found.flatMap(read => read.value ? read.value.messages.map(message => ({ ...message, place: read.value.place })) : []);
     const images = new Map();
