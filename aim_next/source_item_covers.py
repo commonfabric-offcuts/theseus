@@ -2,8 +2,8 @@ from __future__ import annotations
 
 """Reader-filtered source-item rows. No stored cover text or attributed acts.
 
-Only requested dossiers' indexed members and their actual item relations are
-read. Pipeline member/entry rows are the transactionally settled record view;
+Source/change keys select candidates before their visible ancestry is checked;
+unlinked message history is not enumerated. Pipeline member/entry rows are the transactionally settled record view;
 there is no whole-pipeline fact replay on a card read.
 """
 
@@ -61,15 +61,29 @@ def _state(db, item):
     return words, None
 
 
+def _topic(db, root):
+    # root is already admitted by the caller; this lookup returns no content.
+    return db.execute("SELECT topic_id FROM messages WHERE id=?", (root,)).fetchone()[0]
+
+
+def _sources(db, actor, root, admitted=False):
+    from .stacks import StackRoots
+    from .whispers import VISIBLE
+    roots = StackRoots(db, actor)
+    query = ("SELECT s.workspace_id,s.number,s.message_id,s.position FROM pipeline_item_sources s "
+             "INDEXED BY source_cover_items CROSS JOIN messages m ON m.id=s.message_id "
+             "CROSS JOIN workspaces w ON w.id=s.workspace_id "
+             "WHERE s.message_id IS NOT NULL AND m.topic_id=:topic AND " + VISIBLE)
+    if admitted:
+        query += (" AND (w.owner_id=:actor OR EXISTS (SELECT 1 FROM workspace_members wm "
+                  "WHERE wm.workspace_id=w.id AND wm.actor_id=:actor)) ORDER BY s.workspace_id,s.number,s.position")
+    for row in db.execute(query, {'actor': actor, 'topic': _topic(db, root)}):
+        if roots.root(row['message_id']) == root:
+            yield row
+
+
 def project(db, actor, root, cover):
-    # Deferred import: stacks owns the reader's actual root/member contract.
-    from .stacks import MEMBERS
-    relations = db.execute(MEMBERS + " SELECT s.workspace_id,s.number,s.message_id,s.position FROM members p "
-                           "CROSS JOIN pipeline_item_sources s INDEXED BY source_cover_items ON s.message_id=p.id "
-                           "JOIN workspaces w ON w.id=s.workspace_id "
-                           "WHERE s.message_id IS NOT NULL AND (w.owner_id=:actor OR EXISTS "
-                           "(SELECT 1 FROM workspace_members wm WHERE wm.workspace_id=w.id AND wm.actor_id=:actor)) "
-                           "ORDER BY s.workspace_id,s.number,s.position", {'root': root, 'actor': actor}).fetchall()
+    relations = _sources(db, actor, root, admitted=True)
     grouped = {}
     for source in relations:
         grouped.setdefault((source['workspace_id'], source['number']), []).append(source['message_id'])
@@ -90,11 +104,8 @@ def project(db, actor, root, cover):
 
 
 def has_sources(db, actor, root):
-    """One indexed existence gate; unsourced dossiers need no projection walks."""
-    from .stacks import MEMBERS
-    return bool(db.execute(MEMBERS + " SELECT EXISTS(SELECT 1 FROM members p JOIN pipeline_item_sources s "
-                           "INDEXED BY source_cover_items ON s.message_id=p.id WHERE s.message_id IS NOT NULL)",
-                           {'root': root, 'actor': actor}).fetchone()[0])
+    """Existence follows source keys, without walking unlinked dossier history."""
+    return next(_sources(db, actor, root), None) is not None
 
 
 def _bulk_key(actor, topic):
@@ -108,10 +119,19 @@ def bulk_sequence(db, actor, topic):
 
 def read_sequence(db, actor, root):
     """Newest admitted item/access change on this dossier's visible members."""
-    from .stacks import MEMBERS
-    return db.execute(MEMBERS + " SELECT coalesce(max((SELECT max(seq) FROM changes INDEXED BY source_cover_changes "
-                      "WHERE scope_kind='actor' AND scope_id=:actor AND resource_kind='source_cover_read' AND resource_id=p.id)),0) "
-                      "FROM members p", {"actor": actor, "root": root}).fetchone()[0]
+    from .stacks import StackRoots
+    from .whispers import VISIBLE
+    roots, newest = StackRoots(db, actor), 0
+    # Historical keys remain candidates after their source relation is removed.
+    # Scope precedes message lookup; no other actor's opaque clock is admitted.
+    rows = db.execute("SELECT c.resource_id,max(c.seq) AS seq FROM changes c INDEXED BY source_cover_changes "
+                      "CROSS JOIN messages m ON m.id=c.resource_id WHERE c.scope_kind='actor' AND c.scope_id=:actor "
+                      "AND c.resource_kind='source_cover_read' AND m.topic_id=:topic AND " + VISIBLE +
+                      " GROUP BY c.resource_id", {'actor': actor, 'topic': _topic(db, root)})
+    for row in rows:
+        if roots.root(row['resource_id']) == root:
+            newest = max(newest, row['seq'])
+    return newest
 
 
 def notify(store, db, workspace, record, access_reader=None, source_messages=None):
