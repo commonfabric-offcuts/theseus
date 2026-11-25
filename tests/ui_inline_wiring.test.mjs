@@ -49,6 +49,18 @@ import { Api as RealApi, AttemptError, Deadline, notAnswering, unreached } from 
 import * as apiExports from '../web/api.mjs';
 import { showLine, lineText } from '../web/lines.mjs';
 const defer = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+// Clock and change-window inputs belong to this modeled page. Imported
+// owners remain real; a pending retry never escapes into Node's wall clock.
+const pageClock = () => {
+  let serial = 0; const jobs = new Map();
+  return { jobs, setTimeout(fn, ms) { jobs.set(++serial, { fn, ms }); return serial; }, clearTimeout(id) { jobs.delete(id); } };
+};
+function scopedWindow(bootstrap, { scope, cursor }, seq = cursor?.after_seq ?? 0) {
+  return { instance_id: bootstrap.instance_id, scope: structuredClone(scope), baseline: !cursor,
+    items: [], has_more: false, continuation: null,
+    checkpoint: { v: 1, kind: 'checkpoint', ...bindingOf(bootstrap), scope: structuredClone(scope), after_seq: seq },
+    covered_versions: scope.kind === 'actor' ? {} : scope.kind === 'workspace' ? { workspace: 1, notebook: 0 } : { topic: 1, notebook: 0 } };
+}
 // The page's own scope. Each name app.mjs imports, and each name the modules loaded here import in turn, that the scope does
 // not already hold (a fake below, a test's override, or a module imported natively above) comes from its module's own source:
 // each module once, its dependencies first, with its imports and exports taken off. A module the page newly imports is wired
@@ -88,6 +100,7 @@ function loadPageScope(context, root) {
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const elements = new Map(), events = [], calls = [], paints = [], observers = [], days = [];
+  const timers = pageClock();
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true;
       this.style = {
@@ -214,10 +227,28 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     // The page's window, as a test may replace it, with the size watch the message bar keeps (message-menu.mjs).
     get defaultView() { return { ResizeObserver: class { observe() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, ...context.window }; } };
   get('reader-aside').append(readerArchive(document));
-  const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e' } };
+  const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e', authority_id: 'a', authority_epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
+  let changeSeq = 0;
+  const changeHistory = { actor: [], topic: [], workspace: [] };
+  const changes = {
+    add(scope, kind, id = scope === 'workspace' ? topic.workspace_id : topic.id) {
+      const item = { seq: ++changeSeq, resource_kind: kind, resource_id: id, version: changeSeq };
+      changeHistory[scope].push(item); return item.seq;
+    },
+    projection: () => ({ topics: [], counts: [] }),
+    window(input) {
+      const page = scopedWindow(bootstrap, input, changeSeq);
+      page.items = input.cursor ? changeHistory[input.scope.kind].filter(item => item.seq > input.cursor.after_seq) : [];
+      return page;
+    }
+  };
   const api = { bootstrap: async () => bootstrap, view: async (name, args) => {
     calls.push({ name, args });
+    if (name === 'changes' && Array.isArray(args.windows)) return { instance_id: bootstrap.instance_id,
+      windows: args.windows.map(window => changes.window(window)), ...changes.projection(args) };
+    if (name === 'changes') return changes.window(args);
+    if (name === 'attention') return { instance_id: bootstrap.instance_id, unread: 0, addressed: 0, latest_addressed: [], waiting_on_me: 0, latest_waiting: [] };
     if (name === 'topic') return { instance_id: 'fixture', topic, participants: [] };
     if (name === 'workspace') return { instance_id: 'fixture', workspace: { title: 'Workspace' } };
     if (name === 'workspace_counts') return { instance_id: 'fixture', items: args.workspace_ids.map(id => ({ id, unread: 0, addressed: 0, build: { unread: 0, addressed: 0 }, cover_waiting: 0, light: null })) };
@@ -254,20 +285,20 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     get inDoubt() { return Object.getOwnPropertyDescriptor(EditorRegistry.prototype, 'inDoubt').get.call(this); },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; }, saveSign() { return { state: 'saved', text: 'Saved' }; },
     cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; },
-      list: action => action({ readClass: 'foreground' }) },
+      list: action => action({ readClass: 'foreground' }), read: action => action({ readClass: 'background' }) },
     runtime: { current: bootstrap.authority },
   };
   const reader = { keepReplyVisible: RealReader.prototype.keepReplyVisible, narrow: { addEventListener() {} }, layoutChoice: null, notice: what => { showLine(get('reader-notice'), what); events.push(['reader-notice', lineText(what)]); }, paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]), paintTitle: source => events.push(['title', source.title]) };
   const views = { scope: {}, messages: new Map(), retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, sighted() {}, opened() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1, showAlone: () => false, aloneItem: () => null };
   Object.assign(views, { instanceId: bootstrap.instance_id, topicId: topic.id, starRoots: new Set(), starSerial: 0,
     resetStars: TopicViews.prototype.resetStars, readStarred: TopicViews.prototype.readStarred, paint() {}, invalidate() {} });
-  const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
+  const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), observeActor: items => events.push(['actor-changes', items]), request: async options => events.push(['request', options]), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
     unobserve(target) { this.targets = this.targets.filter(each => each !== target); }
   }
-  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, paintReplyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, innerHeight: 600, innerWidth: 1000, Node: { DOCUMENT_POSITION_FOLLOWING: 4, TEXT_NODE: 3 }, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: clearImmediate, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...apiExports, ...writing, ...times, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, paintReplyLine, placeNewLine, cardClass, paintCardColor, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, typingField, ReadThrough, Live, liveOffered, reloader, hasTitle, IntersectionObserver, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} takeRecords() { return []; } }, innerHeight: 600, innerWidth: 1000, Node: { DOCUMENT_POSITION_FOLLOWING: 4, TEXT_NODE: 3 }, requestAnimationFrame: callback => setImmediate(callback), cancelAnimationFrame: clearImmediate, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     // The window's own location and history are the page's, as in a browser (the shell reads them there).
     window: { innerHeight: 600, scrollY: 0,
       getComputedStyle: el => ({ overflowY: 'visible', position: 'static', scrollPaddingTop: '0px', scrollPaddingBottom: '0px', ...el.style, getPropertyValue: () => '' }),
@@ -280,7 +311,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor(callbacks) { reader.callbacks = callbacks; return reader; } },
     TopicViews: class { constructor({ paint, invalidate }) { Object.assign(views, { paint, invalidate }); return views; } }, Freshness: class { constructor(options) { fresh.options = options; return fresh; } },
-    initialViews: async () => ({}), actorBaseline: async () => null, readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
+    initialViews: async () => scopedWindow(bootstrap, { scope: { kind: 'topic', id: topic.id } }, changeSeq).checkpoint, actorBaseline: async () => null, readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
     openIntentJournal: async () => { events.push(['intent-journal']); throw Error('No browser intent storage in this fixture'); },
     openOpeningStore: async () => { events.push(['opening-store']); return { close() {} }; },
     OpeningDraft: class { constructor(o) { events.push(['opening-draft', { workspace: o.workspace, opening: o.opening, topic: o.topic }]); this.editable = false; }
@@ -304,7 +335,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   context.wiring.inject({ api, bootstrap, registry, reader, inline, topic, views, freshness: fresh,
     marks: new context.Marks({ api, instanceId: 'fixture', authority: () => bootstrap.authority, doc: null, win: null }) });
   const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
-  return { ...context.wiring, runObservation: source => vm.runInContext(source, context), makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers, days };
+  return { ...context.wiring, changes, timers, runObservation: source => vm.runInContext(source, context), makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers, days };
 }
 
 // Outcome cards are a projection of the shell's real outline owner. Mount
@@ -1205,10 +1236,11 @@ test('Retry access, its first read answered and its second never: the feed that 
 // answers. The page is not connected and nothing has answered since the
 // failure, so the line says so, from the failure on and after the close.
 test('a request that gets no answer while the feed still reads live says so, and keeps saying so after the socket closes with nothing answered', async () => {
-  const { f, sockets, pages, said, socket, number } = realPage();
+  const { f, sockets, pages, held, said, socket, number } = realPage();
   await f.initialize(); await drain();
   number(1); await drain();
   const lost = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+  held.server = async () => new Response('', { status: 502 });
   f.registry.open = () => new RealApi('fixture-session', async () => { throw new TypeError('Failed to fetch'); }).view('source', {});
   f.registry.current = null;
   await f.openSource({ kind: 'message', id: 'm1' }); await drain();
@@ -1234,12 +1266,13 @@ test('a connection line hidden while the feed was up shows again when it goes do
   f.registry.current = null;
   const opening = f.openSource({ kind: 'message', id: 'm1' }); await drain();
   number(2); await drain();
+  held.server = async () => new Response('', { status: 502 });
   gate.resolve(); await opening; await drain();
   assert.deepEqual([said('app-status'), sockets.length], ['', 1], 'something answered while it was out and the feed is up: no line, and the feed is left alone');
   socket().onclose(); await drain();
   assert.deepEqual([said('app-status'), 'unreached' in f.get('app-status').dataset], [lost, true], 'the feed went down and nothing has answered since that failure');
   // Up again: the line goes, and does not come back when the feed goes down again.
-  held.live.start();
+  held.server = null; held.live.start();
   number(2); await drain();
   assert.equal(said('app-status'), '', 'the feed came up again: an answer after the failure');
   socket().onclose(); await drain();
@@ -1454,7 +1487,7 @@ test('a renewed session leaves a message that was not about the connection, and 
 test('updates refused for the session say so, reconnect by themselves, and retry once for each session', async () => {
   const renewals = [], { f, answers } = restartable(renewals);
   await f.initialize(); await drain();
-  const requests = () => f.events.filter(e => e[0] === 'request').length;
+  const requests = () => f.events.filter(e => e[0] === 'request' && e[1]?.retry === true).length;
   let before = requests();
   answers.push('renewed');
   f.updateStatus({ kind: 'reconnect' }); await drain();
@@ -3107,6 +3140,7 @@ function partitionedTopic() {
   const scope = { kind: 'topic', id: 't1' };
   const cursor = seq => ({ v: 1, kind: 'checkpoint', ...binding, scope, after_seq: seq });
   const f = fixture('https://fixture/?topic=t1', {
+    setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
     initialViews: async () => cursor(1),
     Freshness: class extends Freshness { constructor(options) { super({ ...options, timers: clock, yieldRead: async () => {} }); } } });
   f.bootstrap.authority = { authority_id: 'a', authority_epoch: 'e' }; f.registry.runtime.current = f.bootstrap.authority;
@@ -3122,6 +3156,10 @@ function partitionedTopic() {
     if (name === 'changes') {
       f.calls.push({ name }); signals.push(options?.signal);
       const wait = held.changes; held.changes = null; if (wait) await wait;
+      if (Array.isArray(args.windows)) {
+        const captured = ++seq;
+        return { instance_id: 'fixture', windows: args.windows.map(window => scopedWindow(f.bootstrap, window, captured)), topics: [], counts: [] };
+      }
       return { instance_id: 'fixture', scope, baseline: false, items: [], has_more: false, continuation: null,
         checkpoint: cursor(++seq), covered_versions: { topic: 1, notebook: 1 } };
     }
@@ -3249,12 +3287,12 @@ test('a New line read that failed after a commit is read again when the stream r
   };
   await f.initialize(); await drain();
   const reconnect = async () => { live.emit({ kind: 'state', state: 'down' }); live.emit({ kind: 'state', state: 'live' }); await drain(); };
-  live.emit({ kind: 'commit', seq: 20 }); await drain();
+  f.changes.add('actor', 'read'); live.emit({ kind: 'commit', seq: 20 }); await drain();
   let before = reads;
   assert.ok(before > 0, 'a commit reads where the line is');
   await reconnect();
   assert.equal(reads, before, 'nothing was owed, so the return reads nothing');
-  failing = true; live.emit({ kind: 'commit', seq: 21 }); await drain(); failing = false;
+  failing = true; f.changes.add('actor', 'read'); live.emit({ kind: 'commit', seq: 21 }); await drain(); failing = false;
   before = reads; await reconnect();
   assert.equal(reads, before + 1, 'the failed read is owed, and the return reads it again');
   before = reads; await reconnect();
@@ -3592,13 +3630,13 @@ test('during a visit the New line holds as the person reads, fades once nothing 
   const reads = [], view = f.api.view;
   let answer = { oldest_unread: { seq: 24, id: 'm24' }, commit_seq: 7 };
   f.api.view = async (name, args) => { if (name === 'topic_unread') { reads.push(args); return { instance_id: 'fixture', topic_id: 't1', ...answer }; } return view(name, args); };
-  live.emit({ kind: 'commit', seq: 7 }); for (let n = 0; n < 5; n++) await settle(); layout();
+  f.changes.add('actor', 'mark'); live.emit({ kind: 'commit', seq: 7 }); for (let n = 0; n < 5; n++) await settle(); layout();
   assert.deepEqual(reads, [{ topic_id: 't1' }], 'the reload a commit sets off reads where the oldest unread message is');
   assert.equal(order(), '26 25 24 23 22 new 21 20', 'reading during the visit leaves the line where it was');
   assert.deepEqual(scrolls, []);
   // Marked unread elsewhere, further back: the line moves down to show it.
   answer = { oldest_unread: { seq: 20, id: 'm20' }, commit_seq: 8 };
-  live.emit({ kind: 'commit', seq: 8 }); for (let n = 0; n < 5; n++) await settle();
+  f.changes.add('actor', 'mark'); live.emit({ kind: 'commit', seq: 8 }); for (let n = 0; n < 5; n++) await settle();
   assert.equal(order(), '26 25 24 23 22 21 20 new', 'a mark further back moves the line down');
   assert.deepEqual(scrolls, [-30], 'the card being read is held where it was');
   // Pressed in the Reader on message seq: the mark it had, and the one Core records.
@@ -3612,7 +3650,7 @@ test('during a visit the New line holds as the person reads, fades once nothing 
   };
   // A commit reads the line again but never places it afresh: #24 is newer than the line, which holds.
   answer = { oldest_unread: { seq: 24, id: 'm24' }, commit_seq: 9 };
-  live.emit({ kind: 'commit', seq: 9 }); for (let n = 0; n < 5; n++) await settle();
+  f.changes.add('actor', 'mark'); live.emit({ kind: 'commit', seq: 9 }); for (let n = 0; n < 5; n++) await settle();
   assert.equal(reads.length, 3, 'the commit reads it');
   assert.equal(order(), '26 25 24 23 22 21 20 new', 'and leaves the line where it was');
   // The person's own Mark read in the Reader places it afresh, under the oldest unread message.
@@ -3625,7 +3663,7 @@ test('during a visit the New line holds as the person reads, fades once nothing 
   assert.deepEqual(faded(), [false, false], 'holding an unread message, it shows');
   // Read meanwhile, nothing at or above the line is unread: it fades where it is, with no Refresh.
   answer = { oldest_unread: null, commit_seq: 10 };
-  live.emit({ kind: 'commit', seq: 10 }); for (let n = 0; n < 5; n++) await settle();
+  f.changes.add('actor', 'mark'); live.emit({ kind: 'commit', seq: 10 }); for (let n = 0; n < 5; n++) await settle();
   assert.equal(order(), '26 25 24 new 23 22 21 20', 'everything read: the line stays in its place');
   assert.deepEqual(faded(), [true, true], 'and fades, inert');
   // Faded, the line is gone for the person: Mark unread on a message newer
@@ -3636,7 +3674,7 @@ test('during a visit the New line holds as the person reads, fades once nothing 
   assert.deepEqual(faded(), [false, false], 'shown again');
   // An arrival above a line that shows is shown as new there: the line holds it.
   answer = { oldest_unread: { seq: 26, id: 'm26' }, commit_seq: 12 };
-  live.emit({ kind: 'commit', seq: 12 }); for (let n = 0; n < 5; n++) await settle();
+  f.changes.add('actor', 'mark'); live.emit({ kind: 'commit', seq: 12 }); for (let n = 0; n < 5; n++) await settle();
   assert.deepEqual([order(), faded()], ['26 new 25 24 23 22 21 20', [false, false]], 'still unread: it holds');
   answer = { oldest_unread: null, commit_seq: 13 };
   await press(26, 1, 2);
@@ -3644,14 +3682,14 @@ test('during a visit the New line holds as the person reads, fades once nothing 
   assert.deepEqual(faded(), [true, true], 'to fade');
   // Mark read whose read of the line fails: the stream's return reads it and places the line afresh.
   answer = { oldest_unread: { seq: 20, id: 'm20' }, commit_seq: 14 };
-  live.emit({ kind: 'commit', seq: 14 }); for (let n = 0; n < 5; n++) await settle();
+  f.changes.add('actor', 'mark'); live.emit({ kind: 'commit', seq: 14 }); for (let n = 0; n < 5; n++) await settle();
   answer = { oldest_unread: null, commit_seq: 15 };
-  live.emit({ kind: 'commit', seq: 15 }); for (let n = 0; n < 5; n++) await settle();
+  f.changes.add('actor', 'mark'); live.emit({ kind: 'commit', seq: 15 }); for (let n = 0; n < 5; n++) await settle();
   assert.deepEqual([order(), faded()], ['26 25 24 23 22 21 20 new', [true, true]], 'marked further back, then read: the line fades where it is');
   answer = { oldest_unread: { seq: 22, id: 'm22' }, commit_seq: 16 };
-  live.emit({ kind: 'commit', seq: 16 }); for (let n = 0; n < 5; n++) await settle();
+  f.changes.add('actor', 'mark'); live.emit({ kind: 'commit', seq: 16 }); for (let n = 0; n < 5; n++) await settle();
   answer = { oldest_unread: { seq: 24, id: 'm24' }, commit_seq: 17 };
-  live.emit({ kind: 'commit', seq: 17 }); for (let n = 0; n < 5; n++) await settle();
+  f.changes.add('actor', 'mark'); live.emit({ kind: 'commit', seq: 17 }); for (let n = 0; n < 5; n++) await settle();
   assert.deepEqual([order(), faded()], ['26 25 24 23 22 new 21 20', [false, false]], 'faded, a mark brings it under that message; read on to #24, it holds there');
   f.api.view = async (name, args) => { if (name === 'topic_unread') throw Error('offline'); return view(name, args); };
   await press(22, 1, 2);
@@ -3661,7 +3699,7 @@ test('during a visit the New line holds as the person reads, fades once nothing 
   assert.equal(order(), '26 25 24 new 23 22 21 20', 'the stream returns: the read is made again and the line placed afresh');
   // A read that fails leaves the line where it was, and the reload is owed.
   f.api.view = async (name, args) => { if (name === 'topic_unread') throw Error('offline'); return view(name, args); };
-  live.emit({ kind: 'commit', seq: 19 }); for (let n = 0; n < 5; n++) await settle();
+  f.changes.add('actor', 'mark'); live.emit({ kind: 'commit', seq: 19 }); for (let n = 0; n < 5; n++) await settle();
   assert.equal(order(), '26 25 24 new 23 22 21 20');
 });
 
@@ -4038,11 +4076,11 @@ test('a cached topic Notebook page keeps its read revision across commits withou
   const asked = () => f.calls.filter(call => call.name === 'memory_items' && call.args.owner_scope?.kind === 'topic').length;
   const before = asked();
   shown = page(3, 3);
-  live.emit({ kind: 'commit', seq: 9 }); await drain();
+  f.changes.add('actor', 'memory_read', 'n1'); live.emit({ kind: 'commit', seq: 9 }); await drain();
   assert.equal(asked(), before + 1, 'a commit reads the topic Notebook\'s read state again');
   assert.deepEqual(state(), [3, 3], 'read, the cache records that revision');
   shown = page(4, 3);
-  live.emit({ kind: 'commit', seq: 10 }); await drain();
+  f.changes.add('actor', 'memory_read', 'n1'); live.emit({ kind: 'commit', seq: 10 }); await drain();
   assert.deepEqual(state(), [4, 3], 'revised again, the cache retains the read revision');
   assert.equal(f.get('memory-items').children.length, 0, 'commits do not recreate bottom-feed pages');
 });
@@ -4067,12 +4105,12 @@ test('once the topic is denied, or the runtime changed, a commit reads none of i
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
   views.memoryPage({ instance_id: 'fixture', items: [page], next_cursor: null, relevant_versions: { notebook: 3 } }, { initial: true });
   const asked = () => f.calls.filter(call => notebook(call.name, call.args)).length;
-  live.emit({ kind: 'commit', seq: 9 }); await drain();
+  f.changes.add('actor', 'memory_read', 'n1'); live.emit({ kind: 'commit', seq: 9 }); await drain();
   const before = asked();
   assert.ok(before > 0, 'an available topic\'s Notebook is read on a commit');
   const runtime = f.registry.runtime.current;
   f.registry.runtime.current = { ...runtime, authority_epoch: 'e2' };
-  live.emit({ kind: 'commit', seq: 10 }); await drain();
+  f.changes.add('actor', 'memory_read', 'n1'); live.emit({ kind: 'commit', seq: 10 }); await drain();
   assert.equal(asked(), before, 'while the runtime changed, nothing of the Notebook is read');
   f.registry.runtime.current = runtime;
   live.emit({ state: 'live' }); await drain();
@@ -4080,7 +4118,7 @@ test('once the topic is denied, or the runtime changed, a commit reads none of i
   denied = true;
   await f.checkAvailability(async name => name === 'topic' ? { instance_id: 'fixture', topic: f.topic } : f.state(), () => true);
   f.get('app-status').textContent = ''; f.get('app-status').hidden = true;
-  live.emit({ kind: 'commit', seq: 11 }); await drain();
+  f.changes.add('actor', 'memory_read', 'n1'); live.emit({ kind: 'commit', seq: 11 }); await drain();
   assert.equal(f.get('app-status').textContent, '', 'a denied topic\'s refusal is not said in the page status at every commit');
   assert.equal(f.get('app-status').hidden, true);
   assert.equal(asked(), before + 1, 'for its Notebook is not read');
@@ -4146,7 +4184,7 @@ test('a participant whose wakes stopped says so on its name until a commit shows
   assert.equal(person, 'fixture-person');
   assert.match(agent, /^fable · not answering since \d+:\d\d [AP]M \w+ \w+ \d+ · 2 waiting$/);
   quiet = [];
-  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
+  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9, health: { seq: 9, red: [] } });
   await drain();
   assert.deepEqual(chipWords(f.get('participants')), ['fixture-person', 'fable']);
 });
@@ -4174,7 +4212,7 @@ test('while wakes are not going out, the page says so once, and the words go whe
   assert.equal(notice.hidden, false);
   assert.match(notice.textContent, /^Wakes are not going out: the agent runner was killed at \d+:\d\d [AP]M .+\. 2 agents have work waiting\.$/);
   more = { runner: { live: true } };
-  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
+  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9, health: { seq: 9, red: [] } });
   await drain();
   assert.equal(notice.hidden, true);
   assert.equal(notice.textContent, '');
@@ -7992,11 +8030,11 @@ for (const route of ['workspace', 'topic']) test(`904 actual ${route} outline re
   reads = 0; setup.add?.('workspace', 'topic', 't1');
   live.emit({ kind: 'commit', seq: 1, outcomes: 'first' }); await drain();
   assert.equal(reads, 0, 'ordinary message keeps the global list cached');
-  title = 'Renamed elsewhere';
+  title = 'Renamed elsewhere'; if (route === 'topic') f.changes.add('actor', 'workspace', 'w1');
   live.emit({ kind: 'commit', seq: 2, outcomes: 'second' }); await drain();
   assert.equal(reads, 1, 'one remote rename commit refreshes the actual list');
   assert.equal(outline.pages.items[0].title, title);
-  fail = true; title = 'Retried title';
+  fail = true; title = 'Retried title'; if (route === 'topic') f.changes.add('actor', 'workspace', 'w1');
   live.emit({ kind: 'commit', seq: 3, outcomes: 'third' }); await drain();
   assert.equal(outline.pages.items[0].title, 'Renamed elsewhere');
   fail = false;
@@ -8270,6 +8308,7 @@ function countsOutline933(route = 'workspace') {
   const metrics = (id, unread = 0) => ({ id, unread, addressed: 0, build: { unread: 0, addressed: 0 }, cover_waiting: 0, light: null });
   const rows = ['w1', 'w2'].map(id => ({ id, title: 'Outcome ' + id, title_truncated: false, owner_id: 'fixture-person', version: 1, ...metrics(id) }));
   const counts = new Map(rows.map(row => [row.id, metrics(row.id)])), calls = [], view = f.api.view;
+  if (route === 'topic') f.changes.projection = ({ windows }) => ({ topics: [], counts: windows.filter(window => window.scope.kind === 'workspace').map(window => structuredClone(counts.get(window.scope.id))) });
   let fail = false, hold = null;
   f.api.view = async (name, args) => {
     calls.push({ name, args: structuredClone(args) });
@@ -8304,8 +8343,12 @@ for (const route of ['workspace', 'topic']) test(`933 ${route}: arrival in folde
   assert.equal(outline.pages.order, order); assert.equal(outline.pages.next, next);
   assert.match(f.get('outline-elsewhere').children.map(child => child.textContent).join(' '), /3 new in 1 other outcome/);
   assert.equal(calls.filter(call => call.name === 'workspaces').length, 0);
-  assert.equal(calls.filter(call => call.name === 'workspace_counts').length, 1);
-  assert.deepEqual(calls.find(call => call.name === 'workspace_counts').args.workspace_ids, ['w1', 'w2']);
+  const projected = calls.find(call => call.name === 'changes' && Array.isArray(call.args.windows));
+  assert.equal(calls.filter(call => call.name === 'workspace_counts').length, projected ? 0 : 1);
+  if (projected) {
+    assert.equal(projected.args.project, true, 'counts share the scoped changes snapshot');
+    assert.deepEqual(projected.args.windows.filter(window => window.scope.kind === 'workspace').map(window => window.scope.id), ['w1', 'w2']);
+  } else assert.deepEqual(calls.find(call => call.name === 'workspace_counts').args.workspace_ids, ['w1', 'w2']);
 });
 
 test('933 counts failure retains the scoped window; retry and a mark clear the count without a list read', async () => {
@@ -8737,4 +8780,41 @@ test('1135 an actual app health read that finishes after navigation cannot paint
   const task = f.runObservation('healthLight.load()'); f.runObservation('retired = new Map()');
   gate.resolve({ instance_id: 'fixture', red: [], commit_seq: 11, release: { phase: 'starting', number: 364, commit: 'b'.repeat(40), started_ms: 1000 } });
   await task; await drain(); assert.equal(walk(f.get('body')).filter(n => n.className === 'release-toast').length, 0);
+});
+
+//1139's release producer is still unimplemented.1135 retains its optional
+// initial/reconnect observation and an explicit door for a future selective hint.
+test('1135 optional release is observed initially or on reconnect; the selective door preserves writing', async () => {
+  const f = fixture(), live = { ...stream(), state: 'live', connected: true }, base = f.api.view, reads = [];
+  let seq = 10, release;
+  f.useLive(live);
+  f.api.view = async (name, args, options) => {
+    if (name !== 'health_light') return base(name, args, options);
+    reads.push({ args, options });
+    return { instance_id: 'fixture', red: [], commit_seq: seq, ...(release ? { release } : {}) };
+  };
+  await f.initialize(); await drain();
+  const notices = () => walk(f.get('body')).filter(node => node.className === 'release-toast');
+  assert.equal(reads.length, 1, 'the initial shared health read permits an absent release');
+  assert.equal(notices().length, 0, 'an absent optional release invents no notification');
+  const scoped = f.runObservation('typeof PageRefresh === "function"');
+  const before = reads.length;
+  seq++;
+  live.emit({ kind: 'commit', seq, health: { seq, red: [] } }); await drain();
+  assert.equal(reads.length - before, scoped ? 0 : 1, '1229 retires only the per-commit1135 read;427 keeps its original read');
+  release = { phase: 'starting', number: 364, commit: 'b'.repeat(40), started_ms: 1000 }; seq++;
+  live.emit({ kind: 'state', state: 'live', seq, health: { seq, red: [] } }); await drain();
+  assert.equal(notices().length, 1, 'reconnect still observes the optional release');
+  assert.equal(notices()[0].children[0].textContent, 'Release 364 is starting');
+  const writing = f.get('inline-body'); writing.value = 'unsent at the selective release door'; writing.focus();
+  release = { ...release, phase: 'live', live_ms: 2000 }; seq++;
+  if (scoped) {
+    assert.equal(f.runObservation('typeof healthLight.releaseChanged'), 'function', 'the real owner exports its selective door');
+    await f.runObservation('healthLight.releaseChanged()');
+  } else await f.runObservation('healthLight.load()'); //427 has the shared read, before the selective door existed.
+  await drain();
+  assert.equal(notices()[0].children[0].textContent, 'Release 364 is live');
+  assert.equal(writing.value, 'unsent at the selective release door');
+  assert.equal(f.document.activeElement, writing);
+  assert.ok(reads.every(read => read.options.readClass === 'background'));
 });

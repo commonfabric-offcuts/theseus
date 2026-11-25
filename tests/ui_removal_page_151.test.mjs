@@ -2,7 +2,7 @@
 // These checks do not execute app.mjs's startup or its generic integration file.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { renderer799 } from './fixtures/renderer799.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 import { DossierHeads } from '../web/stack-order.mjs';
@@ -16,6 +16,10 @@ import { removalItem, paintRemoval, readRemoval, Removals } from '../web/message
 import { questionOf, questionPill, Resolutions } from '../web/question-state.mjs';
 import { replyLine, paintReplyLine } from '../web/replies.mjs';
 import { Freshness, checkedView, bindingOf } from '../web/freshness.mjs';
+// 427 predates this owner. On the candidate, extract enableFreshness with its
+// actual imports, not a substitute PageRefresh or copied product function.
+const pageWindow = existsSync(new URL('../web/page-refresh.mjs', import.meta.url))
+  ? await import('../web/page-refresh.mjs') : {};
 
 const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../web/stack-look.css', import.meta.url), 'utf8');
@@ -273,6 +277,11 @@ function freshnessFixture(t, sourceRead, { denyTopic = false } = {}) {
   const cursor = () => ({ v: 1, kind: 'checkpoint', ...bindingOf(identity), scope: { kind: 'topic', id: 'topic' }, after_seq: 0 });
   const api = { view: async (name, args) => {
     calls.push([name, structuredClone(args)]); assert.ok(calls.length < 25, 'SETUP: finite in-memory view budget');
+    if (name === 'changes' && Array.isArray(args.windows)) return { instance_id: identity.instance_id,
+      windows: args.windows.map(({ scope, cursor }) => ({ instance_id: identity.instance_id, scope,
+        baseline: !cursor, items: [], has_more: false, continuation: null,
+        checkpoint: { v: 1, kind: 'checkpoint', ...bindingOf(identity), scope, after_seq: cursor?.after_seq ?? 0 },
+        covered_versions: scope.kind === 'actor' ? {} : scope.kind === 'workspace' ? { workspace: 1, notebook: 0 } : { topic: 1, notebook: 0 } })), topics: [], counts: [] };
     if (name === 'changes') return { instance_id: identity.instance_id, scope: args.scope, baseline: false,
       items: [], has_more: false, continuation: null, checkpoint: cursor(), covered_versions: { topic: 1, notebook: 0 } };
     if (name === 'topic') {
@@ -283,7 +292,11 @@ function freshnessFixture(t, sourceRead, { denyTopic = false } = {}) {
     return sourceRead();
   } };
   const base = cardEnvironment(t, { views, registry, doc });
-  const env = { ...base.env, api, topic: { id: 'topic' }, freshness: null,
+  let pageRefresh;
+  const env = { ...base.env, ...pageWindow, retired: false, api, topic: { id: 'topic' }, freshness: null,
+    PageRefresh: pageWindow.PageRefresh && class extends pageWindow.PageRefresh {
+      constructor(options) { super({ ...options, timers: clock }); pageRefresh = this; }
+    },
     Freshness: class extends Freshness { constructor(options) { super({ ...options, timers: clock, random: () => 0, yieldRead: async () => {} }); f = this; } },
     checkedView, bindingOf, readRemoval, updateStatus: state => states.push(state), live: null,
     document: Object.assign(doc, { visibilityState: 'hidden', addEventListener() {} }), window: { addEventListener() {} },
@@ -299,6 +312,7 @@ function freshnessFixture(t, sourceRead, { denyTopic = false } = {}) {
   f.dirty.clear(); // Ignore unrelated initial Starred discovery; these reads own only the named invalidations.
   f.visible = true;
   t.after(() => f.dispose());
+  t.after(() => pageRefresh?.dispose());
   return { f, owner, states, calls, views, writing, registry, clock, parked: () => parked };
 }
 async function withdrawnDenied(t, thrown) {
