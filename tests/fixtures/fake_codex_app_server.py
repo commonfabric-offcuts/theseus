@@ -12,7 +12,7 @@ deliveries its turns were given.
 Everything lives under CODEX_HOME, which a test owns:
   fake-script.json  {"version", "signed_in", "turns": [behaviour, ...]}
   fake-state.json   threads, their turns and replies; survives restarts
-  fake-wire.jsonl   every line in and out, each CLI exit, and each spawn
+  fake-wire.jsonl   every line in and out, each CLI argv/output/exit, and each spawn
 
 The script may also set:
   deaf                 turn/interrupt is answered but the turn goes on
@@ -35,8 +35,9 @@ The script may also set:
 
 A turn behaviour (consumed in order across restarts) may hold:
   reply      text posted in each topic ("{history}" is this thread's previous reply)
-  reply_to_delivery  reply to the named delivery message through the current
-             quoted-reply CLI contract instead of starting a new dossier
+  reply_to_delivery  defaults true: reply to the named delivery message through
+             the current quoted-reply CLI contract. False deliberately exercises
+             the legacy root-post refusal; its complete CLI receipt is retained.
   commands   how many non-CLI commandExecution items to report first
   hold       "steer": stay active until one steer arrives; "die": SIGKILL itself
              once the turn's input is seen; "interrupt": stay active until interrupted;
@@ -446,17 +447,19 @@ class Fake:
             return
         self.finish(thread_id, "failed" if behaviour.get("fail") else "completed")
 
-    def command(self, thread_id, turn, command):
+    def command(self, thread_id, turn, command, exit_code=0):
         self.notify("item/completed", {"threadId": thread_id, "turnId": turn["id"], "completedAtMs": 0, "item": {
             "type": "commandExecution", "id": "item-" + uuid.uuid4().hex, "command": command, "commandActions": [],
-            "cwd": self.state["threads"][thread_id]["cwd"], "status": "completed", "exitCode": 0}})
+            "cwd": self.state["threads"][thread_id]["cwd"], "status": "completed", "exitCode": exit_code}})
 
     def cli(self, thread_id, turn, args, text=None):
         argv = self.loaded[thread_id] + args
         done = subprocess.run(argv, input=text, capture_output=True, text=True,
                               env={"PATH": "/usr/bin:/bin", "HOME": os.environ.get("HOME", "/")})
-        self.wire({"cli": args[0], "code": done.returncode})
-        self.command(thread_id, turn, " ".join(argv))
+        self.wire({"cli": args[0], "args": args, "code": done.returncode,
+                   "stdout": done.stdout, "stderr": done.stderr})
+        self.command(thread_id, turn, " ".join(argv), exit_code=done.returncode)
+        return done
 
     def finish(self, thread_id, status):
         turn = self.active.pop(thread_id)
@@ -475,7 +478,7 @@ class Fake:
                     topics.append(item["topic"])
             reply = behaviour.get("reply", "ok").format(history=(record["history"] or [""])[-1])
             for topic in topics:
-                if behaviour.get('reply_to_delivery'):
+                if behaviour.get('reply_to_delivery', True):
                     message = next(item['message'] for item in turn['deliveries'] if item['topic'] == topic)
                     self.cli(thread_id, turn, ['reply', message, '--tells', 'lead', '--without-quote',
                                               'Scripted scratch deploy fixture tests execution.', '-'], reply)

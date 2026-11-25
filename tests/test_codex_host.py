@@ -24,7 +24,7 @@ import unittest
 from unittest import mock
 
 from aim_next import Store, initialize
-from aim_next import broker_routes, codex_host
+from aim_next import broker_routes, codex_host, reply_passages
 from aim_next.health import FAILING_AFTER, WHY, why_words
 from aim_next.profile import write_profile
 
@@ -211,7 +211,22 @@ class HostCase(unittest.TestCase):
         return self.sql("SELECT id FROM deliveries WHERE recipient_id=? AND state='pending' ORDER BY seq", (AGENT,))
 
     def replies(self):
-        return [row[0] for row in self.sql("SELECT body FROM messages WHERE author_id=? ORDER BY seq", (AGENT,))]
+        # Observe the scripted payload separately from Core's required prefix,
+        # but first prove that the real CLI committed an actual dossier reply.
+        replies = []
+        for body, parent, parent_topic, topic, outcome in self.sql(
+                "SELECT m.body,m.reply_to,p.topic_id,m.topic_id,o.outcome FROM messages m "
+                "LEFT JOIN messages p ON p.id=m.reply_to "
+                "JOIN operations o ON o.actor_id=m.author_id AND o.id=m.operation_id "
+                "WHERE m.author_id=? ORDER BY m.seq", (AGENT,)):
+            basis = json.loads(outcome)["result"].get("reply_basis")
+            self.assertIsNotNone(basis, (body, parent))
+            self.assertEqual(basis["source"]["id"], parent)
+            self.assertEqual(parent_topic, topic)
+            beginning = reply_passages.prefix(basis)
+            self.assertTrue(body.startswith(beginning), body)
+            replies.append(body[len(beginning):])
+        return replies
 
     def turns_rows(self):
         db = sqlite3.connect(str(self.db))
@@ -306,7 +321,7 @@ class HostedProofCase(HostCase):
         self.assertEqual({row["thread_id"] for row in rows}, {self.thread})
         self.assertTrue(all(row["seen_ms"] is not None and row["final_status"] == "completed" for row in rows), rows)
         self.assertEqual([row["client_id"] for row in rows], ["theseus:" + row["attempt_id"] for row in rows])
-        # Usage once, on the start row: tokens from the turn and the two CLI calls (post, ack), not the grep.
+        # Usage once, on the start row: tokens from the turn and the two CLI calls (reply, ack), not the grep.
         self.assertEqual((rows[0]["input_tokens"], rows[0]["cached_input_tokens"], rows[0]["output_tokens"],
                           rows[0]["reasoning_output_tokens"], rows[0]["cli_calls"]), (100, 20, 10, 5, 2))
         self.assertEqual((rows[1]["input_tokens"], rows[1]["cli_calls"]), (None, None))
@@ -1102,13 +1117,17 @@ class ActedThenClosedCase(HostCase):
 
     def test_a_turn_the_agent_acted_in_ending_after_an_outage_began_clears_none_of_it(self):
         runner = self.runner()
-        self.open_topic("First request")
+        opening = self.open_topic("First request")
         runner.event("host_dispatch", outcome="handed", mode="start")
         self.serial += 1
         receipt = self.store.command(AGENT, {"v": 1, "instance_id": INSTANCE, "operation_id": "op-agent-%d" % self.serial,
-                                             "kind": "message.post", "target": {"topic_id": "t1"}, "args": {"body": "On it"},
+                                             "kind": "message.post", "target": {"topic_id": "t1"},
+                                             "args": {"body": "On it", "reply_to": opening["message_id"],
+                                                      "reply_without_quote": "Synthetic outage-order fixture act."},
                                              "expected": {"authority": dict(self.pin)}})
         self.assertEqual(receipt["status"], "committed", receipt)
+        self.assertEqual(self.sql("SELECT reply_to FROM messages WHERE id=?", (receipt["result"]["message_id"],)),
+                         [(opening["message_id"],)])
         for number in range(FAILING_AFTER):
             self.post("Follow-up %d" % number)
             self.assertEqual(runner.event("host_dispatch", outcome="unavailable")["reason"], "resume_failed")
