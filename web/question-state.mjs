@@ -1,6 +1,4 @@
 // Core owns the question. Terminal facts survive older cover/source reads.
-import { linkNode } from './links.mjs';
-import { timeNode } from './times.mjs';
 
 export const terminalQuestion = value => ['resolved', 'superseded', 'withdrawn'].includes(value?.state);
 export class QuestionStates {
@@ -29,23 +27,18 @@ export const configureQuestionStates = value => { states = value; };
 export const questionOf = item => states ? states.of(item) : item?.removal ? null : item?.question;
 export const currentQuestionCover = cover => states?.cover(cover) ?? cover;
 
+// Only current waiting/action presentation is drawn; terminal facts still
+// flow through questionOf for eligibility, stale-read and closure handling.
 export function questionPill(doc, item, { nameOf = id => id, resolve = null, busy = false } = {}) {
   const question = questionOf(item);
-  if (!question || question.archived || question.state === 'withdrawn' || question.state === 'answered') return null;
-  const node = doc.createElement(question.state === 'waiting' && question.may_resolve && resolve ? 'button' : 'span');
-  node.className = 'question-state';
-  if (question.state === 'waiting') {
-    node.className += ' row-pill pill-waits';
-    node.textContent = `Waiting on ${question.waiting_on.map(nameOf).join(', ')}`;
-    if (question.may_resolve && resolve) {
-      node.type = 'button'; node.disabled = busy;
-      node.title = 'Mark this question resolved'; node.setAttribute('aria-label', `${node.textContent}. Mark resolved`);
-      node.onclick = () => resolve(item.id ?? item.source_ref.id);
-    }
-  } else if (question.state === 'resolved') {
-    node.append(`Resolved · by ${nameOf(question.by)} · `, timeNode(question.at_ms, doc));
-  } else if (question.state === 'superseded') {
-    node.append(linkNode(doc, 'Superseded by a later question', { route: { kind: 'topic', id: item.topic_id, message: question.superseded_by }, written: true }));
+  if (!question || question.archived || question.state !== 'waiting') return null;
+  const node = doc.createElement(question.may_resolve && resolve ? 'button' : 'span');
+  node.className = 'question-state row-pill pill-waits';
+  node.textContent = `Waiting on ${question.waiting_on.map(nameOf).join(', ')}`;
+  if (question.may_resolve && resolve) {
+    node.type = 'button'; node.disabled = busy;
+    node.title = 'Mark this question resolved'; node.setAttribute('aria-label', `${node.textContent}. Mark resolved`);
+    node.onclick = () => resolve(item.id ?? item.source_ref.id);
   }
   return node;
 }

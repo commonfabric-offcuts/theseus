@@ -435,7 +435,9 @@ test('continuation and locked saved-image copies stay recoverable without gating
   await assert.rejects(f.registry.waiveUnreadable(f.editor, f.editor.imageCopies.get('locked')), /recover|resolve/i);
 });
 
-test('correcting exact A reuses its media while B keeps its own cycle and image', async t => {
+for (const restored of [false, true]) test(restored
+  ? 'correcting unchanged restored A consumes its visible words and image once'
+  : 'correcting exact A reuses its media while B keeps its own cycle and image', async t => {
   const f = await fixture(t); f.editor.edit({ body: 'A with an image' });
   const idA = await f.u.add(f.image); await f.registry.flush(f.editor);
   const current = f.editor.draft;
@@ -443,16 +445,28 @@ test('correcting exact A reuses its media while B keeps its own cycle and image'
     { source_ref: f.editor.sourceRef, topic_id: f.editor.context.topicId, generation: current.generation, body: 'Remote competing private text', attachments: current.attachments }));
   assert.equal(changed.status, 'committed');
   const a = await f.registry.send(f.editor, { stay: true }); assert.equal(a.status, 'refused');
-  f.editor.edit({ body: 'B remains private' }); const idB = await f.u.add(f.image), cycleB = f.editor.clientCycleId;
+  assert.equal(f.editor.draft.body, 'A with an image');
+  assert.deepEqual(f.editor.draft.attachments, a.snapshot.attachments, '1233 restores the refused image with its writing');
+  // The person starts a distinct B, explicitly removing the restored A image.
+  // Merely replacing words keeps a visible selected image in the same writing.
+  const restoredA = f.u.current().find(entry => entry.retained_ref?.id === a.snapshot.attachments[0].id);
+  assert.ok(restoredA);
+  let idB;
+  if (!restored) {
+    await f.u.remove(restoredA.selection_id);
+    f.editor.edit({ body: 'B remains private' }); idB = await f.u.add(f.image);
+  }
+  const cycleB = f.editor.clientCycleId;
   const bytePuts = f.puts.filter(p => p.bytes).length;
   const remote = (await f.api.view('editor_state', { source_ref: f.editor.sourceRef, topic_id: f.editor.context.topicId })).draft;
   const corrected = await f.session.correctPreparation(a, remote, f.editor.localVersion, { stay: true });
   assert.equal(corrected.status, 'confirmed');
   const sent = await f.api.view('source', { kind: 'message', id: corrected.receipt.result.message_id });
   assert.equal(sent.body, 'A with an image'); assert.deepEqual(sent.attachments.map(x => x.id), [f.u.find(idA).ready_descriptor.media_id]);
-  assert.equal(f.editor.draft.body, 'B remains private'); assert.equal(f.editor.clientCycleId, cycleB);
-  assert.deepEqual(f.editor.draft.attachments, [{ id: f.u.find(idB).ready_descriptor.media_id }]);
-  assert.equal((await f.control({ method: 'counts' })).media, 2); assert.equal(f.puts.filter(p => p.bytes).length, bytePuts);
+  assert.equal(f.editor.draft.body, restored ? '' : 'B remains private'); assert.equal(f.editor.clientCycleId, cycleB);
+  assert.deepEqual(f.editor.draft.attachments, restored ? [] : [{ id: f.u.find(idB).ready_descriptor.media_id }]);
+  if (restored) assert.equal(f.u.current().length, 0, 'the submitted restored image is not left selected for a second message');
+  assert.equal((await f.control({ method: 'counts' })).media, restored ? 1 : 2); assert.equal(f.puts.filter(p => p.bytes).length, bytePuts);
 });
 
 test('private runtime recovery requires explicit image removal and creates a new cycle', async t => {
