@@ -95,7 +95,7 @@ test('one topic appearing twice shares a single stars or memory_stars request pe
   for(const pages of [false,true]) {
     let count=0;const parent=()=>({dataset:{topicId:'t'},getClientRects:()=>[{}],closest:()=>null});
     const f=Object.create(OutlineDossiers.prototype);f.pageStars=pages;f.outline={list:{querySelectorAll:()=>[parent(),parent()]}};
-    f.sync=()=>{};f.states=new Map([['t',{id:'t'}]]);f.load=async()=>{count++;return true;};
+    f.sync=()=>f.parents();f.states=new Map([['t',{id:'t'}]]);f.load=async()=>{count++;return true;};
     assert.deepEqual(await f.refresh(),[true]);assert.equal(count,1);
     count=0;await f.refresh(null,new Set(['other']));assert.equal(count,0,'unaffected topic must not be read');
   }
@@ -133,7 +133,7 @@ test('shared retained star owners publish the same authorized projection once pe
     const calls=[],f=Object.create(OutlineDossiers.prototype),parent=()=>({dataset:{topicId:'t'},getClientRects:()=>[{}],closest:()=>null});
     const items=pages?[{topic_id:'t',item_id:'n',star:9,title:'Current page'}]:[{topic_id:'t',star:9,dossier:{id:'m',body:'Current words',unread:2}}];
     const state={id:'t',box:{setAttribute(){}},stars:[],extent:null,next:null,busy:null,loaded:true,visible:true};
-    Object.assign(f,{pageStars:pages,epoch:1,states:new Map([['t',state]]),sync(){},paint(){},outline:{handles:{bootstrap},list:{querySelectorAll:()=>[parent(),parent()]},
+    Object.assign(f,{pageStars:pages,epoch:1,states:new Map([['t',state]]),sync(){return this.parents();},paint(){},outline:{handles:{bootstrap},list:{querySelectorAll:()=>[parent(),parent()]},
       read:async(name,args,lane)=>{calls.push({name,args,lane});return {instance_id:'fixture',items:structuredClone(items),next_cursor:null};}}});
     assert.deepEqual(await f.refresh(),[true]);assert.deepEqual(state.stars,items);
     assert.deepEqual(calls,[{name:pages?'memory_stars':'stars',args:{topic_id:'t',limit:50},lane:'foreground'}]);

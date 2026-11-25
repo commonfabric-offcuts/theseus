@@ -11,10 +11,10 @@ function fixture(t, options = {}) {
   f.outcome.fold.dispose();
   f.doc.defaultView.matchMedia = query => ({ matches: query.includes('hover') ? !options.phone : Boolean(options.phone) });
   const listen = target => (type, fn, capture) => {
-    assert.equal(capture, true); captures.set(type, fn); captureTargets.set(type, target);
+    assert.equal(capture, type === 'resize' ? undefined : true); captures.set(type, fn); captureTargets.set(type, target);
   };
   const unlisten = (type, fn, capture) => {
-    assert.equal(capture, true); if (captures.get(type) === fn) captures.delete(type);
+    assert.equal(capture, type === 'resize' ? undefined : true); if (captures.get(type) === fn) captures.delete(type);
   };
   f.doc.addEventListener = listen('document'); f.doc.removeEventListener = unlisten;
   f.doc.defaultView.addEventListener = listen('window'); f.doc.defaultView.removeEventListener = unlisten;
