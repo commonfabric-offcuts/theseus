@@ -1082,6 +1082,7 @@ export class Reader {
   }
 
   paintStatus() {
+    if (this.editor?.restoredVersion === this.editor?.localVersion && this.field?.value !== this.editor?.draft.body) this.drawEditor();
     if (!this.editor) return;
     const editor = this.editor;
     const state = writingState(editor, { active: this.admits(editor), writable: this.writes(editor), note: this.mode === 'note', status: this.callbacks.status, sign: this.callbacks.sign });

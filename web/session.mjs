@@ -90,6 +90,7 @@ export class EditorSession {
     this.attempts = copy(snapshot?.attempts ?? []);
     this.queue = Promise.resolve();
     this.sends = new Map();
+    this.preparingSends = new Set();
   }
 
   get recovery() { return this.editor.authorityRecovery; }
@@ -158,6 +159,12 @@ export class EditorSession {
       activeAuthority: copy(this.authority), authorityRecovery: copy(this.recovery) };
   }
 
+  notify() {
+    if (!this.sends.size) { this.changed(this.editor); return; }
+    if (this.noticeTimer !== undefined) return;
+    this.noticeTimer = setTimeout(() => { this.noticeTimer = undefined; this.changed(this.editor); }, 0);
+  }
+
   async persist() {
     const snapshot = this.snapshot(), meaningful = meaningfulSnapshot(snapshot);
     const sameAuthority = () => same(authorityPair(this.authority), authorityPair(this.runtime.current));
@@ -173,7 +180,7 @@ export class EditorSession {
     } catch (error) {
       this.editor.journalError = error.message;
       throw error;
-    } finally { this.changed(this.editor); }
+    } finally { if (!this.preparingSends.size) this.notify(); }
   }
 
   envelope(kind, operationId, target, expected, args, authority = this.authority) {
@@ -361,6 +368,13 @@ export class EditorSession {
     }
     entry.receipt = copy(receipt);
     entry.error = null;
+    if (receipt.status === 'rejected' && !entry.ticket) {
+      const item = this.editor.submissions.find(item => item.id === entry.submissionId);
+      if (item && this.editor.restoreRefused(item)) {
+        this.uploads?.importRetained();
+        this.uploads?.validateRetained().catch(() => {});
+      }
+    }
     await this.persist();
     // Reconciliation can confirm publication after the original Send ended
     // without its answer. Tell its surface only after keeping that exact fact.
@@ -476,7 +490,11 @@ export class EditorSession {
 
   start(item, options, resume = false) {
     // Freeze at the person's act, before any queued save or network wait.
-    const preparing = this.enqueue(() => this.prepare(item, resume));
+    this.preparingSends.add(item.id);
+    const preparing = this.enqueue(async () => {
+      try { return await this.prepare(item, resume); }
+      finally { this.preparingSends.delete(item.id); }
+    });
     return this.track(item.id, preparing.then(async ready => {
       if (!ready || item.detached) return item;
       // prepare() persisted the successor and A before this navigation hook.
@@ -520,6 +538,15 @@ export class EditorSession {
     if (prior) await this.dispatch(prior);
     if (this.unsettledSave()) return this.block(item, this.unsettledSave());
     if (item.saveConflict) return this.block(item, null, item.saveConflict);
+    // A click can make Tell/whisper defaults explicit without changing what
+    // Core would publish. Credit only the exact committed slot/revision and
+    // effective writing; a genuinely later edit still requires its own save.
+    const saved = [...this.attempts].reverse().find(entry => entry.ticket && !entry.detached &&
+      entry.receipt?.status === 'committed' && entry.ticket.draft.id === item.snapshot.id &&
+      entry.ticket.draft.generation === item.snapshot.generation &&
+      entry.receipt.result?.draft_revision === item.snapshot.revision &&
+      same(entry.ticket.sourceRef, item.sourceRef) && same(sharedWriting(entry.ticket.draft), sharedWriting(item.snapshot)));
+    if (saved) item.savedVersion = item.localVersion;
     if (item.savedVersion < item.localVersion || !item.snapshot.revision) {
       const ticket = { operationId: this.id(), key: this.editor.key, localVersion: item.localVersion,
         draft: copy(item.snapshot), sourceRef: copy(item.sourceRef) };
