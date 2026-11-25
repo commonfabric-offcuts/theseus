@@ -1621,10 +1621,13 @@ function topicWindowOptions() {
   const held = anchorHold?.anchor?.closest?.('[data-id]')?.dataset.id;
   if (held) pins.add(held);
   for (const session of registry?.sessions.values() ?? []) for (const submission of session.editor.submissions) {
-    if (!pendingSendCard(submission.id)) continue;
+    const pending = pendingSendCard(submission.id);
+    if (!pending) continue;
     // A local reply can sit inside its parent's dossier. Retiring that
     // placement would disconnect its independent writing/image owner.
     if (submission.snapshot?.reply_to) pins.add(submission.snapshot.reply_to);
+    const sectionHead = pending.closest?.('.reply-stack')?.dataset.stack;
+    if (sectionHead) pins.add(sectionHead);
     if (submission.status === 'confirmed') pins.add(submission.receipt.result.message_id);
   }
   return { pins, budget: Math.max(0, 300 - external.size), anchor: held ?? listActAnchor?.id ?? visible[0] ?? null };

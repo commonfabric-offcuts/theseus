@@ -166,3 +166,51 @@ test('865 separate singleton dossiers keep each sender named through New-line mo
     assert.equal(f.list.querySelectorAll('[data-line=new]').length, next === null ? 0 : 1);
   }
 });
+
+test('1266 a missing dossier head preserves reply attribution and the next dossier boundary', () => {
+  for (const only of [false, true]) {
+    const f = fixture([['gone', 'person'], ['b', 'person'], ['c', 'person'], ['d', 'person']]);
+    const section = f.doc.createElement('section'), replies = f.doc.createElement('div');
+    section.className = 'reply-stack'; section.dataset.headOpen = 'true'; replies.className = 'stack-replies';
+    replies.append(f.cards.get('b'), f.cards.get('c')); section.append(replies);
+    f.cards.get('gone').remove(); f.messages.delete('gone'); f.list.insertBefore(section, f.cards.get('d'));
+    f.state.only = only ? () => true : null;
+    subject.reviewPaintNames(f.list, f.messages, f.state);
+    assert.deepEqual(f.names().slice(1), ['person', '', 'person']);
+  }
+});
+
+test('1266 retirement keeps section cleanup owned until retained replies move during actual arrange', () => {
+  const f = fixture([['a', 'person'], ['b', 'person'], ['c', 'person'], ['d', 'other']]); f.list.root = true;
+  for (const [n, row] of [...f.messages.values()].entries()) { row.seq = n + 1; f.cards.get(row.id).dataset.seq = String(row.seq); }
+  f.messages.get('b').reply_to = 'a'; f.messages.get('c').reply_to = 'a';
+  for (const id of ['b', 'c']) f.messages.get(id).stack_position = { root_id: 'a', at: { acts: 0 } };
+  const state = subject.stackState(f.list), arrange = () => subject.arrangeStacks(f.list, f.messages, { doc: f.doc,
+    on: { arranged: () => subject.reviewPaintNames(f.list, f.messages, state) } });
+  arrange(); const old = state.sections.get('a'), b = f.cards.get('b'); b.focus();
+  f.messages.delete('a'); f.cards.get('a').remove();
+  subject.forgetStackMessages(f.list, new Set(f.messages.keys()));
+  arrange();
+  assert.equal(old.isConnected, false, 'obsolete section remains owned until arrange removes it');
+  assert.equal(state.sections.has('a'), false); assert.equal(b.isConnected, true); assert.equal(f.doc.activeElement, b);
+  assert.equal(f.list.querySelectorAll('.reply-stack').length, state.sections.size);
+  assert.deepEqual(f.names().slice(1), ['person', '', 'other']);
+});
+
+test('1266 repeated whole-dossier retirement leaves no orphaned sections or headless callbacks', () => {
+  const f = fixture([['a', 'person'], ['b', 'person']]); f.list.root = true;
+  const state = subject.stackState(f.list), arrange = () => subject.arrangeStacks(f.list, f.messages, { doc: f.doc,
+    on: { arranged: () => subject.reviewPaintNames(f.list, f.messages, state) } });
+  arrange(); const old = [...state.sections.values()];
+  for (const card of f.cards.values()) card.remove(); f.messages.clear();
+  subject.forgetStackMessages(f.list, new Set()); arrange();
+  assert.equal(f.list.querySelectorAll('.reply-stack').length, 0); assert.equal(state.sections.size, 0);
+  assert.ok(old.every(section => !section.isConnected));
+  for (let n = 0; n < 25; n++) {
+    const card = f.doc.createElement('article'), id = 'new-' + n; card.dataset.id = id; card.dataset.seq = String(n + 10);
+    f.list.append(card); f.messages.set(id, { id, seq: n + 10, author_id: 'person', body: 'Current' }); arrange();
+    assert.equal(state.sections.size, 1); assert.equal(f.list.querySelectorAll('.reply-stack').length, 1);
+    card.remove(); f.messages.clear(); subject.forgetStackMessages(f.list, new Set()); arrange();
+    assert.equal(state.sections.size, 0); assert.equal(f.list.querySelectorAll('.reply-stack').length, 0);
+  }
+});
