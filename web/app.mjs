@@ -1,4 +1,4 @@
-import { paintPendingSends, pendingSendVisual, adoptPendingSend, reconcilePlacedSend, clearPendingSends, keepPendingSendPlace } from './pending-sends.mjs';
+import { paintPendingSends, pendingSendVisual, pendingSendReplyTo, adoptPendingSend, reconcilePlacedSend, clearPendingSends, keepPendingSendPlace } from './pending-sends.mjs';
 import { paintCardWords, cardWordOptions } from './message-card-content.mjs';
 import { MessageChanges } from './message-changes.mjs';
 import { OlderFeed } from './older-feed.mjs';
@@ -493,7 +493,7 @@ function paintSubmittedWriting() {
     topicId: topic.id,
     current: () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending(),
     visual: (editor, item) => pendingSendVisual(editor, item, { authorKind: bootstrap.actor_kind,
-      parent: item.snapshot.reply_to ? feedMessages().get(item.snapshot.reply_to) : null }),
+      parent: pendingSendReplyTo(item) ? feedMessages().get(pendingSendReplyTo(item)) : null }),
     nameOf: displayActor, displayRules: displayRules(), end: $('new-message-sheet'),
     readImage: (editor, item, attachment) => registry.sessionFor(editor).uploads.previewSubmission(item, attachment),
     underway: (editor, item) => registry.sessionFor(editor).underWay(item.id),
