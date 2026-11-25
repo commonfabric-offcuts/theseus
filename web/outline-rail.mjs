@@ -57,6 +57,7 @@ import { OutlineDossiers } from './outline-dossiers.mjs';
 import { glyph } from './glyphs.mjs';
 import { RailDimming } from './rail-dimming.mjs';
 import { RailTopicFold } from './rail-topic-fold.mjs';
+import { SidebarChanges, mergeSidebarDirty } from './sidebar-refresh.mjs';
 
 const count = value => Number.isSafeInteger(value) && value > 0 ? value : 0;
 // The questions waiting on the reader in one outcome, as its light counts them.
@@ -178,7 +179,7 @@ export class OutlineRail {
     this.pages = null; this.opened = new Opened(); this.failed = false; this.listRead = false; this.run = 0; this.watch = null; this.watched = null;
     let pending = new Set(), full = false, result = true;
     const reload = reloader(async () => { const dirty = full ? null : pending; full = false; pending = new Set(); result = await this.load(dirty); });
-    this.reload = (dirty = null) => { if (dirty) for (const key of dirty) pending.add(key); else full = true; return reload().then(() => result); };
+    this.reload = (dirty = null) => { if (dirty) mergeSidebarDirty(pending, dirty); else full = true; return reload().then(() => result); };
     this.build();
     this.phoneMedia = doc.defaultView.matchMedia('(max-width: 760px)');
     this.phoneMedia.addEventListener?.('change', () => this.paint());
@@ -279,21 +280,74 @@ export class OutlineRail {
     if (this.here && this.phone) this.opened.set(this.here, true);
     else this.opened.read();
     this.unlisten?.();
+    const run = this.run, current = () => this.handles === handles && this.run === run;
+    this.sidebarChanges = handles.outcomeChanges ? null : new SidebarChanges({ bootstrap, current,
+      read: (name, args, readClass) => handles.view(name, args, readClass), context: () => this.changeContext(), outcomesKey: this.outcomesKey });
+    let full = true;
+    const changed = reloader(async () => {
+      const force = full; full = false;
+      try {
+        const batch = await this.sidebarChanges.next();
+        if (!current()) return true;
+        const dirty = force ? null : batch.dirty;
+        const okay = dirty && !dirty.size ? true : await this.reload(dirty);
+        if (okay !== false) {
+          batch.accept();
+          // Initial projection reads can reveal more authorized scopes. Warm
+          // those at opening, before a first unrelated send has to do it.
+          if (this.sidebarChanges.hasNewScopes()) changed();
+        } else full ||= force;
+        return okay;
+      } catch {
+        if (!current()) return true;
+        full = true;
+        return this.reload();
+      }
+    });
     this.unlisten = handles.outcomeChanges ? handles.outcomeChanges.listen(dirty => this.reload(dirty))
       : handles.live?.listen(event => {
         if (typeof event.outcomes === 'string') this.outcomesKey = event.outcomes;
+        this.sidebarChanges.observe(event);
         if (this.doc.visibilityState !== 'visible') return;
-        if (event.state === 'live') this.reload();
-        else if (event.kind === 'commit') {
-          const dirty = new Set(['topics', 'stars', 'pages', 'counts']);
-          if (this.outcomesKey === null || this.outcomesKey !== this.readOutcomesKey) dirty.add('outcomes');
-          this.reload(dirty);
-        }
+        if (!this.sidebarChanges.enabled) {
+          // Older servers lack scoped changes. Preserve their immediate load
+          // and opaque-key list caching, including folded-outcome counts.
+          if (event.state === 'live') this.reload();
+          else if (event.kind === 'commit') {
+            const dirty = new Set(['topics', 'stars', 'pages', 'counts']);
+            if (this.outcomesKey === null || this.outcomesKey !== this.readOutcomesKey) dirty.add('outcomes');
+            this.reload(dirty);
+          }
+        } else if (event.state === 'live') { full = true; changed(); }
+        else if (event.kind === 'commit') changed();
       }) ?? null;
     for (const outcome of this.outcomes.values()) outcome.rail?.updateCurrent(this.currentTopicIn(outcome.id));
     this.doc.getElementById('rail')?.setAttribute('aria-label', 'Outcomes');
     this.paint();
-    if (!handles.outcomeChanges) this.reload();
+    if (!handles.outcomeChanges) { if (this.sidebarChanges.enabled) changed(); else this.reload(); }
+  }
+  // Watch the authorized open workspace lists and only Notebook topics whose
+  // starred pages are displayed. Personal changes cover stars/counts globally.
+  changeContext() {
+    const topics = new Map(), scopes = [], starredTopics = new Set(), pages = new Map();
+    for (const [id, outcome] of this.outcomes) {
+      // Folded outcomes still show live counts. Their workspace keys must be
+      // watched too, while actual topic lists are read only when open.
+      if (this.pages?.loaded.has(id) || this.handles?.route?.kind === 'workspace' && id === this.here) scopes.push({ kind: 'workspace', id });
+      for (const item of outcome.rail?.pages?.items ?? []) topics.set(item.id, id);
+      if (outcome.conversation?.topic_id) topics.set(outcome.conversation.topic_id, id);
+    }
+    const current = this.handles?.currentTopic?.() ?? this.handles?.topic;
+    if (current) {
+      topics.set(current.id, current.workspace_id);
+      if (!this.pages?.loaded.has(current.workspace_id)) scopes.push({ kind: 'topic', id: current.id });
+    }
+    for (const [id, state] of this.dossiers.states) if (state.visible !== false && state.stars.length) starredTopics.add(id);
+    for (const [id, state] of this.notebookStars.states) if (state.visible !== false && state.stars.length) {
+      pages.set(id, new Set(state.stars.map(item => item.item_id)));
+      scopes.push({ kind: 'topic', id });
+    }
+    return { scopes, topics, starredTopics, pages };
   }
   initialize(bootstrap, pageMax = PAGE) {
     if (this.started && this.bootstrap.instance_id === bootstrap.instance_id && this.bootstrap.actor === bootstrap.actor) return;
@@ -337,7 +391,7 @@ export class OutlineRail {
     const wants = key => !dirty || dirty.has(key);
     // Read the current outcome's topics before the global outcome list. Its
     // provisional row is this same outline owner, not a second card list.
-    const first = wants('topics') && handles.route?.kind === 'workspace' ? this.outcomes.get(here) : null;
+    const first = wants('topics') && (!dirty?.topicWorkspaces || dirty.topicWorkspaces.has(here)) && handles.route?.kind === 'workspace' ? this.outcomes.get(here) : null;
     const firstRead = first ? await this.loadTopics(first) : true;
     if (!mine()) return true;
     this.starting = false;
@@ -361,7 +415,7 @@ export class OutlineRail {
     // A directly reached outcome can be readable without being in the
     // person's workspaces list. Its provisional outline row owns its topics too.
     for (const item of this.shownItems()) {
-      if (!wants('topics') || !this.isOpen(item.id) || !shownUnder(this.filter, item)) continue;
+      if (!wants('topics') || dirty?.topicWorkspaces && !dirty.topicWorkspaces.has(item.id) || !this.isOpen(item.id) || !shownUnder(this.filter, item)) continue;
       const outcome = this.outcome(item);
       if (outcome === first) continue;
       reads.push(this.loadTopics(outcome));
@@ -371,8 +425,8 @@ export class OutlineRail {
     this.paint();
     // Share a sync read begun during this pass, but follow any older read
     // (including More/visible-row sync) which may predate the changed window.
-    const stars = [...(wants('topics') || wants('stars') ? await this.dossiers.refresh(starReads) : []),
-      ...(wants('topics') || wants('pages') ? await this.notebookStars.refresh(starReads) : [])];
+    const stars = [...(wants('stars') || !dirty?.sidebar && wants('topics') ? await this.dossiers.refresh(starReads, dirty?.starTopics) : []),
+      ...(wants('pages') || !dirty?.sidebar && wants('topics') ? await this.notebookStars.refresh(starReads, dirty?.pageTopics) : [])];
     return firstRead !== false && settled.every(read => read !== false) && stars.every(Boolean);
   }
   async loadCounts(view, handles, mine) {
