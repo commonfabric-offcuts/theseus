@@ -485,7 +485,9 @@ async function handoffReaderSend(p, editor, item, current, owns) {
 function paintSubmittedWriting() {
   if (!registry || !views || !topic) return;
   const editors = [...registry.sessions.values()].map(session => session.editor);
-  const current = () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending();
+  const sourceViews = views, access = listAccessEpoch, destination = topic;
+  const current = () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending() &&
+    views === sourceViews && listAccessEpoch === access && topic === destination;
   if (current()) for (const editor of editors) for (const item of editor.submissions ?? []) {
     const id = item.status === 'confirmed' ? item.receipt?.result?.message_id : null;
     const canonical = id && messageEntries.get(id), message = id && views.messages.get(id);
@@ -493,7 +495,7 @@ function paintSubmittedWriting() {
       () => reconcilePlacedSend($('messages'), editors, message, canonical, { topicId: topic.id, authority: registry.runtime.current, current }),
       { current, restore: restorePendingSendPlace });
   }
-  paintPendingSends($('messages'), editors, {
+  keepPendingSendPlace($('messages'), () => paintPendingSends($('messages'), editors, {
     topicId: topic.id,
     current: () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending(),
     visual: (editor, item) => pendingSendVisual(editor, item, { authorKind: bootstrap.actor_kind,
@@ -518,7 +520,7 @@ function paintSubmittedWriting() {
         if (source) cardReplies?.open(item.sourceRef.id, source).catch(error => status(error));
       }
     },
-  });
+  }), { current, restore: restorePendingSendPlace });
 }
 const submittedPlacements = new Map();
 function placeSubmittedWriting(editor, item) {
@@ -1303,30 +1305,39 @@ function releaseTopArrivals(absorb = false) {
   }
 }
 function keepListAnchor(paint, act = null, revised = []) {
-  const list = $('messages');
-  if (act) {
-    anchorHold = null;
-    const entry = entries(list).find(node => node.dataset.id === act.id);
-    listActAnchor = entry ? { list, views, id: act.id,
-      title: Boolean(act.anchor?.closest?.('.stack-tools, .stack-head')) || entry.getBoundingClientRect().height === 0,
-      dossier: stackState(list).stacks.find(stack => stack.id === entry.closest('.reply-stack')?.dataset.stack)?.dossier } : null;
-    const captured = actedListCard(listActAnchor);
-    if (captured && inView(captured.node)) listActAnchor.top = captured.node.getBoundingClientRect().top;
-    else listActAnchor = null;
-  }
+  const list = $('messages'), sourceViews = views, access = listAccessEpoch;
+  const paintHeld = () => {
+    if (act) {
+      anchorHold = null;
+      const entry = entries(list).find(node => node.dataset.id === act.id);
+      listActAnchor = entry ? { list, views, id: act.id,
+        title: Boolean(act.anchor?.closest?.('.stack-tools, .stack-head')) || entry.getBoundingClientRect().height === 0,
+        dossier: stackState(list).stacks.find(stack => stack.id === entry.closest('.reply-stack')?.dataset.stack)?.dossier } : null;
+      const captured = actedListCard(listActAnchor);
+      if (captured && inView(captured.node)) listActAnchor.top = captured.node.getBoundingClientRect().top;
+      else listActAnchor = null;
+    }
 
-  // Nested stack arrangements belong to the same repaint and the same hold.
-  if (anchorDepth || anchorActing && !act) return paint();
-  // A new paint starts from the current place, never a previous hold's top.
-  anchorHold = null;
-  const saved = captureListAnchor();
-  anchorDepth++;
-  try { return paint(); }
-  finally {
-    recordListArrivals(saved, revised);
-    if (saved.arrivals?.size) holdTopArrivals(saved);
-    anchorDepth--; restoreListAnchor(saved); rememberListAnchor();
-  }
+    // Nested stack arrangements belong to the same repaint and the same hold.
+    if (anchorDepth || anchorActing && !act) return paint();
+    // A new paint starts from the current place, never a previous hold's top.
+    anchorHold = null;
+    const saved = captureListAnchor();
+    anchorDepth++;
+    try { return paint(); }
+    finally {
+      recordListArrivals(saved, revised);
+      if (saved.arrivals?.size) holdTopArrivals(saved);
+      anchorDepth--; restoreListAnchor(saved); rememberListAnchor();
+    }
+  };
+  // A local submission may be the visible reading owner while it is absent
+  // from canonical selectors. Nested paints and deliberate acts keep theirs.
+  return !act && !anchorDepth && !anchorActing ? keepPendingSendPlace(list, paintHeld, {
+    current: () => Boolean(registry && views && !registry.disposed && !retired && !topicUnavailable &&
+      !authorityReviewPending() && views === sourceViews && listAccessEpoch === access),
+    restore: restorePendingSendPlace,
+  }) : paintHeld();
 }
 function paintNewAbove() {
   const list = $('messages');
