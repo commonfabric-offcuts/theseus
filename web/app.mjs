@@ -1891,9 +1891,20 @@ function paintCardAuthor(author, item) {
   paintRemoval(author, item, document);
   author.parentElement?.classList.toggle('retracted-message', item.removal?.kind === 'retracted');
   const question = questionOf(item);
-  if (['resolved', 'superseded'].includes(question?.state)) {
-    const pill = questionPill(document, item, { nameOf: displayActor });
-    if (pill) author.append(' ', pill);
+  const questionKey = JSON.stringify([question, question?.by ? displayActor(question.by) : null]);
+  const pills = author.querySelectorAll(':scope > .question-state');
+  // paintAuthor may keep its cached line. Retire old labels even when the
+  // current question is hidden, and keep an unchanged successor link focused.
+  if (pills.length !== 1 || pills[0].dataset.question !== questionKey) {
+    for (const pill of pills) pill.remove();
+    if (['resolved', 'superseded'].includes(question?.state)) {
+      const pill = questionPill(document, item, { nameOf: displayActor });
+      if (pill) {
+        pill.dataset.question = questionKey;
+        pill.prepend(' '); // The separator retires with its label.
+        author.append(pill);
+      }
+    }
   }
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
   if (here?.conversation && !item.withdrawal && !item.removal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
