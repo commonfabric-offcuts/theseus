@@ -275,6 +275,10 @@ export class StackFeed {
       return this.pending.has(id) || stack_position !== item.stack_position ? { ...item, acts, stack_position, ...(moving ? { moving } : {}) } : item;
     } };
   }
+  forgetMessages(retained) {
+    for (const id of this.drawn.keys()) if (!retained.has(id)) this.drawn.delete(id);
+    for (const id of this.standIns.keys()) if (!retained.has(id) && !this.pending.has(id)) this.standIns.delete(id);
+  }
   // The places on a dossier's other messages (its position's places, stack-order.mjs heldPlace) as the page holds
   // them. A place act not yet answered on any message of the dossier is the one set last, the last made first, listed
   // or not: the positions read after Let new replies move it list none of the places its ⌘Z puts back, and each shows

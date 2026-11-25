@@ -3,6 +3,7 @@ import { oldestUnreadOf } from './unanswered.mjs';
 import { learnReactions, reactionsOf } from './reactions.mjs';
 import { laterActs, laterPosition } from './stack-order.mjs';
 import { revisionOf } from './message-edit-writing.mjs';
+import { planTopicWindow, boundMap, topicActRanges } from './topic-working-set.mjs';
 // The version of the person's own writing on a message (0 before any, or from an older server), and the marks it shows.
 const yoursVersion = yours => (Number.isSafeInteger(yours?.version) ? yours.version : 0);
 const carried = yours => [yours?.note === true, yours?.reply === true];
@@ -49,8 +50,11 @@ export class TopicViews {
   // reading(what): a read of what shows the cards ('acts', 'reaction:<id>')
   // begins; the function it returns is called once that read has landed, so
   // what was said of an act on a card goes (stack-feed.mjs answered).
-  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {}, actMessages = null, arrived = () => {} }) {
+  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {}, actMessages = null, arrived = () => {}, window = null, evicted = () => {} }) {
     Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds, reading, actMessages, arrived });
+    this.windowOptions = window; this.evicted = evicted; this.windowEpoch = 0;
+    this.windowHints = new Map(); this.windowGaps = []; this.windowRoots = new Set(); this.windowPressure = null;
+    this.windowKnowledge = 0; this.windowReadFloor = 0; this.windowAt = 0;
     this.scope = { kind: 'topic', id: topicId };
     this.membershipRevision = 0; this.movedPointers = [];
     this.messages = new Map(); this.memory = new Map(); this.deletedMemory = new Map(); this.revisions = new RevisionTargets();
@@ -76,7 +80,7 @@ export class TopicViews {
     // What this page read on screen while the line held (held, below): one
     // entry for each range of cards it saw that reaches the line, kept until
     // the reader acts, unless its report is known to have settled nothing.
-    this.sight = new Set();
+    this.sight = new Set(); this.sightHeld = false;
     this.currentItem = null; this.openingItem = null;
     // The message the Reader shows that no loaded page holds (opened alone,
     // from a link to an older message): { id, seq, acts }, its acts read with
@@ -104,6 +108,15 @@ export class TopicViews {
   // admitted reply is missing, including replies older than a starred root's
   // currently loaded branches. Foreground reads can interrupt every turn.
   async readStarred(read, current) {
+    // Windowed feeds do not fill ordinary history for stars. Their current
+    // records carry star/place truth; the outline's paged starred links reach
+    // other dossiers through the same explicit bounded landing as any link.
+    if (this.windowOptions) {
+      if (!current()) return false;
+      this.starRoots.clear(); this.starsLoaded = true;
+      this.starredPending = false; this.starredError = null; this.paint('starred');
+      return true;
+    }
     const serial = this.starSerial, mine = () => current() && serial === this.starSerial;
     try {
       if (!this.starsLoaded) {
@@ -164,6 +177,7 @@ export class TopicViews {
   learnRemoval(id, removal) {
     if (!removal || this.removals.has(id)) return;
     this.removals.set(id, removal);
+    if (this.windowOptions) this.rememberWindowHint(id, { removal });
     if (removal.kind === 'unsent') {
       this.messages.delete(id); this.runs.delete(id); this.starRoots.delete(id);
       this.edits.delete(id); this.quoted.delete(id); this.revised.delete(id);
@@ -248,7 +262,9 @@ export class TopicViews {
         !integer(answer.relevant_versions?.[versionKey])) throw invalid('The list page is malformed.');
     return answer;
   }
-  messagesPage(answer, { initial = false, cursor, live = false, anchored = false, draw = true } = {}) {
+  messagesPage(answer, { initial = false, cursor, live = false, anchored = false, contiguous = false, draw = true,
+    windowEpoch = this.windowEpoch, windowReadStart = this.windowKnowledge } = {}) {
+    if (windowEpoch !== this.windowEpoch || windowReadStart < this.windowReadFloor) return false;
     // An explicit return to an old message adds one bounded run without moving the ordinary paging frontier.
     this.page(answer, 'topic');
     const membership = answer.membership_revision ?? 0;
@@ -265,6 +281,12 @@ export class TopicViews {
           live && item.seq <= cursor || !initial && !live && item.seq >= cursor) throw invalid('The message page belongs to another frontier.');
       previous = item.seq; ids.add(item.id);
       const known = this.messages.get(item.id);
+      const hint = this.windowHints.get(item.id);
+      if (hint && (hint.seq !== undefined && hint.seq !== item.seq || hint.author_id !== undefined && hint.author_id !== item.author_id ||
+          hint.revision > revisionOf(item) || integer(answer.commit_seq) && hint.at > answer.commit_seq ||
+          Object.entries(hint.acts ?? {}).some(([key, value]) => (item.acts?.[key] ?? 0) < value) ||
+          hint.reactions > reactionsOf(item).version || hint.yours > yoursVersion(item.yours) ||
+          hint.position > (item.stack_position?.at?.acts ?? 0))) throw behind();
       // What makes a message itself never changes. Its words change only by
       // an edit, which a later revision carries (docs/message-edit.md).
       if (known && (known.seq !== item.seq || known.author_id !== item.author_id ||
@@ -275,9 +297,32 @@ export class TopicViews {
     // every run it overlaps; a page that does neither, such as the newest page
     // a commit reload reads after a gap, starts a run of its own.
     const joined = new Set(answer.items.map(item => this.runs.get(item.id)));
-    if (!initial && !anchored) for (const item of this.messages.values()) if (item.seq === cursor) joined.add(this.runs.get(item.id));
+    if (!initial && (!anchored || contiguous)) for (const item of this.messages.values()) if (item.seq === cursor) joined.add(this.runs.get(item.id));
+    // Consecutive global sequences leave no possible topic message between
+    // them. This closes a reconstructed interval without an extra empty read;
+    // larger global sequence gaps still require an actual paging overlap.
+    if (this.windowOptions && answer.items.length) for (const item of this.messages.values()) {
+      if (item.seq === answer.items[0].seq - 1 || item.seq === answer.items.at(-1).seq + 1) joined.add(this.runs.get(item.id));
+    }
     joined.delete(undefined);
     const run = joined.size ? joined.values().next().value : ++this.runCount;
+    const windowOptions = this.windowOptions?.(answer.items) ?? null;
+    if (windowOptions) {
+      const candidate = new Map(this.messages), candidateRuns = new Map(this.runs);
+      for (const [id, other] of candidateRuns) if (joined.has(other)) candidateRuns.set(id, run);
+      for (const item of answer.items) {
+        const known = candidate.get(item.id);
+        candidate.set(item.id, { ...item, stack_position: laterPosition(known?.stack_position, item.stack_position) });
+        candidateRuns.set(item.id, run);
+      }
+      const admission = planTopicWindow(candidate, candidateRuns, { prefer: answer.items.map(item => item.id), ...windowOptions });
+      const required = answer.items.at(-1)?.id;
+      if (admission.blocked || required && !admission.keep.has(required) && this.removals.get(required)?.kind !== 'unsent') {
+        this.windowPressure = [...admission.rejectedPins, ...(required && !admission.keep.has(required) ? [required] : [])];
+        this.paint('window');
+        return false;
+      }
+    }
     for (const [id, other] of this.runs) if (joined.has(other)) this.runs.set(id, run);
     // A message read again keeps any act the page heard of after this page
     // was read, and the latest revision of its words the page has seen.
@@ -316,15 +361,68 @@ export class TopicViews {
     }
     // A message of the reader's own arriving is a reply, from this page or
     // another: an act, as below. The repaint of the messages places the line.
-    if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) this.sight.clear();
+    if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) { this.sight.clear(); this.sightHeld = false; }
     this.newest = Math.max(this.newest, ...answer.items.map(item => item.seq));
+    if (integer(answer.commit_seq)) this.windowAt = Math.max(this.windowAt, answer.commit_seq);
     if (!live && !anchored) this.olderCursor = answer.next_cursor;
-    if (this.starsLoaded && this.starRoots.size && this.olderCursor !== null) {
+    if (!this.windowOptions && this.starsLoaded && this.starRoots.size && this.olderCursor !== null) {
       this.starredPending = true; this.invalidate('starred', 0); this.paint('starred');
     }
     if (live) this.arrived(answer.items);
+    this.trimWindow(answer.items, windowOptions);
     if (draw) this.paintMessages();
     return true;
+  }
+  trimWindow(incoming = [], options = null) {
+    if (!this.windowOptions) return [];
+    options ??= this.windowOptions(incoming) ?? {};
+    const plan = planTopicWindow(this.messages, this.runs, { prefer: incoming.map(item => item.id), ...options });
+    this.windowPressure = plan.blocked ? [...plan.rejectedPins] : null;
+    if (plan.blocked) return [];
+    this.windowRoots = plan.roots;
+    const related = new Set([...plan.keep, ...plan.roots]);
+    for (const id of plan.keep) {
+      const item = this.messages.get(id);
+      if (typeof item.reply_to_excerpt === 'string') related.add(item.reply_to);
+    }
+    for (const [id, revision] of this.quoted) if (!related.has(id)) {
+      this.rememberWindowHint(id, { revision }); this.quoted.delete(id);
+    }
+    for (const id of this.edits.keys()) if (!related.has(id)) this.edits.delete(id);
+    const ranges = plan.runs.map(ids => ({ oldest: this.messages.get(ids[0]).seq, newest: this.messages.get(ids.at(-1)).seq }))
+      .sort((a, b) => b.newest - a.newest);
+    this.windowGaps = ranges.slice(1).map((range, at) => ({ before: ranges[at].oldest, after: range.newest }));
+    if (!plan.evict.length) return [];
+    const removed = plan.evict.map(id => this.messages.get(id));
+    for (const item of removed) {
+      this.rememberWindowHint(item.id, { seq: item.seq, author_id: item.author_id, revision: revisionOf(item), at: this.windowAt,
+        acts: Object.fromEntries(Object.entries(item.acts ?? {}).filter(([key, value]) => key.endsWith('_revision') && integer(value))),
+        position: item.stack_position?.at?.acts ?? 0, reactions: reactionsOf(item).version, yours: yoursVersion(item.yours) });
+      this.messages.delete(item.id);
+      for (const map of [this.runs, this.positions, this.edits, this.quoted]) map?.delete(item.id);
+      for (const set of [this.revised, this.yours]) set.delete(item.id);
+    }
+    this.pruneWindowRemovals();
+    this.runs.clear();
+    for (const run of plan.runs) { const identity = ++this.runCount; for (const id of run) this.runs.set(id, identity); }
+    const oldest = Math.min(...[...this.messages.values()].map(item => item.seq));
+    if (Number.isFinite(oldest) && removed.some(item => item.seq < oldest)) this.olderCursor = oldest;
+    this.windowEpoch++;
+    this.evicted(plan.evict);
+    return plan.evict;
+  }
+  rememberWindowHint(id, facts) {
+    if (!this.windowOptions) return;
+    const known = this.windowHints.get(id) ?? {};
+    this.windowHints.delete(id); this.windowHints.set(id, { ...known, ...facts,
+      revision: Math.max(known.revision ?? 1, facts.revision ?? 1) });
+    ++this.windowKnowledge;
+    if (this.windowHints.size > 256) this.windowReadFloor = Math.max(this.windowReadFloor, this.windowKnowledge - 256);
+    boundMap(this.windowHints); this.pruneWindowRemovals();
+  }
+  pruneWindowRemovals() {
+    for (const id of this.removals.keys()) if (!this.messages.has(id) && !this.windowRoots.has(id) &&
+      !this.windowHints.has(id) && this.alone?.id !== id) this.removals.delete(id);
   }
   paintMessages() {
     this.paint('messages');
@@ -342,7 +440,7 @@ export class TopicViews {
   // below it, as when there was none.
   get held() {
     const value = this.oldestUnread;
-    return Boolean(this.line && (value && value.seq >= this.line.seq || this.sight.size));
+    return Boolean(this.line && (value && value.seq >= this.line.seq || this.sightHeld || this.sight.size));
   }
   // The page sees the cards of messages `from` through `through` on screen
   // now, and report is the promise of Core's receipt for reporting them
@@ -365,12 +463,17 @@ export class TopicViews {
   // report among them: its answer may have been lost after Core recorded it,
   // and if Core did not record it, its cards are still unread anyway.
   seen(entry, receipt) {
-    if (!this.sight.has(entry) || !(receipt === null || receipt?.status === 'committed' && receipt.result?.acknowledged === 0)) return;
-    this.holding(() => this.sight.delete(entry));
+    if (!this.sight.has(entry)) return;
+    this.holding(() => {
+      // Settled reports need one visit-level hold, not an ever growing list
+      // of ranges. Unknown results keep exactly the same read-line meaning.
+      if (!(receipt === null || receipt?.status === 'committed' && receipt.result?.acknowledged === 0)) this.sightHeld = true;
+      this.sight.delete(entry);
+    });
   }
   // The reader acted on what the line marks: what they read on screen no
   // longer holds it, so it fades unless something at or above it is unread.
-  acted() { this.holding(() => this.sight.clear()); }
+  acted() { this.holding(() => { this.sight.clear(); this.sightHeld = false; }); }
   // The Reader shows message seq to the reader: at or above the line, an act.
   opened(seq) { if (this.line && seq >= this.line.seq) this.acted(); }
   holding(change) {
@@ -431,17 +534,23 @@ export class TopicViews {
     let oldest = alone?.seq ?? Infinity;
     for (const item of messages.values()) oldest = Math.min(oldest, item.seq);
     const found = new Map(), landed = this.reading('acts');
-    let cursor = null, reached = null;
-    do {
-      const answer = checkedView(await read('message_acts', { topic_id: this.topicId, limit: 100, ...(cursor === null ? {} : { cursor }) }), this.instanceId);
+    const ranges = this.windowOptions ? topicActRanges(messages, this.runs, alone) : [{ oldest, newest: null, count: 100 }];
+    let reached = null;
+    for (const range of ranges) {
+      let cursor = range.newest === null ? null : range.newest + 1;
+      do {
+      const answer = checkedView(await read('message_acts', { topic_id: this.topicId, limit: Math.min(100, range.count), ...(cursor === null ? {} : { cursor }) }), this.instanceId);
       if (!current()) return false;
       if (answer.topic_id !== this.topicId || !Array.isArray(answer.items) || !integer(answer.version) || !(answer.next_cursor === null || integer(answer.next_cursor)) ||
           answer.items.some(item => typeof item?.message_id !== 'string' || !integer(item.seq) || !item.acts || typeof item.acts !== 'object')) throw invalid('The acts page is malformed.');
       if (cursor !== null && answer.next_cursor !== null && answer.next_cursor >= cursor) throw invalid('The acts paging made no progress.');
       reached ??= answer.version;
-      for (const item of answer.items) found.set(item.message_id, item.acts);
-      cursor = answer.items.length && answer.items.at(-1).seq < oldest ? null : answer.next_cursor;
-    } while (cursor !== null);
+      if (answer.version < version) throw behind();
+      for (const item of answer.items) if (messages.has(item.message_id) || alone?.id === item.message_id) found.set(item.message_id, item.acts);
+      cursor = answer.items.length && answer.items.at(-1).seq < range.oldest ||
+        this.windowOptions && answer.next_cursor !== null && answer.next_cursor <= range.oldest ? null : answer.next_cursor;
+      } while (cursor !== null);
+    }
     if (reached < version) throw behind();
     // The Reader's neighbours beyond what the page loaded carry Core's place
     // for their dossier, which an act on another device can move (Move below
@@ -602,10 +711,11 @@ export class TopicViews {
     // A moved dossier can predate the newest loaded message. Load its root by a bounded page,
     // keeping the ordinary earlier-messages frontier and any unsent writing.
     for (const root of arrivals) if (!this.messages.has(root.root_id)) {
+      const windowEpoch = this.windowEpoch;
       const answer = await read('topic_messages', { topic_id: this.topicId, direction: 'after', cursor: root.seq - 1, limit: 30 });
       if (!current()) return false;
       // Anchored page validation expects an upper cursor. It does not move the paging frontier.
-      if (!this.messagesPage(answer, { anchored: true, cursor: Number.MAX_SAFE_INTEGER })) throw behind();
+      if (!this.messagesPage(answer, { anchored: true, cursor: Number.MAX_SAFE_INTEGER, windowEpoch })) throw behind();
     }
     this.newest = Math.max(0, ...[...this.messages.values()].map(item => item.seq));
     this.paint('messages');
@@ -628,9 +738,10 @@ export class TopicViews {
     if (key === 'messages') {
       if (!this.messageTarget || this.messages.has(this.messageTarget)) return true;
       const cursor = this.newest;
+      const windowEpoch = this.windowEpoch;
       const answer = await read('topic_messages', { topic_id: this.topicId, audience: 'all', direction: 'after', cursor, limit: 30 });
       if (!current()) return false;
-      if (!this.messagesPage(answer, { live: true, cursor })) return false;
+      if (!this.messagesPage(answer, { live: true, cursor, windowEpoch })) return false;
       if (!answer.items.length && !this.messages.has(this.messageTarget)) throw behind();
       return this.messages.has(this.messageTarget);
     }
@@ -639,9 +750,10 @@ export class TopicViews {
       const seq = Number(key.slice(8));
       if (this.newest >= seq) return true;
       const cursor = this.newest;
+      const windowEpoch = this.windowEpoch;
       const answer = await read('topic_messages', { topic_id: this.topicId, audience: 'all', direction: 'after', cursor, limit: 30 });
       if (!current()) return false;
-      if (!this.messagesPage(answer, { live: true, cursor })) return false;
+      if (!this.messagesPage(answer, { live: true, cursor, windowEpoch })) return false;
       return this.newest >= seq || !answer.items.length;
     }
     if (key.startsWith('reaction:')) {
@@ -662,6 +774,7 @@ export class TopicViews {
       // shows, or whose words a loaded reply's line or another holder shows, is read
       // again, alone, in the shape of a page's item.
       const id = key.slice(5), known = this.messages.get(id);
+      if (this.windowOptions && !known) this.rememberWindowHint(id, { revision: version });
       if (!known && !this.quotes(id) && !this.holds(id)) return true;
       const answer = await this.named(id, read, current);
       if (typeof answer === 'boolean') return answer;

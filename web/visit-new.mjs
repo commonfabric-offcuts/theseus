@@ -20,6 +20,12 @@ export class VisitNew {
     this.handled.add(id);
     return this.arrivals.delete(id);
   }
+  // These are presentation marks of admitted cards, never Core read facts.
+  // Retiring a window retires its visit marks too. An authorized cold read
+  // restores stored unread truth without pretending it was a live arrival.
+  retain(ids) {
+    for (const set of [this.arrivals, this.handled]) for (const id of set) if (!ids.has(id)) set.delete(id);
+  }
 }
 
 export function paintVisitNew(entry, host, marked) {
