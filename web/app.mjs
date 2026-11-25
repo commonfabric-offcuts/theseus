@@ -684,11 +684,13 @@ function changed(editor) {
 // away) ends one range and starts the next, and a range never spans a gap
 // between runs. Only another actor's message can settle a delivery, so the
 // person's own are never reported.
+function readingAllowed() {
+  return !unreadLandingBusy && !$('main').inert && readThrough && topic && !topicUnavailable &&
+    !$('messages').hidden && !authorityReviewPending() && !review.open &&
+    document.visibilityState === 'visible' && document.hasFocus();
+}
 function noteRead() {
-  if (unreadLandingBusy) return;
-  if ($('main').inert) return;
-  if (!readThrough || !topic || topicUnavailable || $('messages').hidden || authorityReviewPending() || review.open) return;
-  if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  if (!readingAllowed()) return;
   const source = registry.current?.source;
   if (source) {
     if (registry.current.sourceUnavailable || source.source_ref.kind !== 'message' || source.topic_id !== topic.id) return;
@@ -697,14 +699,22 @@ function noteRead() {
     return;
   }
   if (!laidOut) return;
-  const shown = new Set();
+  const shown = new Set(), arrivals = [];
   for (const entry of entries($('messages'))) {
     const seq = Number(entry.dataset.seq);
-    if ((halfShown.has(seq) || atMiddle.has(seq)) && onScreen(entry)) shown.add(seq);
+    if ((halfShown.has(seq) || atMiddle.has(seq)) && onScreen(entry)) {
+      shown.add(seq);
+      const id = entry.dataset.id, item = views.messages.get(id);
+      if (!retired && entry.isConnected && messageEntries.get(id) === entry &&
+          item?.topic_id === topic.id && item.seq === seq && item.author_id !== bootstrap.actor) arrivals.push(id);
+    }
   }
   if (!shown.size) return;
   for (const [from, through] of seenRanges([...views.messages.values()], seq => shown.has(seq), id => views.runOf(id), bootstrap.actor))
     views.sighted(from, through, readThrough.seen(topic.id, from, through));
+  let changed = false;
+  for (const id of arrivals) changed = newAbove.delete(id) || changed;
+  if (changed) paintNewAbove();
 }
 // A card counts as on screen when at least half of it, or of the viewport,
 // shows it. The second holds exactly when the card crosses the viewport's
@@ -1249,15 +1259,16 @@ function keepListAnchor(paint, act = null, revised = []) {
 function paintNewAbove() {
   const list = $('messages');
   for (const id of newAbove) {
-    const entry = messageEntries.get(id);
-    if (entry?.isConnected && stackState(list).waiting?.has(id) &&
-        views.messages.get(id)?.topic_id === topic?.id) continue;
-    if (!entry?.isConnected || !drawn(list, id) || entry.getBoundingClientRect().top >= 0) newAbove.delete(id);
+    const entry = messageEntries.get(id), item = views.messages.get(id);
+    // Count retained arrival offers, not an estimate of current visibility.
+    // Only activation measures its chosen card; passive paints need no scan.
+    if (!entry?.isConnected || entry.dataset.id !== id || !item || item.id !== id ||
+        item.topic_id !== topic?.id || item.author_id === bootstrap.actor) newAbove.delete(id);
   }
   if (!newAboveButton && newAbove.size) {
     newAboveButton = button('New above ↑', () => {
       const entry = entries(list).find(card => newAbove.has(card.dataset.id));
-      if (!entry || retired || !list.isConnected || list.hidden) return;
+      if (!entry || retired || topicUnavailable || authorityReviewPending() || !list.isConnected || list.hidden) return;
       const id = entry.dataset.id, currentTopic = topic, message = views.messages.get(id);
       if (!message || message.topic_id !== currentTopic?.id || messageEntries.get(id) !== entry) return;
       releaseTopArrivals();
@@ -1280,7 +1291,10 @@ function paintNewAbove() {
     $('main').append(newAboveButton);
   }
   if (newAboveButton) {
-    newAboveButton.hidden = !newAbove.size || list.hidden;
+    const count = newAbove.size, words = `New above · ${count} ↑`;
+    if (newAboveButton.textContent !== words) newAboveButton.textContent = words;
+    newAboveButton.setAttribute('aria-label', `Read ${count} new ${count === 1 ? 'message' : 'messages'} above`);
+    newAboveButton.hidden = !count || list.hidden || retired || topicUnavailable || authorityReviewPending();
     newAboveButton.style.left = `${list.getBoundingClientRect().left}px`;
   }
 }
@@ -1979,9 +1993,9 @@ function paintMessageUpdates() {
   for (const [id, entry] of messageEntries) {
     const item = views.messages.get(id), card = cardIn(entry), author = card && messageUpdateHost(card, entry);
     if (item && author) {
-      for (const old of entry.querySelectorAll('.message-update')) old.remove();
-      const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
-      if (update) author.append(update);
+      const update = messageUpdateActivity(document, item, updateContext(item.topic_id), entry.querySelector('.message-update'));
+      for (const old of entry.querySelectorAll('.message-update')) if (old !== update) old.remove();
+      if (update && update.parentElement !== author) author.append(update);
       // A dossier's tab already has the shared New control. Its message's
       // own header (or folded row) carries the individual arrival mark.
       // A between-others entry wraps a button and a hidden card. Its badge
@@ -2008,6 +2022,7 @@ function paintReplyContext(card, item, messages = feedMessages()) {
   paintReplyLine(line, item, context);
 }
 function paintCardAuthor(author, item) {
+  const retained = messageEntries.get(item.id), entry = retained ?? author, previousUpdate = entry.querySelector('.message-update');
   const struck = cardScroll?.revisions.get(item.id) === revisionOf(item) && cardScroll.wholes.has(item.id)
     ? cardScroll.strikes.get(item.id) : item.struck;
   const changes = { struck, shown: () => messageChanges?.shown(item.id, revisionOf(item)) ?? true,
@@ -2020,8 +2035,10 @@ function paintCardAuthor(author, item) {
   if (here?.conversation && !item.withdrawal && !item.removal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
   stackFeed?.paintStar(author, item);
-  const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
-  if (update) author.append(update);
+  const update = messageUpdateActivity(document, item, updateContext(item.topic_id), previousUpdate);
+  for (const old of entry.querySelectorAll('.message-update')) if (old !== update) old.remove();
+  const host = retained ? messageUpdateHost(cardIn(retained), retained) ?? author : author;
+  if (update && update.parentElement !== host) host.append(update);
   paintVisitNew(author, author, Boolean(visitNew?.has(item.id)));
 }
 // Who the composers may whisper to, and who everyone in this topic is: the

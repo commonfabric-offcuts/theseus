@@ -7,6 +7,7 @@ import { revisionOf, wasEdited } from '../web/message-edit-writing.mjs';
 import { QuestionStates, configureQuestionStates, questionOf, questionPill } from '../web/question-state.mjs';
 import { paintWithdrawal } from '../web/question-withdrawal.mjs';
 import { paintRemoval } from '../web/message-removal.mjs';
+import { messageUpdateHost } from '../web/cover-refresh.mjs';
 import { clock } from '../web/times.mjs';
 
 const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
@@ -31,7 +32,7 @@ function fixture(t, state = 'superseded') {
     question: terminal(state) };
   // Only unrelated page ports are stood in for. The cache and question
   // projection/pill construction are their actual imported owners.
-  const ports = { document: doc, cardScroll: null, revisionOf, messageChanges: null, toggleMessageChanges() {},
+  const ports = { document: doc, messageEntries: new Map([[item.id, card]]), cardIn: entry => entry, messageUpdateHost, cardScroll: null, revisionOf, messageChanges: null, toggleMessageChanges() {},
     paintAuthor, displayActor: id => id, marks: null, wasEdited, carriesOf, paintWithdrawal, paintRemoval,
     questionOf, questionPill, bootstrap: { actor: 'viewer' }, here: null,
     stackFeed: { paintStar(line) {

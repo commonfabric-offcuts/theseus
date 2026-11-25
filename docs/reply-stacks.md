@@ -339,24 +339,14 @@ their acts.
   folds it. On a message on its own a press on the header opens it, and on
   an agent's name opens its colour picker, as before; inside a dossier the
   colour is chosen from the participants.
-- **Dealt with, folded (item 377).** A person's reply to a message (its
-  `reply_to` names the message, ✅ or 🚫 on a go-ahead ask included, and
-  their reply to their own message too), or their thumbs-up on it, folds it
-  for them, as their Fold would: Core records their own `message.fold` in
-  the same transaction as the reply or the thumb (`Stacks._fold_answered`),
-  so every page, device and the CLI agree. Nobody else's view changes, and
-  an agent's thumb folds nothing. Agent answers follow item 955 below. A
-  starred message never folds this way, and one already folded stays as it
-  is (no new row). Taking the
-  thumb back unfolds nothing; a message unfolded later folds again on the
-  person's next reply or thumbs-up. On the page the row shows where the
-  message was, the feed keeps its place and the keys stay where they were;
-  a Reader open on the message keeps showing it whole, and closing it
-  leaves the keys on the folded row. ⌘Z does not take back a fold a reply
-  or a thumbs-up made: ⌘Z puts back the page's own acts (a move, a step, a
-  Fold), and sending a reply or giving a 👍 is not one of them, so the fold
-  goes with what caused it. A press on the row, x, or Unfold in ⋯ unfolds
-  it.
+- **Dealt with, folded (items 377, 1244).** A person's reply to a message
+  (`reply_to`, including ✅/🚫 and replies to their own words) folds it for
+  them in Core, through `Stacks._fold_answered`. Starred or already folded
+  messages keep their current choice. A thumb leaves the individual fold
+  choice unchanged; confirmed reading, wait and dossier deal effects remain.
+  Manual Fold/Unfold still records the person's own act. Agent answers follow
+  item 955 below. The page keeps the folded row, reading place, keys and open
+  Reader. ⌘Z restores page acts; it does not take back a reply's Core fold.
 - **An agent's answer (item 955).** An agent replying publicly to a person's
   message in a topic dossier folds that message for its human author, leaving
   the answer open. A star, a private note with words, or an existing personal
@@ -952,7 +942,7 @@ twin without judging it, as the rule for that case is still open (item 430).
 | on the page, in Chrome and in Safari's engine | `tests/stack_native.mjs`, the "reading stacks …" cases of `--reading` |
 | a fold: in a fully open stack, through every state, a reload and another device, unfolded by a press and ⌘Z, a link, Starred and the first message | `tests/stack_native.mjs`, "reading stacks a message folded in a fully open stack …"; on a phone, swiped right, swiped left and tapped, "reading stacks on a phone a message swiped right …" (Chrome only: Safari's engine in the harness has no finger drag) |
 | the trackpad: two fingers right fold a reply once, momentum and all, and left unfold it after a reload; a scroll, a swipe on a wide table and a starred message fold nothing; the page goes nowhere | `tests/stack_native.mjs`, "reading stacks on a laptop two fingers swiped right on the trackpad …", in Chrome and Safari's engine |
-| a reply or a thumbs-up folds the message for the person alone, in Core: a page's reply, an answer, their own message, a thumb taken back, a starred or already folded message, an agent | `tests/test_stacks.py` (`AnsweredFoldCase`) |
+| a reply folds; a thumb preserves the fold choice, in Core: a page's reply, an answer, their own message, a thumb taken back, a starred or already folded message, an agent | `tests/test_stacks.py` (`AnsweredFoldCase`) |
 | on the page: the row where the message was, the place and the keys kept, the Reader whole, ⌘Z, another reader and another device | `tests/stack_native.mjs`, "reading stacks replying to a message or a thumbs-up on it folds it …", in Chrome and Safari's engine |
 | a swipe folds a long message that scrolls up and down in its card | `tests/stack_native.mjs`, "reading stacks a swipe folds a long message …" (a finger on a phone in Chrome only) |
 | a scroll right after a trackpad swipe folded a message | `tests/stack_native.mjs`, "reading stacks a scroll right after two fingers fold a message …" |
