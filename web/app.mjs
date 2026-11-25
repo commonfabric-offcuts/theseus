@@ -1,4 +1,5 @@
-import { paintPendingSends } from './pending-sends.mjs';
+import { paintPendingSends, pendingSendVisual, adoptPendingSend, clearPendingSends } from './pending-sends.mjs';
+import { paintCardWords, cardWordOptions } from './message-card-content.mjs';
 import { MessageChanges } from './message-changes.mjs';
 import { OlderFeed } from './older-feed.mjs';
 import { topicCloseUI } from './topic-close-ui.mjs';
@@ -448,8 +449,13 @@ function paintSubmittedWriting() {
   if (!registry || !views || !topic) return;
   paintPendingSends($('messages'), [...registry.sessions.values()].map(session => session.editor), {
     topicId: topic.id,
+    current: () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending(),
+    visual: (editor, item) => pendingSendVisual(editor, item, { authorKind: bootstrap.actor_kind,
+      parent: item.snapshot.reply_to ? feedMessages().get(item.snapshot.reply_to) : null }),
+    nameOf: displayActor, displayRules: displayRules(), end: $('new-message-sheet'),
+    readImage: (editor, item, attachment) => registry.sessionFor(editor).uploads.previewSubmission(item, attachment),
     underway: (editor, item) => registry.sessionFor(editor).underWay(item.id),
-    parent: ref => ref?.kind === 'message' ? messageEntries.get(ref.id)?.closest('.reply-stack') ?? messageEntries.get(ref.id) : null,
+    parent: ref => ref?.kind === 'message' ? messageEntries.get(ref.id) : null,
     placed: id => Boolean(id && messageEntries.get(id)?.isConnected && drawn($('messages'), id)),
     check: (editor, item) => run(async () => {
       if (item.status !== 'confirmed') await registry.checkConfirmation(editor);
