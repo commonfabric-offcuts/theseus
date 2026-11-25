@@ -42,7 +42,12 @@ export function planTopicWindow(messages, runs, { pins = [], anchor = null, pref
   for (const ids of groups.values()) for (let at = 0; at < ids.length; at++) neighbors.set(ids[at], [ids[at - 1], ids[at + 1]]);
   let count = 0;
   const adding = id => {
-    if (!messages.has(id)) return null;
+    if (!messages.has(id)) {
+      // A supplemental original is visible/focusable too. Keep one of its
+      // admitted members so the head owner continues to want that original.
+      const member = ordered.find(item => roots.get(item.id) === id);
+      return member ? { ids: new Set([id, member.id]), loaded: [member.id] } : null;
+    }
     const root = roots.get(id) ?? id;
     const ids = new Set([id, root]);
     return { ids, loaded: [...ids].filter(each => messages.has(each)) };

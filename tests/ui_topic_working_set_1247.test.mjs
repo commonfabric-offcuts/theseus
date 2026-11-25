@@ -29,6 +29,12 @@ test('1247 a huge unread open dossier keeps the anchor inside the same budget', 
   assert.ok(plan.keep.has('m750')); assert.ok(plan.keep.has('m749')); assert.ok(plan.keep.has('m1500'));
   assert.equal(plan.roots.size, 1); assert.ok(plan.evict.length > 1000);
 });
+test('1247 a focused supplemental original retains a member and its root inside the shared budget', () => {
+  const messages = records(301), roots = new Map([...messages.keys()].map(id => [id, id])); roots.set('m1', 'old-root');
+  const plan = planTopicWindow(messages, oneRun(messages), { roots, pins: ['old-root'] });
+  assert.ok(plan.keep.has('m1')); assert.ok(plan.roots.has('old-root')); assert.ok(plan.full.has('old-root'));
+  assert.equal(plan.full.size, 300); assert.equal(plan.blocked, false);
+});
 test('1247 eviction splits loaded intervals instead of claiming an unloaded hole is contiguous', () => {
   const messages = records(9), runs = oneRun(messages);
   assert.deepEqual(retainedRuns(messages, runs, new Set(['m1', 'm2', 'm5', 'm6', 'm9'])), [['m1', 'm2'], ['m5', 'm6'], ['m9']]);
