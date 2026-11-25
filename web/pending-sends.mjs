@@ -46,6 +46,12 @@ export function keepPendingSendPlace(host, paint, { current = () => true,
   return result;
 }
 
+// Core derives message-origin replies from source_ref. The writing snapshot
+// need not duplicate that destination, and later editor state cannot supply it.
+export function pendingSendReplyTo(item) {
+  return item.snapshot?.reply_to ?? (item.sourceRef?.kind === 'message' ? item.sourceRef.id : null);
+}
+
 export function pendingSendVisual(editor, item, { authorKind = 'human', parent = null } = {}) {
   const snapshot = item.snapshot;
   const refs = editor.uploadState?.submission_links?.[item.id]?.refs ?? [];
@@ -59,7 +65,7 @@ export function pendingSendVisual(editor, item, { authorKind = 'human', parent =
   return { id: `local:${editor.context.instanceId}:${item.id}`, topic_id: item.topicId,
     author_id: editor.context.actor, author_kind: authorKind, body: snapshot.body, attachments,
     whisper: snapshot.whisper === true, private_to: snapshot.whisper ? snapshot.addressees?.[0] : null,
-    reply_to: snapshot.reply_to ?? null, reply_to_author: parent?.author_id,
+    reply_to: pendingSendReplyTo(item), reply_to_author: parent?.author_id,
     reply_to_excerpt: parent?.body, reply_to_removal: parent?.removal, sent_ms: null };
 }
 
