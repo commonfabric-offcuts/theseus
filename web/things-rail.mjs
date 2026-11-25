@@ -429,7 +429,15 @@ export class ThingsRail {
     this.handles = handles;
     this.folds ??= new SectionFolds(this.storage, `aim-next.things.${handles.bootstrap.instance_id}.${handles.bootstrap.actor}`);
     this.clear();
-    this.unlisten = handles.live?.listen(event => { if (event.kind === 'commit' || event.state === 'live') this.changed(); }) ?? null;
+    this.unlisten = handles.pageRefresh ? handles.pageRefresh.listen((batch,full)=>{
+      const affected=full||batch.windows.some(page=>page.items.length&&(
+        page.scope.kind==='topic'&&page.scope.id===this.topicId ||
+        page.scope.kind==='workspace'&&page.scope.id===handles.workspaceId&&page.items.some(item=>item.resource_kind!=='topic')));
+      const publicOnly=!full&&batch.windows.every(page=>!page.items.length||page.scope.kind==='actor'||page.items.every(item=>item.resource_kind==='topic'));
+      if(affected&&publicOnly)return this.pendingRead??(this.stale&&this.shows()?this.changed():true);
+      if(affected)return this.changed();
+      return true;
+    }) : handles.live?.listen(event => { if (event.kind === 'commit' || event.state === 'live') this.changed(); }) ?? null;
     // A new Notebook page starts from the pencil beside this section's heading
     // (docs/notebook-pages.md): always this topic's. It goes as the next run begins.
     const details = this.sections.get('notebook').details, make = handles.notebookCreate;
@@ -438,7 +446,12 @@ export class ThingsRail {
     this.stale = true;
     if (this.shows()) this.reload();
   }
-  changed() { this.stale = true; if (this.shows() && this.doc.visibilityState === 'visible') this.reload(); }
+  changed() {
+    this.stale=true;
+    if(!this.shows()||this.doc.visibilityState!=='visible')return true;
+    const pending=Promise.resolve(this.reload()).then(()=>!this.stale).finally(()=>{if(this.pendingRead===pending)this.pendingRead=null;});
+    this.pendingRead=pending;return pending;
+  }
   // The page has read its topic again, or can no longer read it. A topic it
   // can no longer read is hidden at once, as the page hides its messages:
   // what the rail shows and keeps of it goes before anything is read again.
@@ -492,6 +505,8 @@ export class ThingsRail {
     const reads = places.map(place => settle(this.readPlace(view, place, 24)));
     const [pipe, notes, toolsRead, linksRead, ...found] = await Promise.all([pipeline, notebook, tools, links, ...reads]);
     if (serial !== this.serial || handles !== this.handles) return true;
+    const transient=[pipe,notes,toolsRead,linksRead,...found].some(read=>read.error&&['retry','defer','superseded'].includes(readFailure(read.error).kind));
+    if(transient){this.stale=true;return false;}
     const failed = [pipe, notes, toolsRead, linksRead, ...found].filter(read => read.error && !denied(read.error));
     const messages = found.flatMap(read => read.value ? read.value.messages.map(message => ({ ...message, place: read.value.place })) : []);
     const images = new Map();

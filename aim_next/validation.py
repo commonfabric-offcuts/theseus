@@ -166,7 +166,7 @@ VIEWS = {
     "hosted_seat_templates": {"workspace_id"},
     "onboarding_prompt": {"workspace_id", "variant"},
     "assessment": {"assessment_id"}, "assessments": {"topic_id","cursor","limit"},
-    "changes": {"scope", "cursor", "limit"},
+    "changes": {"scope", "cursor", "limit", "windows", "project"},
     "capabilities": set(), "operation": {"operation_id", "expected_fingerprint"}, "workspace": {"workspace_id"},
     "workspaces": {"cursor", "limit", "reached", "ended"},
     "workspace_counts": {"workspace_ids"},

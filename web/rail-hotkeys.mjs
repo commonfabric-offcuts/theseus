@@ -122,14 +122,16 @@ export class RailHotkeys {
     for (const row of this.rows()) {
       const item = this.describe(row), mine = item && this.choices.values.find(value=>value.id===item.id);
       let cap = row.querySelector('.rail-hotkeycap');
-      if (!mine) { cap?.remove(); row.classList.remove('rail-has-hotkey'); row.removeAttribute('aria-keyshortcuts'); continue; }
+      if (!mine) { cap?.remove(); if(row.classList.contains('rail-has-hotkey'))row.classList.remove('rail-has-hotkey'); if(row.hasAttribute('aria-keyshortcuts'))row.removeAttribute('aria-keyshortcuts'); continue; }
       if (!cap) {
         cap=this.doc.createElement('span'); cap.className='rail-hotkeycap'; cap.setAttribute('aria-hidden','true');
         const line=row.querySelector('.ol-name-line'); if(line)line.append(cap);else row.prepend(cap);
       }
       if (cap.textContent!==mine.digit) cap.textContent=mine.digit;
-      cap.title=`⌥${mine.digit} (Option+${mine.digit}) opens ${item.label}`;
-      row.classList.add('rail-has-hotkey'); row.setAttribute('aria-keyshortcuts','Alt+'+mine.digit);
+      const label=`⌥${mine.digit} (Option+${mine.digit}) opens ${item.label}`;
+      if(cap.title!==label)cap.title=label;
+      if(!row.classList.contains('rail-has-hotkey'))row.classList.add('rail-has-hotkey');
+      if(row.getAttribute('aria-keyshortcuts')!=='Alt+'+mine.digit)row.setAttribute('aria-keyshortcuts','Alt+'+mine.digit);
     }
     const keys = this.root.querySelector('.ol-keys');
     if (keys) {

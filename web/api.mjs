@@ -315,6 +315,8 @@ export class Api {
     }
     let body;
     try { body = await response.json(); } catch (error) {
+      if (signal?.aborted && error?.name === 'AbortError')
+        throw interrupted('Connection interrupted while reading the answer. Confirmation is unknown; your writing is kept.', error);
       throw new AttemptError('AIM returned an unreadable response. Confirmation is unknown.', response.status, null, { cause: error });
     }
     if (!response.ok) throw new AttemptError(body.error?.message ?? `This connection attempt was refused (${response.status}).`, response.status, body);

@@ -442,8 +442,31 @@ export class TopicRail {
   }
   invalidate() { ++this.epoch; }
 
+  async acceptRows(rows) {
+    let structural=false;
+    for(const item of rows){
+      if(item.workspace_id!==this.pages.workspaceId)continue;
+      let found=false;
+      for(const list of this.lists){
+        const old=list.pages.loaded.get(item.id)??(list.pages.conversation?.id===item.id?list.pages.conversation:null);
+        if(!old)continue;
+        found=true;
+        if(listOf(item,this.pages.apart)!==list.name||item.list_position!==old.list_position){structural=true;continue;}
+        if(list.pages.conversation?.id===item.id)list.pages.conversation=structuredClone(item);
+        else list.pages.loaded.set(item.id,structuredClone(item));
+        const effective=list.pages.items.find(row=>row.id===item.id);
+        if(effective&&this.links.has(item.id))this.row(effective);
+      }
+      if(!found&&listOf(item,this.pages.apart)==='active'&&item.list_position>Math.max(0,...this.pages.items.map(row=>row.list_position)))structural=true;
+    }
+    if(structural)return this.load();
+    this.updated?.();return true;
+  }
+
   row(item) {
     let link = this.links.get(item.id);
+    const rowState=JSON.stringify([item,this.selected?.id]);
+    if(link&&link.topicPresentation===rowState)return link;
     if (!link) {
       link = document.createElement('a'); link.className = 'nav-item'; link.dataset.topicId = item.id;
       // The row and its unread count share the oldest-unread destination (1174).
@@ -451,6 +474,7 @@ export class TopicRail {
       link.onclick = event => this.activate(item.id, event);
       this.links.set(item.id, link);
     }
+    link.topicPresentation=rowState;
     // A row drawn again with what it already shows is left alone, so the
     // pointer's hover and a click under way stay on what they were on.
     const shows = JSON.stringify([item.title, item.unread, item.addressed, item.state, item.waiting_on, item.asks, item.state_note, item.work]);

@@ -21,7 +21,11 @@ export class OutlineDossiers {
   constructor(outline, {pages = false} = {}) {
     this.pageStars = pages;
     this.outline = outline; this.states = new Map(); this.epoch = 0;
-    this.observer = new outline.doc.defaultView.MutationObserver(() => this.sync());
+    this.observer = new outline.doc.defaultView.MutationObserver(records => {
+      const containsRows=node=>node?.nodeType===1&&(node.matches?.('a[data-topic-id]')||node.querySelector?.('a[data-topic-id]'));
+      if(records.some(record=>record.type==='attributes' ? record.attributeName==='class'||containsRows(record.target)
+        : [...record.addedNodes,...record.removedNodes].some(containsRows)))this.sync();
+    });
     this.observer.observe(outline.list, {childList:true, subtree:true, attributes:true, attributeFilter:['hidden','inert','open']});
     const rail = outline.host.closest('.rail');
     if (rail) this.observer.observe(rail, {attributes:true, attributeFilter:['class']});
@@ -105,6 +109,7 @@ export class OutlineDossiers {
         this.paint(state); accepted = true;
       } catch(error) {
         if (!mine()) return true;
+        if(['retry','defer','superseded'].includes(readFailure(error).kind))return false;
         state.error = readFailure(error);
         if (state.error.kind === 'forbidden' || state.error.kind === 'reconnect') state.stars = [];
         this.paint(state);

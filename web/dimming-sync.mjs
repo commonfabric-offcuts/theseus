@@ -17,10 +17,10 @@ export class DimmingSync {
     Object.assign(this, { choices, storage, journalFactory, visible, timers, changed, id }); this.epoch = 0; this.key = null; this.retryTimer=null; this.failures=0;
   }
   get pending() { return this.prepared?.[0] ?? null; }
-  connect({ api, bootstrap, live = null }) {
+  connect({ api, bootstrap, live = null, pageRefresh = null }) {
     const { instance_id, actor, authority } = bootstrap;
     const key = JSON.stringify([instance_id, actor, authority?.authority_id, authority?.authority_epoch]);
-    this.api = api; this.liveOff?.();
+    this.api = api; this.pageRefresh=pageRefresh; this.liveOff?.();
     if (this.key !== key) {
       if(this.retryTimer!==null)this.timers.clearTimeout(this.retryTimer);this.retryTimer=null;this.failures=0;
       this.journal?.close(); this.journal = null; this.journalReady = null; this.journalError = null;
@@ -38,7 +38,15 @@ export class DimmingSync {
       };
       this.paint();
     }
-    this.liveOff = live?.listen(event => {
+    this.liveOff = pageRefresh ? pageRefresh.listen(batch=>{
+      const page=batch.windows.find(page=>page.scope.kind==='actor'&&page.scope.id===bootstrap.actor);
+      if(!page)return true;
+      const relevant=page.items.some(item=>item.resource_kind==='rail_dimming'||['workspace','participation'].includes(item.resource_kind));
+      this.sharedCursor=copy(page.continuation??page.checkpoint);
+      this.sharedDirty||=relevant;
+      if(relevant&&this.visible())return this.wake();
+      return true;
+    }) : live?.listen(event => {
       if (this.visible() && (event.kind === 'commit' || event.kind === 'state' && event.state === 'live')) this.wake();
     }) ?? null;
     return this.wake();
@@ -204,6 +212,10 @@ export class DimmingSync {
           this.intents.unshift({id:this.id(),action:{kind:'import',value:copy(filtered)}}); this.legacy = null; this.persist();
         }
         this.initialized = true;
+      } else if(!this.pending&&!this.intents.length&&this.pageRefresh) {
+        if(this.sharedDirty){await this.readCurrent(epoch);if(epoch===this.epoch)this.sharedDirty=false;}
+        if(epoch!==this.epoch)return;
+        if(this.sharedCursor)this.cursor=copy(this.sharedCursor);
       } else if(!this.pending&&!this.intents.length) {
         let input = this.cursor, changed = false, page;
         do {

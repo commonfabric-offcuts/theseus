@@ -8,6 +8,7 @@
 import { spokenNode, spokenTime } from './times.mjs';
 import { routeHref, topicTarget } from './topic-navigation.mjs';
 import { presses } from './waiting-questions.mjs';
+import { readFailure } from './freshness.mjs';
 import { ENDED, SOURCE, UNREADABLE_PEEK, alsoWords, factParts, keptToRead, lampKind, lastLine, leadWords, lightName, shortPieces } from './outcome-light-words.mjs';
 import { BRING_BACK, BRING_BACK_BUSY, BRING_BACK_TITLE, wordButton } from './outcome-end.mjs';
 
@@ -173,8 +174,8 @@ export function paintAlsoWaiting(host, items, current, open) {
 // is open (refresh). A phone has no peek: the row's words are always there,
 // and the outcome's page says the whole of it.
 export class LightPeek {
-  constructor({ host, read, hover = window.matchMedia('(hover: hover)') }) {
-    Object.assign(this, { host, read, hover, link: null, item: null, answer: null, serial: 0 });
+  constructor({ host, read, hover = window.matchMedia('(hover: hover)'), timers = globalThis }) {
+    Object.assign(this, { host, read, hover, timers, retryTimer: null, failures: 0, link: null, item: null, answer: null, serial: 0 });
     host.addEventListener('mouseleave', event => { if (!this.link?.contains(event.relatedTarget)) this.hide(); });
     document.addEventListener('keydown', event => { if (event.key === 'Escape') this.hide(); });
     window.addEventListener('scroll', event => this.scrolled(event), { passive: true, capture: true });
@@ -204,19 +205,24 @@ export class LightPeek {
   show(link) {
     if (!this.hover.matches) return;
     if (this.link === link && !this.host.hidden) return;
-    this.link = link; this.item = link.lightItem; this.answer = null;
+    this.link = link; this.item = link.lightItem; this.answer = null; this.failures = 0;
     this.paint(); this.refresh();
   }
 
   async refresh() {
     if (!this.link || this.host.hidden) return;
+    if(this.retryTimer!==null)this.timers.clearTimeout(this.retryTimer);this.retryTimer=null;
     const serial = ++this.serial, link = this.link;
     try {
       const answer = await this.read(link.lightItem.id);
       if (serial !== this.serial || this.link !== link) return;
-      this.answer = answer;
-    } catch {
+      this.answer = answer; this.failures = 0;
+    } catch (error) {
       if (serial !== this.serial || this.link !== link) return;
+      if(['retry','defer','superseded'].includes(readFailure(error?.code==='CLEANUP_DEFERRED'&&error.cause?error.cause:error).kind)){
+        this.retryTimer=this.timers.setTimeout(()=>{this.retryTimer=null;if(serial===this.serial&&this.link===link&&!this.host.hidden)this.refresh();},Math.min(5000,500*2**Math.min(this.failures++,4)));
+        return;
+      }
       this.answer = { light: null, lead: { kind: 'unreadable' }, facts: [], also: [] };
     }
     this.item = link.lightItem; this.paint();
@@ -252,6 +258,7 @@ export class LightPeek {
 
   hide() {
     this.serial += 1; this.link = null; this.answer = null;
+    if(this.retryTimer!==null)this.timers.clearTimeout(this.retryTimer);this.retryTimer=null;
     this.host.hidden = true; this.host.replaceChildren();
   }
 }

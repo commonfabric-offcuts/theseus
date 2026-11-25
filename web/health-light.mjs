@@ -44,8 +44,8 @@ export function standing({ best, known, floor, failed, feed }) {
 
 export class HealthLight {
   // read: the health_light view; feed: the live feed's state ('live', 'down', or null).
-  constructor({ link, read, feed = () => null, observe = null }) {
-    Object.assign(this, { link, read, feed, observe });
+  constructor({ link, read, feed = () => null, observe = null, observeCommits = true }) {
+    Object.assign(this, { link, read, feed, observe, observeCommits });
     this.best = null; this.known = -1; this.floor = -1; this.failed = false;
     this.running = null; this.again = false; this.asking = -1;
   }
@@ -77,10 +77,14 @@ export class HealthLight {
     const behind = !this.best || this.best.seq < this.known;
     //1135 shares this read on commits/reconnects, even when the feed already
     // supplies the red keys. No second poller or parallel health read.
-    const shared = this.observe && (event?.kind === 'commit' || event?.state === 'live');
+    const shared = this.observe && (this.observeCommits && event?.kind === 'commit' || event?.state === 'live' || event?.kind === 'release');
     if (this.feed() === 'live' && (behind || shared) && !(this.running && this.asking >= this.known)) return this.load();
     return null;
   }
+
+  // The future release producer has an explicit selective door. Initial,
+  // reconnect and visibility reads retain optional-object/observed-once UI.
+  releaseChanged() { return this.observe && this.feed()==='live' ? this.load() : null; }
 
   // Read what is red; one read at a time, and one more for any asked while it
   // runs. Each answer is taken as it comes, by its commit, so a commit during a
@@ -114,7 +118,8 @@ export class HealthLight {
   paint() {
     const said = standing(this.facts());
     this.link.classList.toggle('red', said === 'lit' || said === 'unread');
-    this.link.textContent = { checking: CHECKING_WORDS, unread: UNREAD_WORDS, lit: LIT_WORDS, quiet: 'Health' }[said];
+    const words={ checking: CHECKING_WORDS, unread: UNREAD_WORDS, lit: LIT_WORDS, quiet: 'Health' }[said];
+    if(this.link.textContent!==words)this.link.textContent=words;
     if (said === 'unread') this.link.setAttribute('aria-label', 'Health: it could not be checked, so something may need attention');
     else if (said === 'lit') this.link.setAttribute('aria-label', 'Health: something needs attention');
     else this.link.removeAttribute('aria-label');

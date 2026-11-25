@@ -279,7 +279,8 @@ export class OutlineRail {
     if (this.here && this.phone) this.opened.set(this.here, true);
     else this.opened.read();
     this.unlisten?.();
-    this.unlisten = handles.outcomeChanges ? handles.outcomeChanges.listen(dirty => this.reload(dirty))
+    this.unlisten = handles.pageRefresh ? handles.pageRefresh.listen((batch,full)=>this.applyChanges(batch,full))
+      : handles.outcomeChanges ? handles.outcomeChanges.listen(dirty => this.reload(dirty))
       : handles.live?.listen(event => {
         if (typeof event.outcomes === 'string') this.outcomesKey = event.outcomes;
         if (this.doc.visibilityState !== 'visible') return;
@@ -304,6 +305,22 @@ export class OutlineRail {
     this.started = true; this.bootstrap = bootstrap; this.pageMax = pageMax;
     this.opened = new Opened(this.storage, `aim-next.outline-open.${JSON.stringify([bootstrap.instance_id, bootstrap.actor])}`);
     this.pages = new WorkspacePages(bootstrap.instance_id); this.newOutcomeLine();
+  }
+  async applyChanges(batch, full=false) {
+    if(!this.handles)return true;
+    const personal=batch.windows.filter(page=>page.scope.kind==='actor').flatMap(page=>page.items);
+    if(full||personal.some(item=>['workspace','participation','outcome_order','topic_order'].includes(item.resource_kind)))return this.reload();
+    const rowChanges=new Map();
+    for(const item of batch.counts){const prior=this.pages.loaded.get(item.id);if(prior)this.pages.loaded.set(item.id,{...prior,...item});}
+    for(const item of batch.topics){let rows=rowChanges.get(item.workspace_id);if(!rows)rowChanges.set(item.workspace_id,rows=[]);rows.push(item);}
+    let complete=true;
+    for(const [id,rows] of rowChanges){const outcome=this.outcomes.get(id);if(outcome?.rail&&await outcome.rail.acceptRows(rows)===false)complete=false;}
+    const stars=personal.some(item=>['acts','dossier_move','edit'].includes(item.resource_kind));
+    const pages=personal.some(item=>['memory_star','memory_read'].includes(item.resource_kind));
+    if(stars&&(await this.dossiers.refresh()).some(value=>value===false))complete=false;
+    if(pages&&(await this.notebookStars.refresh()).some(value=>value===false))complete=false;
+    if(batch.counts.length)this.paint(true);
+    return complete;
   }
   // The topic page consumes the same retained rail as its outcome home.
   topicsFor(bootstrap, topic, pageMax) {
@@ -354,7 +371,7 @@ export class OutlineRail {
       if (wants('outcomes')) this.readOutcomesKey = outcomesKey;
       this.failed = false;
     }
-    catch (error) { if (!mine()) return true; this.failed = error; this.listRead = true; this.paint(); return false; }
+    catch (error) { if (!mine()) return true; if(['retry','defer','superseded'].includes(readFailure(error).kind))return false; this.failed = error; this.listRead = true; this.paint(); return false; }
     this.listRead = true;
     this.paint();
     const reads = [];
@@ -796,7 +813,7 @@ export class OutlineRail {
   }
   // Everything the outline says, as it now stands. Rows are kept and only
   // their words change; an outcome's place is its place in the list Core gives.
-  paint() {
+  paint(countsOnly=false) {
     // Between runs there is no place to draw for: the next run draws.
     if (!this.handles) return;
     // In the person's own order, what they never placed where Core lists it (outline-order.mjs).
@@ -806,6 +823,10 @@ export class OutlineRail {
     const focused = [...this.list.children].find(li => li.contains(this.doc.activeElement)) ?? null;
     items.forEach(item => {
       const outcome = this.outcome(item), open = this.isOpen(item.id), visible = shownUnder(this.filter, item);
+      shown.add(item.id);
+      const presentation=JSON.stringify([item,open,visible,route?.kind,route?.id,this.filter,outcomeColors.forDisplay(item)]);
+      if(outcome.presentation===presentation)return;
+      outcome.presentation=presentation;
       this.phoneQuestionControl(outcome);
       const choice = outcomeColors.forDisplay(item);
       if (choice?.color) outcome.li.dataset.color = choice.color; else delete outcome.li.dataset.color;
@@ -849,9 +870,10 @@ export class OutlineRail {
       }
     });
     for (const [id, outcome] of this.outcomes) if (!shown.has(id)) { outcome.fold.dispose(); outcome.li.remove(); this.outcomes.delete(id); }
-    arrange(this.list, items.map(item => this.outcomes.get(item.id).li), focused);
+    if(!countsOnly)arrange(this.list, items.map(item => this.outcomes.get(item.id).li), focused);
     const sum = totals(this.pages?.items ?? []);
-    this.newCount.textContent = String(sum.fresh); this.waitingCount.textContent = String(sum.waiting);
+    if(this.newCount.textContent!==String(sum.fresh))this.newCount.textContent = String(sum.fresh);
+    if(this.waitingCount.textContent!==String(sum.waiting))this.waitingCount.textContent = String(sum.waiting);
     this.onlyNew.setAttribute('aria-pressed', String(this.filter === 'new'));
     this.onlyWaiting.setAttribute('aria-pressed', String(this.filter === 'waiting'));
     this.onlyNew.disabled = !sum.fresh && this.filter !== 'new';
@@ -865,11 +887,11 @@ export class OutlineRail {
     if (failure) this.message.textContent = `${failure.message ?? 'The outcomes could not be read.'} Retry outcomes.`;
     this.more.hidden = !this.pages || this.pages.next === null;
     this.paintHeader();
-    if (!this.starting) { this.dossiers.sync(); this.notebookStars.sync(); }
+    if (!countsOnly&&!this.starting) { this.dossiers.sync(); this.notebookStars.sync(); }
     if (this.pages?.started || this.failed) this.handles.outcomeList?.(this.pages.items, this.failed || null, () => this.reload());
     this.publishTopics();
     this.dimming.paintRows();
-    for (const outcome of this.outcomes.values()) outcome.fold.soon();
+    if(!countsOnly)for (const outcome of this.outcomes.values()) outcome.fold.soon();
   }
   // On a phone: "☰ Outcomes" carries the total and the lit light, and a line
   // under the header says how much is new in the other outcomes. Both are the

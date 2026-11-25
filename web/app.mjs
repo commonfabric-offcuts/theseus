@@ -29,6 +29,7 @@ import { readableUploads, uploadWork, refusedCopyAtDraft, refusedAtDraft } from 
 import { typingField } from './writing-input.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { OutcomeChanges, outcomeReads } from './outcome-refresh.mjs';
+import { PageRefresh, actorItems, topicItems, workspaceItems } from './page-refresh.mjs';
 import { DossierHeads } from './stack-order.mjs';
 import { TopicViews, followEdits } from './topic-views.mjs';
 import { visitNewFor, paintVisitNew } from './visit-new.mjs';
@@ -134,7 +135,7 @@ import { showLine, lineText } from './lines.mjs';
 let retired = null, notebookSheet = null, outcomeColorPicker = null, mentionNotices = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
 let outcomePageLayout = null, topicClosing = null, notebookDeleting=null, olderFeed = null, paragraphSwitch=null;
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; pageRefresh?.dispose(); dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -148,7 +149,7 @@ const status = what => showLine($('app-status'), what);
 const failed = error => { status(error); return null; };
 const run = action => { try { return Promise.resolve(action()).catch(failed); } catch (error) { return Promise.resolve(failed(error)); } };
 let healthLight = null;
-let api, bootstrap, journal, registry, reader, inline, cardReplies, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null;
+let api, bootstrap, journal, registry, reader, inline, cardReplies, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null, pageRefresh = null;
 let cardReplyRequest = 0;
 let localEffectVersion = 0;
 // The open page's outcome and its server-owned reply destination/coordinator.
@@ -1213,6 +1214,12 @@ function watchListAnchor() {
   // This broad observer can INVALIDATE ownership, never create it. Mutation
   // outside the actual arrival entries includes sheet/Reader/composer layout.
   const mutations = new MutationObserver((records = []) => {
+    // A rail/notice mutation can retire a geometry hold, but cannot create a
+    // new feed anchor. Capture the feed only after its own DOM changed.
+    if (!records.some(record => record.target === list || list.contains(record.target))) {
+      anchorHold = null;
+      return;
+    }
     if (records.some(record => record.type === 'attributes' && ['class', 'style'].includes(record.attributeName) ||
       ![...(anchorHold?.arrivalOwners?.keys() ?? [])].some(entry => entry.contains(record.target)))) anchorHold = null;
     settle();
@@ -3152,6 +3159,7 @@ async function retrySource() {
 function enableFreshness(checkpoint, actorCheckpoint = null) {
   if (!checkpoint) { updateStatus({ kind: 'manual', message: 'Automatic updates need the updated server. Reload this page to see newer messages.' }); return; }
   freshness = new Freshness({ api, bootstrap, topicId: topic.id, checkpoint, actorCheckpoint,
+    externalChanges: true,
     read: operation => registry.cleanup.read(operation), binding: () => ({ ...bootstrap, authority: registry.runtime.current }),
     keys: item => views.keys(item), refreshKeys: () => views.refreshKeys(), status: updateStatus, live,
     authorityLost: (binding, failure) => registry.parkAuthority(binding, failure.code), denied: checkAvailability,
@@ -3243,15 +3251,54 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       takeNeighbors(registry.current, result); return true;
     } });
   registry.cleanup.foregroundListeners.add(() => freshness.interrupt());
+  pageRefresh = new PageRefresh({ api, bootstrap, topicId:topic.id, workspaceId:topic.workspace_id, checkpoint, actorCheckpoint,
+    read:work=>registry.cleanup.read(work),
+    workspaces:()=>shell.outline?.pages?.items?.map(item=>item.id)??[],
+    current:()=>!retired&&!registry.disposed&&!authorityReviewPending(), visible:()=>document.visibilityState==='visible', connected:()=>live?.connected===true,
+    failed:failure=>{
+      if(['retry','defer','superseded'].includes(failure.kind))return;
+      if(failure.kind==='authority')run(()=>registry.parkAuthority(bindingOf(bootstrap),failure.code));
+      else if(failure.kind==='forbidden')run(async()=>{
+        const current=()=>!retired&&!registry.disposed;
+        const read=(name,args)=>registry.cleanup.read(options=>api.view(name,args,options));
+        try {
+          checkedView(await read('topic',{topic_id:topic.id}),bootstrap.instance_id);
+          if(current()){await shell.outline?.reload();await pageRefresh.request(true);}
+        } catch(error) {
+          if(current()&&readFailure(error).kind==='forbidden')await freshness.stopDenied(failure,read,current);
+          else throw error;
+        }
+      });
+      updateStatus(failure);
+    },
+    publish:async(batch,full)=>{
+      if(retired||registry.disposed)return false;
+      const own=topicItems(batch,topic.id), personal=actorItems(batch), space=workspaceItems(batch,topic.workspace_id);
+      for(const item of own)for(const entry of views.keys(item))freshness.invalidate(entry.key,entry.version);
+      freshness.observeActor(personal);
+      const has=(kinds)=>personal.some(item=>kinds.includes(item.resource_kind));
+      const hasHere=(kinds)=>personal.some(item=>kinds.includes(item.resource_kind)&&(item.resource_id===topic.id||views.messages.has(item.resource_id)));
+      const publicChange=own.some(item=>item.resource_kind==='topic');
+      const workspaceChange=space.some(item=>item.resource_kind==='workspace');
+      const reads=[freshness.request({refresh:full})];
+      if(full||publicChange||batch.affected_topics?.includes(topic.id)||hasHere(['read','mark','waiting','acts','whisper','reaction','removal','source_cover_read']))reads.push(loadUnread());
+      if(full||hasHere(['mark','reaction','removal']))reads.push(loadMarks());
+      if(full||has(['memory_read']))reads.push(loadReadState(),loadShownPage());
+      if(full||workspaceChange||here.conversation&&publicChange)reads.push(loadConversation());
+      if(full||batch.attention_changed===true)reads.push(attention.refresh());
+      if(full||space.some(item=>item.resource_kind==='workspace'))reads.push(outcomeScope.load());
+      if(full){reads.push(wakeLights.load());reads.push(healthLight.releaseChanged());}
+      const result=await Promise.all(reads);
+      return result.every(value=>value!==false);
+    } });
   // Each new commit asks for a pass; while the stream is down the timer resumes.
   // Back live, Topic settings asks Core about a save whose answer was lost.
   live?.listen(event => {
     if (event.state === 'live') topicState?.reconnected();
-    if (event.kind === 'commit' || event.state === 'live') freshness.request();
-    else if (event.state === 'down' || event.state === 'unavailable') freshness.schedule(freshness.delay ?? 500);
+    if (event.kind === 'commit' || event.state === 'live' || event.state === 'down' || event.state === 'unavailable') pageRefresh.request(event.state==='live');
   });
-  document.addEventListener('visibilitychange', () => freshness.setVisible(document.visibilityState === 'visible'));
-  window.addEventListener('online', () => { if (document.visibilityState === 'visible') freshness.request(); topicState?.reconnected(); });
+  document.addEventListener('visibilitychange', () => {freshness.setVisible(document.visibilityState === 'visible');if(document.visibilityState==='visible')pageRefresh.request();});
+  window.addEventListener('online', () => { if (document.visibilityState === 'visible') pageRefresh.request(); topicState?.reconnected(); });
   views.resetStars();
   freshness.setVisible(document.visibilityState === 'visible');
 }
@@ -3291,7 +3338,7 @@ async function reconnect() {
     if (registry?.current?.availabilityUnconfirmed || registry?.inline?.availabilityUnconfirmed || [...registry.cards.values()].some(p => p.availabilityUnconfirmed)) { freshness?.invalidate('availability', 0, true); freshness?.request(); }
   }
   if (updateState?.kind === 'reconnect' && reconnectRetried !== api.token) {
-    reconnectRetried = api.token; await freshness?.request({ refresh: true, retry: true });
+    reconnectRetried = api.token; await freshness?.request({ refresh: true, retry: true }); await pageRefresh?.request(true);
   }
   return true;
 }
@@ -3380,7 +3427,7 @@ async function initialize() {
     const ask = $('notify'), offer = () => { ask.hidden = !attention.canAsk; };
     ask.onclick = () => run(async () => { await attention.ask(); offer(); });
     offer();
-    live?.listen(event => { if (event.kind === 'commit' || event.state === 'live') attention.refresh(); });
+    live?.listen(event => { if (!pageRefresh?.current()&&(event.kind === 'commit' || event.state === 'live')) attention.refresh(); });
     attention.listen(answer => { if (waitingHost) paintWaiting(waitingHost, answer, (id, title) => openDestination({ kind: 'topic', id }, title)); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') attention.refresh(); });
     attention.refresh();
@@ -3393,10 +3440,15 @@ async function initialize() {
     // (health-light.mjs).
     const releaseToasts = releaseToastsFor(document, bootstrap.instance_id, bootstrap.actor);
     healthLight = new HealthLight({ link: $('health-link'), feed: () => live?.state ?? null,
+      observeCommits: false,
       observe: answer => { if (!retired) releaseToasts.observe(answer); },
       read: async () => checkedView(await api.view('health_light', {}, { readClass: 'background' }), bootstrap.instance_id) });
     window.addEventListener('pagehide', () => releaseToasts.dispose());
-    live?.listen(event => run(() => healthLight.heard(event)));
+    live?.listen(event => run(async () => {
+      const before=JSON.stringify(healthLight.best?.red??null);
+      await healthLight.heard(event);
+      if(pageRefresh?.current()&&before!==JSON.stringify(healthLight.best?.red??null)){await wakeLights.load();participantsPanel?.paint();}
+    }));
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(() => healthLight.load()); });
     run(() => healthLight.load());
   }
@@ -3852,7 +3904,7 @@ async function initialize() {
     const sections = await outcomeScope.load(), destination = await loadConversation(), marked = await loadMarks(), unread = await loadUnread(), read = await loadReadState(), shown = await loadShownPage();
     await wakeLights.load(); participantsPanel?.paint();
     return sections !== false && destination !== false && marked !== false && unread !== false && read !== false && shown !== false;
-  });
+  }, null, Promise.resolve(), false);
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('updates-retry').onclick = () => run(async () => {
     if (updateState?.kind === 'reconnect') {
@@ -3863,6 +3915,7 @@ async function initialize() {
     if (updateState?.kind === 'authority') { const p = registry.interactive; if (p) await showVersions(p.editors[p.mode], $('updates-retry'), p); return; }
     if (registry.current?.sourceUnavailable || registry.current?.availabilityUnconfirmed || registry.inline?.editors.reply.unavailable || updateState?.kind === 'forbidden') freshness?.invalidate('availability', 0, true);
     await freshness?.request({ refresh: true, retry: true });
+    await pageRefresh?.request(true);
   });
   wakeOnPress($('messages'));
   olderFeed = new OlderFeed({ feed: $('messages'), ready: () => !retired && laidOut && !topicUnavailable && !registry.disposed &&
@@ -3885,9 +3938,11 @@ async function initialize() {
   document.body.dataset.ready = 'true'; enableFreshness(checkpoint, actorCheckpoint);
   // The rails beside the page read through this run from now on (rails.mjs).
   readyRails(topic.workspace_id, { topic, topicRail, topicReadAllowed: () => !authorityReviewPending() && !registry.disposed, readable: () => !topicUnavailable && !freshness?.stopped, currentTopic: () => topic,
+    pageRefresh,
     readingNavigation: () => releaseTopArrivals(),
     // The rail's Starred takes a star off (stack-feed.mjs); its Notebook section starts the topic's pages and the outcome's.
     unstar: star => stackFeed?.unstar(star) });
+  pageRefresh?.request();
   // A message's link opens its topic, or its outcome's conversation, with that
   // message in the Reader; the address then names the page alone, as any does.
   // This run's first marks read establishes what its reading act may clear.
@@ -4032,7 +4087,7 @@ function refreshDirectory() {
 // Returns the page's one reload, which its first read goes through as well;
 // the page calls this before its first read, so a commit while that read is
 // out is read after it.
-function followCommits(load, changes = null, before = Promise.resolve()) {
+function followCommits(load, changes = null, before = Promise.resolve(), subscribe = true) {
   let owed = false, full = true;
   const pass = reloader(async () => {
     await before;
@@ -4055,7 +4110,7 @@ function followCommits(load, changes = null, before = Promise.resolve()) {
     if (!owed) batch?.accept();
   });
   const reload = (all = true) => { full ||= all; return pass(); };
-  if (live) {
+  if (live && subscribe) {
     live.listen(event => { changes?.observe(event); if ((event.kind === 'commit' || event.state === 'live' && owed) && document.visibilityState === 'visible') run(() => reload(false)); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(reload); });
   }

@@ -129,9 +129,10 @@ export class Freshness {
   constructor({ api, bootstrap, topicId, checkpoint, actorCheckpoint = null, read, keys, refresh, binding = () => bootstrap,
     status = () => {}, authorityLost = async () => {}, denied = async () => {}, rebuild = async () => {},
     refreshKeys = () => [], timers: clock = timers, random = Math.random, yieldRead = () => new Promise(resolve => setTimeout(resolve, 0)),
-    live = null }) {
+    live = null, externalChanges = false }) {
     Object.assign(this, { api, bootstrap: copy(bootstrap), topicId, read, keys, refresh, binding, status, authorityLost, denied, rebuild, refreshKeys, timers: clock, random, yieldRead, live });
     // settled: the last pass ran to its end and found nothing left to read.
+    this.externalChanges = externalChanges;
     this.settled = false;
     this.checkpoint = copy(checkpoint); this.continuation = null; this.actorCheckpoint = copy(actorCheckpoint);
     this.dirty = new Map(); this.serial = 0; this.epoch = 0; this.visible = true;
@@ -182,13 +183,8 @@ export class Freshness {
   // stands at the newest commit anywhere when it was read, so while the
   // topic's is no further on than the reader's own, nothing can have been
   // whispered since, and an idle page reads one scope a pass, as before.
-  async readWhispers(read, current) {
-    let input = this.actorCheckpoint;
-    if (!input || this.continuation || this.checkpoint.after_seq <= input.after_seq) return;
-    while (input && current()) {
-      const answer = actorPage(await read('changes', { scope: actorScope(this.bootstrap), limit: 50, cursor: input }), this.bootstrap);
-      if (!current()) return;
-      for (const item of answer.items) {
+  observeActor(items) {
+    for (const item of items) {
         if (item.resource_kind === 'dossier_move' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('dossier_move', item.version);
         if (item.resource_kind === 'whisper' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('whisper:' + item.version, item.version);
         // A thumbs-up or go-ahead answer on a message (docs/thumbs.md): its key names the message.
@@ -208,6 +204,14 @@ export class Freshness {
         // The edit session of one of the person's messages moved: a page editing it learns another device took it.
         if (item.resource_kind === 'edit_session' && typeof item.resource_id === 'string' && integer(item.version)) this.invalidate('edit_session:' + item.resource_id, item.version);
       }
+  }
+  async readWhispers(read, current) {
+    let input = this.actorCheckpoint;
+    if (!input || this.continuation || this.checkpoint.after_seq <= input.after_seq) return;
+    while (input && current()) {
+      const answer = actorPage(await read('changes', { scope: actorScope(this.bootstrap), limit: 50, cursor: input }), this.bootstrap);
+      if (!current()) return;
+      this.observeActor(answer.items);
       input = answer.has_more ? answer.continuation : null;
       if (!answer.has_more) this.actorCheckpoint = copy(answer.checkpoint);
     }
@@ -228,7 +232,7 @@ export class Freshness {
     if (!this.enabled || !this.visible || this.disposed || this.stopped && !retry) return Promise.resolve();
     if (retry) { this.stopped = false; this.failures = 0; }
     if (refresh) for (const { key, version } of this.refreshKeys()) this.invalidate(key, version, true);
-    this.requested = true; this.clearTimer();
+    this.requested = !this.externalChanges; this.clearTimer();
     if (!this.running) {
       this.running = this.drain().finally(() => { this.running = null; this.schedule(this.delay ?? 500); });
     }
