@@ -17,13 +17,13 @@ import { unstarDossier } from './dossier-unstar.mjs';
 // stacks are drawn again whenever an answer changes what they show. Explicit
 // dossier levels and individual message folds are separate personal Core acts.
 import { cardIn } from './fold.mjs';
-import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
+import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn, paintHeadReading } from './reply-stacks.mjs';
 import { moveOf, keyOf, joinShown, joinOf, foldStep, laterActs, positionOf, placeOf, sideOf, headOf, stackCover, dossierOf } from './stack-order.mjs';
 import { noteAt } from './press-note.mjs';
 import { keyAction, writing } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
-import { mayThumb, thumbed, reactionsOf } from './reactions.mjs';
+import { mayThumb, thumbed, reactionsOf, paintThumbPending } from './reactions.mjs';
 import { contact, heard, notTaken, NOT_TAKEN } from './api.mjs';
 import { CoordinationChoice } from './coordination-choice.mjs';
 import { firstCoverMenuItem } from './cover-refresh.mjs';
@@ -183,9 +183,10 @@ export class StackFeed {
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
     newest = () => {}, refreshPositions = async () => {}, acted = () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), navigate = () => {}, press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
-    colorOf = () => null, readNamed = null, captureArchive = () => null, clock = () => Date.now(), doc = document }) {
+    colorOf = () => null, readNamed = null, captureArchive = () => null, clock = () => Date.now(), thumbPending = () => null, doc = document }) {
     Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, captureArchive, clock, doc });
     this.archiveReads = new Map();
+    this.thumbPending = thumbPending;
     this.readNamed = readNamed; this.headerStars = new Set();
     this.coordinationChoice = new CoordinationChoice({ instanceId, viewer, view: doc.defaultView ?? globalThis.window });
     this.state.showCoordination = this.coordinationChoice.on;
@@ -363,6 +364,14 @@ export class StackFeed {
     if (button.textContent !== shown) button.textContent = shown;
     button.setAttribute('aria-pressed', String(on)); button.setAttribute('aria-label', count ? `${words} (${count})` : words); button.title = words;
     button.dataset.count = String(count);
+    const pending = this.thumbPending?.(item.id) ?? null;
+    paintThumbPending(button, pending);
+    if (pending !== null) button.textContent = '👍 …';
+  }
+  // Giving a thumb can only retire New marks. Refresh the affected dossier's
+  // existing marks without gathering/arranging all loaded messages.
+  paintReactionReading(card) {
+    paintHeadReading(card, this.messages(), this.unread, this.nameOf);
   }
   // The message a control in a card acts on: its card's. Only the card names
   // its message (data-id), so what finds a message's card finds that alone.
