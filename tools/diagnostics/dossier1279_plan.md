@@ -41,6 +41,11 @@ without substituting a promise or suppressing the original caller's retry.
 Currentness wrappers log only calls the product actually makes, preserve
 arguments/receiver/value/throw and never probe currentness an extra time.
 Observer errors and dropped events are explicit diagnostic barriers.
+The main file retains an integrity record before and after every30-arrival
+batch and immediately before setting transitionComplete. Any recorded error
+or event loss stops that case before the next batch/completion. This source
+successor closes Fable26822's later-error/loss finding without changing the
+actual owner call, its return/throw, or any existing case/oracle.
 
 For each applicable case the first normal30-arrival batch must produce an
 actual document messagesPage entry naming its last arrival, with its matching

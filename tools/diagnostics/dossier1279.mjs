@@ -48,6 +48,12 @@ try {
     const row={...target,startedMs:Date.now(),arrivals:[],barriers:[]};report.cases.push(row);
     const context=await browser.newContext({viewport:{width:1512,height:900},deviceScaleFactor:2,colorScheme:'dark'});
     let page;
+    const requireObserverIntegrity=async boundary=>{
+      const integrity=await page.evaluate(()=>({errors:__dossier1279.observerErrors,dropped:__dossier1279.dropped}));
+      (row.observerChecks??=[]).push({boundary,wallMs:Date.now(),...integrity});
+      assert.equal(integrity.errors.length,0,`Observer errors at ${boundary}; stop before further arrivals/completion`);
+      assert.equal(integrity.dropped,0,`Observer event loss at ${boundary}; stop before further arrivals/completion`);
+    };
     try {
       await context.addInitScript(target=>{
         const q=window.__dossier1279={target,phase:'initial-load',events:[],inputs:[],network:[],samples:[],dropped:0,observerErrors:[]};
@@ -143,6 +149,7 @@ try {
       else assert.ok(row.messageFacesVisible.length>0,'Visible-message control has an entry visible');
       await page.screenshot({path:`${out}/${target.label}-before.png`});
       for(let start=0;start<330;start+=30){
+        await requireObserverIntegrity(`before-arrivals-${start}`);
         const arrival=await control({method:'arrivals',label:target.label,start,count:30,churn:start===120&&target.label!=='message-visible'});row.arrivals.push(arrival);
         // Positive control must be a real incoming page's document-owner call,
         // not a manufactured call to the prototype used by the observer.
@@ -163,6 +170,7 @@ try {
         await page.waitForFunction(id=>window[Symbol.for('theseus.topicWorkingSet')]?.()?.loaded.includes(id),arrival.last,{timeout:30000});
         await page.waitForTimeout(250);
         const sample=await page.evaluate(()=>__dossier1279.sample());row.arrivals.at(-1).observed=sample;
+        await requireObserverIntegrity(`after-arrivals-${start}`);
         await save('progress.json',report);
       }
       await page.waitForTimeout(750);row.after=await page.evaluate(()=>__dossier1279.sample());
@@ -170,6 +178,7 @@ try {
       row.rootRetained=row.after.window.loaded.includes(target.root);row.coverRetained=Boolean(row.after.cover);
       row.sourceAfter=await control({method:'source',label:target.label});
       await page.screenshot({path:`${out}/${target.label}-after.png`});
+      await requireObserverIntegrity('before-transition-complete');
       row.transitionComplete=true;
       await page.evaluate(()=>__dossier1279.phase='separate-linked-return');
       const newAbove=page.getByRole('button',{name:/new above/i});
