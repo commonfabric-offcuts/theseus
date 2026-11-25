@@ -10,7 +10,7 @@ import { reading785Checks, names785, withRestored785, moreLanding785, withDiagno
 import { readingChecks } from './topic_reading_native.mjs';
 import { traceInit785, sourceProbes785, installTrace785, traceBegin785, traceMark785, traceReceipt785, traceRead785, frontier785, landing785, settlement785, TRACE_LIMIT785, SETTLEMENT_FRAMES785, wheelSettlement785 } from './reading_785_trace.mjs';
 const source=readFileSync(new URL('../web/app.mjs',import.meta.url),'utf8');
-const cut=s=>s.slice(s.indexOf('let roomy = null, listAnchor'),s.indexOf('// The New line, just below the oldest message'));
+const cut=s=>s.slice(s.indexOf('let roomy = null, anchorDepth'),s.indexOf('// The New line, just below the oldest message'));
 const sha=s=>createHash('sha256').update(s).digest('hex');
 function model(s=source) {
  const events=new Map(), listeners=new Set(),frames=new Map(),observers=[],nodes=[],scrolls=[];let serial=0;
@@ -25,7 +25,7 @@ function model(s=source) {
  const document={activeElement:null,documentElement:{scrollHeight:5000},body:{},querySelectorAll:()=>nodes.filter(e=>!e.hidden),addEventListener:(k,f)=>listen('document',k,f),removeEventListener:(k,f)=>unlisten('document',k,f),caretPositionFromPoint:()=>null};
  const Observer=class {constructor(cb){this.cb=cb;this.observed=new Set();this.disconnected=false;observers.push(this)}observe(n){this.observed.add(n)}unobserve(n){this.observed.delete(n)}disconnect(){this.observed.clear();this.disconnected=true}takeRecords(){return []}};
  const context=vm.createContext({window:win,document,innerWidth:600,innerHeight:800,Node:{DOCUMENT_POSITION_FOLLOWING:4,TEXT_NODE:3},inline:null,registry:{},retired:null,topicUnavailable:false,authorityReviewPending:()=>false,entries:()=>nodes,drawn:(l,id)=>nodes.some(n=>n.dataset.id===id&&!n.hidden),typingField:()=>false,views:{messages:new Map()},bootstrap:{actor:'viewer'},messageEntries:new Map(),topic:{id:'isolated-topic'},stackState:()=>({stacks:[]}),cardIn:e=>e,reveal:()=>{},button:(text,activate)=>({activate,style:{},setAttribute:()=>{}}),$:id=>({messages:list,main,'new-message-sheet':home})[id],opened:e=>e,ResizeObserver:Observer,MutationObserver:Observer,requestAnimationFrame:f=>{frames.set(++serial,f);return serial},cancelAnimationFrame:id=>frames.delete(id)});
- vm.runInContext(cut(s)+`;globalThis.api785={captureListAnchor,recordListArrivals,restoreListAnchor,keepListAnchor,watchListAnchor,rememberListAnchor,paintNewAbove,offers:newAbove,pill:()=>newAboveButton,stop:()=>anchorWatch.stop(),settle:(records=[])=>anchorWatch.mutations.cb(records),act:()=>[...[]],state:()=>({anchorActing,anchorDepth,listAnchor})};`,context);
+ vm.runInContext(cut(s)+`;globalThis.api785={captureListAnchor,recordListArrivals,restoreListAnchor,keepListAnchor,watchListAnchor,rememberListAnchor,paintNewAbove,offers:newAbove,pill:()=>newAboveButton,stop:()=>anchorWatch.stop(),settle:(records=[])=>anchorWatch.mutations.cb(records),act:()=>[...[]],state:()=>({anchorActing,anchorDepth,anchorHold})};`,context);
  // Real model arrivals populate the same accepted-record and entry maps used
  // by the product repaint producer. A test-only ownership token grants nothing.
  const insertArrival=height=>{const seq=Math.max(...nodes.map(n=>Number(n.dataset.seq)))+1,id='arrival-'+seq,e=node(id,nodes[0].y,height);e.dataset.seq=String(seq);for(const n of nodes)n.y+=height;nodes.unshift(e);const item={id,seq,topic_id:'isolated-topic',author_id:'outside'};context.views.messages.set(id,item);context.messageEntries.set(id,e);return e;};
@@ -36,7 +36,7 @@ function model(s=source) {
 }
 function holdControl(s) {const m=model(s),held=m.nodes[0],before=held.getBoundingClientRect().top,saved=m.api.captureListAnchor();m.record(saved,135);m.api.restoreListAnchor(saved);assert.equal(held.getBoundingClientRect().top,before,'actual source absorbs 135px displacement');}
 test('item 785 source geometry: repaint height changes hold real identity and successor',()=>{
- holdControl(source);const m=model(),saved=m.api.captureListAnchor(),before=m.nodes[1].getBoundingClientRect().top;const successor=m.nodes[1];m.nodes[0].hidden=true;m.record(saved,70);m.api.restoreListAnchor(saved);assert.equal(successor.getBoundingClientRect().top,before,'hidden first card hands hold to exact successor');
+ holdControl(source);const m=model(),saved=m.api.captureListAnchor(),before=saved.tops.get(saved.anchor);const successor=m.nodes[1];m.nodes[0].hidden=true;m.record(saved,70);m.api.restoreListAnchor(saved);assert.equal(successor.getBoundingClientRect().top,before,'1245: first surviving successor top replaces the vanished anchor viewport position');
 });
 function moreControl(s) {
  const m=model(s),more=m.node('older-new',350,40);more.dataset={line:'older'};m.document.querySelectorAll=()=>[more,...m.nodes];
@@ -177,7 +177,7 @@ test('item 785 timestamped trace captures scroll/read/render and unchanged lexic
  listeners.scroll();listeners.scrollend();await win.fetch('/api/view',{body:JSON.stringify({name:'topic_messages',args:{topic_id:'isolated',direction:'after',cursor:50}})});await new Promise(resolve=>setImmediate(resolve));
  // The actual source probe conditions execute against lexical values; these
  // calls are instrument controls, never a synthetic native gesture claim.
- const saved={anchor:node,tops:new Map([[node,160]]),y:0,newest:50};Object.assign(ctx,{anchor:node,tops:saved.tops,point:null,saved,listAnchor:saved,hold:node,anchorActing:false,anchorDepth:0,kind:'messages',views:{olderCursor:55,messages:new Map([['real-anchor',{}]])}});
+ const saved={anchor:node,tops:new Map([[node,160]]),y:0,newest:50};Object.assign(ctx,{anchor:node,tops:saved.tops,point:null,saved,anchorHold:saved,hold:node,anchorActing:false,anchorDepth:0,kind:'messages',views:{olderCursor:55,messages:new Map([['real-anchor',{}]])}});
  for(const probe of sourceProbes785(source)){assert.equal(source.split('\n')[probe.lineNumber],probe.target);assert.equal(vm.runInContext(probe.condition,ctx),false);}
  win.__reading785={e:node};node.querySelectorAll=()=>[node];observer[0]();const trace=vm.runInContext(traceRead785,ctx),events=trace.events;
  for(const event of ['scroll','scrollend','read start','read answer','capture','restore enter','restore after scroll','remember','paint','frontier','DOM render'])assert.ok(events.some(e=>e.event===event),event);
@@ -216,7 +216,7 @@ function retirementControl785(s=source, fault=null) {
  const m=model(s),e=m.nodes[0],other=m.nodes[1];
  e.y=m.win.scrollY-50;other.y=m.win.scrollY-100;
  const message={id:e.dataset.id,topic_id:'isolated-topic'};
- m.context.views.messages.set(e.dataset.id,message);m.context.messageEntries.set(e.dataset.id,e);m.context.messageEntries.set(other.dataset.id,other);
+ m.context.views.messages.set(e.dataset.id,message);m.context.views.messages.set(other.dataset.id,{id:other.dataset.id,topic_id:'isolated-topic'});m.context.messageEntries.set(e.dataset.id,e);m.context.messageEntries.set(other.dataset.id,other);
  m.api.offers.add(e.dataset.id);m.api.offers.add(other.dataset.id);
  m.api.paintNewAbove();
  e.scrollIntoView=()=>{e.y=m.win.scrollY-0.015625;if(fault==='out-of-sight')e.y=m.win.scrollY-8;};
@@ -252,7 +252,7 @@ test('item 785 fallback translation is scoped to supported anchor layout',()=>cs
 
 test('item 785 applied retirement and fallback product regressions fail and byte restore',()=>{
  const css=readFileSync(new URL('../web/aim.css',import.meta.url),'utf8'),dir=mkdtempSync(join(tmpdir(),'reading785-product-')),path=join(dir,'source');
- const variants=[['retirement',source,'rect.top >= -1','rect.top >= 0',retirementControl785],['all-offers',source,'newAbove.delete(id);\n      rememberListAnchor();','newAbove.clear();\n      rememberListAnchor();',retirementControl785],['focus-guard',source,'card.contains(document.activeElement)','true',s=>retirementControl785(s,'focus')],['fallback',css,'@supports (left:anchor(--message-column center)){.new-above{left:anchor(--message-column center)!important;transform:translateX(-50%);}}','.new-above{left:anchor(--message-column center)!important;transform:translateX(-50%);}',cssControl785]];
+ const variants=[['retirement',source,'rect.top >= -1','rect.top >= 0',retirementControl785],['all-offers',source,'newAbove.delete(id);\n      rememberListAnchor();','newAbove.clear();\n      rememberListAnchor();',retirementControl785],['focus-guard',source,'entry.isConnected && drawn(list, id) && card.contains(document.activeElement)','entry.isConnected && drawn(list, id) && true',s=>retirementControl785(s,'focus')],['fallback',css,'@supports (left:anchor(--message-column center)){.new-above{left:anchor(--message-column center)!important;transform:translateX(-50%);}}','.new-above{left:anchor(--message-column center)!important;transform:translateX(-50%);}',cssControl785]];
  try{for(const [name,original,target,replacement,control] of variants){assert.equal(original.split(target).length,2);const changed=original.replace(target,replacement);writeFileSync(path,changed);assert.notEqual(sha(readFileSync(path)),sha(original));assert.throws(()=>control(readFileSync(path,'utf8')),{name:'AssertionError'});writeFileSync(path,original);assert.equal(sha(readFileSync(path)),sha(original));control(readFileSync(path,'utf8'));console.log(JSON.stringify({edgeProduct785:{name,applied:sha(changed),caught:true,restored:sha(original),control:true}}));}}finally{rmSync(dir,{recursive:true,force:true});}
 });
 async function wheelControl785(expression, mode) {
@@ -300,7 +300,7 @@ test('item 785 page-made scrolls stick after arrival restoration',()=>pageScroll
 test('item 785 causal model faults apply, fail and byte restore all three controls',()=>{
  const dir=mkdtempSync(join(tmpdir(),'reading785-causal-')),path=join(dir,'app.mjs');
  const variants=[
-  ['unrelated-layout','else if (changed === null) anchorHold = null;','else { restoreListAnchor(listAnchor); anchorHold = null; }',s=>{const m=unrelatedLayoutControl785(s);m.api.stop();}],
+  ['unrelated-layout','  const settle = () => {','  const unrelated = captureListAnchor(); const settle = () => { restoreListAnchor(unrelated);',s=>{const m=unrelatedLayoutControl785(s);m.api.stop();}],
   ['page-scroll','if (anchorHold?.y !== window.scrollY || event?.target && event.target !== document && event.target !== window) anchorHold = null;','if (anchorHold) { anchorHold.y = window.scrollY; restoreListAnchor(anchorHold); }',pageScrollControl785],
   ['recorded-arrival','function recordListArrivals(saved, revised = []) {','function recordListArrivals(saved, revised = []) { return;',s=>{const {m}=recordedArrivalControl785(s);m.api.stop();}],
  ];
