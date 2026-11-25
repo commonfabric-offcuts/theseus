@@ -84,15 +84,16 @@ function refusePreparations(f, count) {
   return next => { count = next; };
 }
 
-// A reply refused at preparation, with the composer left empty and the
-// writing still in Core's slot at revision one.
+// A reply refused at preparation:1233 restores its writing in the unchanged
+// composer, while Core still holds it in the slot at revision one.
 async function refusedReply(f, registry) {
   const shown = await registry.open(await f.listed(), { topicId: f.topicId });
   const reply = shown.editors.reply;
   reply.edit({ body: 'A reply about revision one' }); await registry.edited(reply);
   const refused = await registry.send(reply, { stay: true });
   assert.deepEqual([refused.status, refused.receipt?.error?.code], ['refused', 'FORBIDDEN']);
-  assert.deepEqual([(await f.saved()).draft.body, reply.draft.body], ['A reply about revision one', '']);
+  assert.deepEqual([(await f.saved()).draft.body, reply.draft.body], ['A reply about revision one', 'A reply about revision one']);
+  assert.equal(refused.restoredWriting, true);
   return { reply, refused };
 }
 
@@ -175,7 +176,7 @@ test('a refused reply still holds its revision: the page opens current and the r
   reply.edit({ body: 'A reply about revision one' }); await registry.edited(reply);
   const refused = await registry.send(reply, { stay: true });
   assert.deepEqual([refused.status, refused.receipt?.error?.code], ['refused', 'FORBIDDEN']);
-  assert.deepEqual([(await f.saved()).draft.body, reply.draft.body], ['A reply about revision one', ''], 'the writing stays in its slot; the composer is empty');
+  assert.deepEqual([(await f.saved()).draft.body, reply.draft.body], ['A reply about revision one', 'A reply about revision one'], 'the refusal restores its exact writing for editing');
   await f.revise(1, 'Revision two.');
 
   shown = await registry.open(await f.listed(), { topicId: f.topicId });

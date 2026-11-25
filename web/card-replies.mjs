@@ -78,7 +78,13 @@ export class CardReplies {
             }
           }
           root.querySelector('.sheet-close')?.remove();
-          const ui = new InlineComposer({ ...this.callbacks, sent: (p, result) => this.sent(id, p, result) }, { root, prefix, cardReply: true });
+          const ui = new InlineComposer({ ...this.callbacks,
+            pending: (p, editor, item) => {
+              if (this.callbacks.pending?.(p, editor, item) !== true) return false;
+              const current = this.rows.get(id);
+              if (current?.p === p && !holdsWriting(editor.draft)) this.hide(id, current, { focus: false });
+              return true;
+            }, sent: (p, result) => this.sent(id, p, result) }, { root, prefix, cardReply: true });
           const preview = card.querySelector(':scope > .message-preview');
           const sourceHeight = preview?.clientHeight ? Math.max(24, Math.min(preview.clientHeight, card.clientHeight - (card.scrollHeight - preview.clientHeight))) : 240;
           row = { ui, card, p, sourceHeight }; this.rows.set(id, row); card.insertBefore(root, card.querySelector(':scope > .note-corner'));

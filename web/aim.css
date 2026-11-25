@@ -1579,3 +1579,9 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 /*1159: the page title is its own quiet, keyboard-reachable editing control.*/
 .notebook-title-edit{display:inline-block;max-width:100%;vertical-align:middle;overflow:hidden;text-overflow:ellipsis}.notebook-title-edit[aria-disabled=false]{cursor:pointer}.notebook-title-edit:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 @media(max-width:760px){.notebook-title-edit{min-width:44px;min-height:44px;line-height:44px}}
+
+/* Submitted writing stays in the topic while its authoritative message is pending. */
+.pending-send{background:var(--panel);border:1px solid var(--line);border-radius:.5rem;padding:.75rem 1rem;margin:.5rem 0;overflow-wrap:anywhere}
+.pending-send-state,.pending-send-images{color:var(--muted);font-size:.8rem;margin:.2rem 0}
+.pending-send-words{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:.4rem 0}
+.pending-send button{font-size:.8rem}
