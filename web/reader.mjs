@@ -1357,18 +1357,25 @@ export class Reader {
     try {
       // The controller freezes A synchronously. Reflect that deliberate act
       // before awaiting its journal or network; later receipts only paint status.
-      const sending = this.callbacks.send(editor, { stay: returnToCard || stay });
+      const early = !stay && Boolean(this.callbacks.pending);
+      const sending = this.callbacks.send(editor, { stay: early || returnToCard || stay });
       if (this.editor === editor && editor.draft !== draft) { this.drawEditor(); this.field.focus(); }
       const version = editor.localVersion, cycle = editor.clientCycleId, notice = this.noticeVersion;
-      // This Reader shares an inline field. Keep its recovery controls until
-      // publication, then let the card owner close both surfaces and land.
-      const current = () => this.presentation === presentation && this.viewToken === token &&
-        this.mode === 'reply' && this.admits(editor, presentation) && editor.localVersion === version &&
+      // An ordinary send can hand off to its retained pending card after
+      // local keeping. Explicit stay and surfaces without that owner keep
+      // their existing confirmed-publication/recovery path.
+      const owns = (shown = true) => (!shown || this.presentation === presentation && this.viewToken === token) &&
+        this.mode === 'reply' && editor.localVersion === version &&
         editor.clientCycleId === cycle && !holdsWriting(editor.draft) && !currentImages(editor).length && !imageBarrier(editor) &&
         !this.imagePicker && !this.images?.open && !this.compose.panel && !this.naming.sheet.open &&
         this.noticeVersion === notice;
+      const current = () => owns() && this.admits(editor, presentation);
+      const item = editor.submissions.find(item => item.status === 'preparing' && !item.detached);
+      let handed = false;
+      try { handed = early && item && await this.callbacks.pending(presentation, editor, item, current, owns); }
+      catch (error) { this.callbacks.error?.(error); }
       const result = await sending;
-      if (returnToCard && result?.status === 'confirmed' && current()) await this.callbacks.sent?.(presentation, result, current);
+      if (!handed && !early && returnToCard && result?.status === 'confirmed' && current()) await this.callbacks.sent?.(presentation, result, current);
     } catch (error) { this.callbacks.error?.(error); }
   }
 

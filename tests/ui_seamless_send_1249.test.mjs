@@ -16,6 +16,7 @@ const fixture = t => {
     Object.defineProperties(n,{parentElement:{get(){return this.parent;}},parentNode:{get(){return this.parent;}},childNodes:{get(){return this.children;}},
       nextElementSibling:{get(){const children=this.parent?.children??[];return children[children.indexOf(this)+1]??null;}},
       previousElementSibling:{get(){const children=this.parent?.children??[];return children[children.indexOf(this)-1]??null;}},firstElementChild:{get(){return this.children.find(c=>typeof c==='object')??null;}},lastElementChild:{get(){return this.children.filter(c=>typeof c==='object').at(-1)??null;}}});
+    n.getClientRects=()=>n.hidden?[]:[{top:40,bottom:80}];
     n.contains=other=>n===other||[...n.descendants()].includes(other);
     n.after=(...nodes)=>{for(const node of nodes)n.parent.insertBefore(node,n.nextElementSibling);};
     n.before=node=>n.parent.insertBefore(node,n);
@@ -59,12 +60,27 @@ test('1249 repaint and unknown confirmation keep exact A, nodes and Check confir
   assert.equal(card.querySelector('strong').text,'Exact A');assert.equal(f.editor.draft.body,'Changed B');
 });
 
-test('1249 frozen reply_to places the card under its parent; root writing stays at the composer end',t=>{
-  const f=fixture(t),parent=f.doc.createElement('div'),other=f.doc.createElement('div'),end=f.doc.createElement('dialog');
-  f.host.append(parent,other,end);f.item.snapshot.reply_to='actual-parent';
-  f.paint({parent:ref=>ref?.id==='actual-parent'?parent:null,end});const card=f.card();assert.equal(parent.nextElementSibling,card);assert.equal(card.nextElementSibling,other);
-  f.paint({parent:ref=>ref?.id==='actual-parent'?parent:null,end});assert.equal(parent.nextElementSibling,card);
-  f.item.snapshot.reply_to=null;f.paint({end});assert.equal(card.nextElementSibling,end);
+test('1249 frozen reply destination places all submissions at the dossier tail above New; roots keep the composer end',t=>{
+  const f=fixture(t),folder=f.doc.createElement('section'),replies=f.doc.createElement('div'),parent=f.doc.createElement('div'),later=f.doc.createElement('div'),line=f.doc.createElement('hr'),end=f.doc.createElement('dialog');
+  folder.append(parent,replies);replies.append(later);f.host.append(folder,line,end);f.item.snapshot.reply_to='actual-parent';
+  const target=ref=>ref?.id==='actual-parent'?replies:null;
+  f.paint({target,end});const card=f.card();assert.equal(card.parentElement,replies);assert.equal(later.nextElementSibling,card);assert.equal(folder.nextElementSibling,line);
+  const second={...structuredClone(f.item),id:'submission-B',sendOperationId:'send-B'};f.editor.submissions.push(second);f.paint({target,end});
+  const b=f.host.querySelectorAll('[data-pending-send]')[1];assert.deepEqual(replies.children,[later,card,b]);
+  let moves=0;const insert=replies.insertBefore.bind(replies);replies.insertBefore=(...args)=>{moves++;return insert(...args);};card.querySelector('a').focus();f.paint({target,end});assert.equal(moves,0);
+  f.item.snapshot.reply_to=null;second.snapshot.reply_to=null;f.paint({end});assert.equal(b.nextElementSibling,end);assert.equal(card.nextElementSibling,b);
+});
+
+test('1249 moving a focused connected pending child to BODY restores focus and place without stealing later writing',t=>{
+  const f=fixture(t);f.paint();const card=f.card(),link=card.querySelector('a');link.focus();let y=40,scrolls=[];
+  pending.keepPendingSendPlace(f.host,()=>{f.doc.activeElement=f.doc.body;y=-1200;},{top:()=>y,scroll:delta=>scrolls.push(delta)});
+  assert.equal(link.isConnected,true);assert.equal(f.doc.activeElement,link);assert.deepEqual(scrolls,[-1240]);
+  const writing=f.doc.createElement('textarea');f.host.append(writing);link.focus();scrolls=[];
+  pending.keepPendingSendPlace(f.host,()=>{writing.focus();y=70;},{top:()=>y,scroll:delta=>scrolls.push(delta)});
+  assert.equal(f.doc.activeElement,writing);assert.deepEqual(scrolls,[]);
+  link.focus();scrolls=[];let current=true;
+  pending.keepPendingSendPlace(f.host,()=>{f.doc.activeElement=f.doc.body;current=false;y=90;},{current:()=>current,top:()=>y,scroll:delta=>scrolls.push(delta)});
+  assert.equal(f.doc.activeElement,f.doc.body);assert.deepEqual(scrolls,[]);
 });
 
 for (const separateEditor of [false,true]) test(`1249 two root submissions repaint without moves or lost focused children (${separateEditor?'two editors':'one editor'})`,t=>{
@@ -165,4 +181,20 @@ test('1249 retained image preview checks frozen operation binding before and aft
   let release,reads=0;uploads.preview=async id=>{reads++;assert.equal(id,'A');return new Promise(resolve=>release=resolve);};
   const read=uploads.previewSubmission(item,image);item.detached=true;release(new Blob(['A']));assert.equal(await read,null);assert.equal(reads,1);
   item.detached=false;uploads.registry.runtime.current={authority_id:'other',authority_epoch:'e'};assert.equal(await uploads.previewSubmission(item,image),null);assert.equal(reads,1);
+});
+
+
+test('1254 a visible pending card keeps its place with focus on an outside button',t=>{
+  const f=fixture(t);f.paint();const card=f.card(),button=f.doc.createElement('button');f.host.append(button);button.focus();let y=40,scrolls=[];
+  pending.keepPendingSendPlace(f.host,()=>{y=-1200;},{top:()=>y,scroll:delta=>scrolls.push(delta)});
+  assert.equal(f.doc.activeElement,button);assert.deepEqual(scrolls,[-1240]);
+});
+
+test('1254 two registered editors keep first-handed submission order when the older editor sends later',t=>{
+  const f=fixture(t),end=f.doc.createElement('dialog');f.host.append(end);f.item.presentPending=false;
+  const second={...structuredClone(f.item),id:'first-handed-B',presentPending:true},b={...f.editor,key:'editor-B',submissions:[second]};
+  const paint=()=>pending.paintPendingSends(f.host,[f.editor,b],{topicId:'t',underway:()=>true,end});
+  paint();const first=f.card();f.item.presentPending=true;paint();
+  assert.deepEqual(f.host.querySelectorAll('[data-pending-send]').map(card=>card.dataset.pendingSend),['first-handed-B',f.item.id]);
+  assert.equal(f.host.children[0],first);first.querySelector('a').focus();paint();assert.equal(f.doc.activeElement,first.querySelector('a'));
 });
