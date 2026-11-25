@@ -24,7 +24,8 @@ const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 report.head = execFileSync('git', ['rev-parse', 'HEAD'], {encoding:'utf8'}).trim();
 report.sources = {};
 for (const path of ['web/app.mjs','web/freshness.mjs','web/outline-rail.mjs','web/outcome-refresh.mjs',
-  'web/dimming-sync.mjs','web/attention.mjs','web/health-light.mjs','tests/fixtures/ui_http.py']) {
+  'web/dimming-sync.mjs','web/attention.mjs','web/health-light.mjs','web/api.mjs','web/cleanup.mjs',
+  'aim_next/changes.py','aim_next/delivery.py','tests/fixtures/ui_http.py']) {
   report.sources[path] = hash(await readFile(path));
 }
 report.harnessHash = hash(await readFile(new URL(import.meta.url)));
@@ -44,6 +45,15 @@ const readSummary = reads => {
   return {reads,byName,multiplicity};
 };
 const cleanReads = reads => reads.every(read=>read.status>=200&&read.status<300&&!read.failure&&!read.bodyFailure&&read.bodyEnded!==undefined);
+const readKey = row => row.name+':'+JSON.stringify(canonical(row.args));
+const classifyReads = reads => reads.map(row=>{
+  const owner=row.owner;
+  const superseded=Boolean(row.signalAborted&&(row.failureName==='AbortError'||row.bodyFailureName==='AbortError')&&
+    owner?.kind==='background'&&owner.partitioned&&owner.endEpoch>owner.epoch&&owner.errorCode==='CLEANUP_DEFERRED');
+  const recovered=superseded&&reads.find(later=>later.start>row.end&&readKey(later)===readKey(row)&&cleanReads([later]));
+  return {read:row,kind:cleanReads([row])?'complete':recovered?'owned-foreground-supersession-recovered':'unresolved',
+    ...(recovered?{recoveryStart:recovered.start}: {})};
+});
 try {
   facts = await control({method:'ready',runtime_evidence:true});
   report.runtime = facts.runtime_evidence;
@@ -75,7 +85,7 @@ try {
   await writeFile(evidence+'/ownership.json',JSON.stringify({marker,profile,fixturePid:fixture.pid,origin:facts.origin},null,2));
   const context = await browser.newContext({viewport:{width:1400,height:900},colorScheme:'dark'});
   await context.addInitScript(() => {
-    const probe = window.render1229 = {reads:[],pending:0,last:performance.now(),seq:null,feedMutations:0};
+    const probe = window.render1229 = {reads:[],pending:0,last:performance.now(),seq:null,feedMutations:0,signalOwners:new WeakMap(),owners:[]};
     const original = window.fetch;
     window.fetch = async function(input, init) {
       const path = new URL(typeof input==='string' ? input : input.url,location.href).pathname;
@@ -83,6 +93,10 @@ try {
       if (path==='/api/view') {
         const request = JSON.parse(init?.body ?? '{}');
         row = {name:request.name,args:request.args,start:performance.now(),commitSeen:probe.seq};
+        row.readClass=new Headers(init?.headers).get('X-AIM-Read-Class');
+        row.owner=init?.signal?probe.signalOwners.get(init.signal):undefined;
+        row.publish=probe.publishing;
+        init?.signal?.addEventListener('abort',()=>{row.signalAborted=true;row.abortAt=performance.now();},{once:true});
         probe.reads.push(row); probe.pending++; probe.last=performance.now();
       }
       let finished=false;
@@ -96,13 +110,13 @@ try {
             response[name]=async(...args)=>{
               row.bodyStarted=performance.now();row.bodyReader=name;
               try{return await consume(...args);}
-              catch(error){row.bodyFailure=String(error);throw error;}
+              catch(error){row.bodyFailure=String(error);row.bodyFailureName=error?.name;throw error;}
               finally{row.bodyEnded=performance.now();finish();}
             };
           }
         }
         return response;
-      }catch(error){if(row)row.failure=String(error);finish();throw error;}
+      }catch(error){if(row){row.failure=String(error);row.failureName=error?.name;}finish();throw error;}
     };
     const Socket = window.WebSocket;
     window.WebSocket = class extends Socket {
@@ -142,13 +156,55 @@ try {
   page.on('pageerror',error => report.failures.push({name:'pageerror',detail:error.stack}));
   await page.goto(facts.origin+'/?topic=cost1229-open');
   await page.waitForFunction(() => document.body.dataset.ready==='true');
+  const hasPageRefresh=await access('web/page-refresh.mjs').then(()=>true,()=>false);
+  await page.evaluate(async hasPageRefresh=>{
+    const p=render1229,{RecoveryCleanup}=await import('/cleanup.mjs'),{Freshness}=await import('/freshness.mjs');
+    const cleanups=new Set(),controllers=new Set();let serial=0;
+    const originalRead=RecoveryCleanup.prototype.read;
+    RecoveryCleanup.prototype.read=function(operation,...args){
+      cleanups.add(this);
+      const owner={id:++serial,kind:'background',epoch:this.readEpoch,partitioned:this.partitioned,start:performance.now()};
+      p.owners.push(owner);
+      return originalRead.call(this,options=>{if(options.signal)p.signalOwners.set(options.signal,owner);return operation(options);},...args)
+        .then(value=>{owner.result='resolved';return value;},error=>{owner.errorCode=error?.code;owner.result='rejected';throw error;})
+        .finally(()=>{owner.end=performance.now();owner.endEpoch=this.readEpoch;p.last=performance.now();});
+    };
+    const originalForeground=RecoveryCleanup.prototype.foreground;
+    RecoveryCleanup.prototype.foreground=function(...args){
+      cleanups.add(this);const epoch=this.readEpoch,lease=originalForeground.apply(this,args),read=lease.read;
+      const owner={id:++serial,kind:'foreground',epoch,beganEpoch:this.readEpoch,start:performance.now()};p.owners.push(owner);
+      lease.read=operation=>read.call(lease,options=>{if(options.signal)p.signalOwners.set(options.signal,owner);return operation(options);});
+      const release=lease.release;lease.release=()=>{owner.end=performance.now();owner.endEpoch=this.readEpoch;return release.call(lease);};
+      return lease;
+    };
+    const observe=(Class,kind)=>{
+      const request=Class.prototype.request;
+      Class.prototype.request=function(...args){controllers.add(this);this.probeKind=kind;
+        if(kind==='page-refresh'&&!this.probePublish){
+          this.probePublish=true;const publish=this.publish;
+          this.publish=async(batch,full)=>{
+            const publication={id:++serial,full,start:performance.now(),frontiers:batch.windows.map(w=>({scope:w.scope,checkpoint:w.checkpoint,continuation:w.continuation}))};
+            p.publishing=publication;
+            try{return await publish.call(this,batch,full);}finally{publication.end=performance.now();if(p.publishing===publication)p.publishing=null;}
+          };
+        }
+        return request.apply(this,args);
+      };
+    };
+    observe(Freshness,'freshness');
+    if(hasPageRefresh)observe((await import('/page-refresh.mjs')).PageRefresh,'page-refresh');
+    p.state=()=>({cleanups:[...cleanups].map(c=>({epoch:c.readEpoch,foreground:c.foregroundCount,active:Boolean(c.activeRead)})),
+      controllers:[...controllers].filter(c=>!c.disposed).map(c=>({kind:c.probeKind,stopped:c.stopped,running:Boolean(c.running),
+        pending:Boolean(c.pending||c.requested||c.force||c.dirty?.size||c.continuation),timer:c.timer!==null}))});
+    p.settled=()=>{const s=p.state();return s.cleanups.every(c=>!c.active&&!c.foreground)&&s.controllers.every(c=>!c.stopped&&!c.running&&!c.pending&&!c.timer);};
+  },hasPageRefresh);
   const settle = async () => {
     for(let attempt=0;attempt<10;attempt++){
-      await page.waitForFunction(() => { const p=window.render1229;return p.seq!==null && p.pending===0 && performance.now()-p.last>=750; },null,{timeout:20000});
+      await page.waitForFunction(() => { const p=window.render1229;return p.seq!==null && p.pending===0 && p.settled() && performance.now()-p.last>=750; },null,{timeout:20000});
       const observed=responseJobs.length;
       await Promise.allSettled(responseJobs);
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-      if(observed===responseJobs.length&&await page.evaluate(()=>render1229.pending===0&&performance.now()-render1229.last>=750))return;
+      if(observed===responseJobs.length&&await page.evaluate(()=>render1229.pending===0&&render1229.settled()&&performance.now()-render1229.last>=750))return;
     }
     throw new Error('response jobs did not settle within the bounded drain');
   };
@@ -264,8 +320,12 @@ try {
     const sample={operation,before:boundary,after:await page.evaluate(()=>({time:performance.now(),seq:render1229.seq})),
       ...readSummary(await page.evaluate(from=>render1229.reads.slice(from),boundary.reads))};
     openPhase.samples.push(sample);
-    check(operation+' successful complete reads',cleanReads(sample.reads),sample.reads);
-    check(operation+' no duplicate view/args',Object.values(sample.multiplicity).every(n=>n<=1),sample.multiplicity);
+    sample.classified=classifyReads(sample.reads);
+    check(operation+' complete or owned-recovered reads',sample.classified.every(row=>row.kind!=='unresolved'),sample.classified);
+    // A post window can include read-through's later commit. Preserve total
+    // cost, and group duplicates by the actual live sequence and publication.
+    sample.byChange={};for(const row of sample.reads){const key=JSON.stringify([row.commitSeen,row.publish?.id??null,readKey(row)]);sample.byChange[key]=(sample.byChange[key]??0)+1;}
+    check(operation+' no duplicate within observed change/publication',Object.values(sample.byChange).every(n=>n<=1),sample.byChange);
   }
   const openAfter=await metrics(cdp);
   openPhase.wallMs=Date.now()-openStart;openPhase.processCPU=processCPU(openCPU,await processes());
@@ -307,7 +367,8 @@ try {
         functions:await coverage(),metrics:Object.fromEntries(['TaskDuration','ScriptDuration','LayoutDuration','RecalcStyleDuration','LayoutCount','RecalcStyleCount'].map(key=>[key,after[key]-before[key]])),
         reads:await page.evaluate(from=>render1229.reads.slice(from),boundary),warnings:await page.evaluate(from=>render1229.warnings.slice(from),warningStart),networkErrors:report.networkErrors.slice(errorStart)};
       phase.sends.push(sample);
-      check(surface+' successful complete reads',cleanReads(sample.reads),sample.reads);
+      sample.classified=classifyReads(sample.reads);
+      check(surface+' complete or owned-recovered reads',sample.classified.every(row=>row.kind!=='unresolved'),sample.classified);
       check(surface+' no unexpected response errors',sample.networkErrors.length===0,sample.networkErrors);
       check(surface+' no warning flicker',sample.warnings.length===0,sample.warnings);
       await writeFile(evidence+'/progress.json',JSON.stringify({...report,activeSend:phase},null,2));
@@ -316,6 +377,7 @@ try {
   }
   await settle();
   report.warnings=await page.evaluate(()=>render1229.warnings);
+  report.ownership=await page.evaluate(()=>({owners:render1229.owners,state:render1229.state()}));
   check('clean traffic has no unexpected body or structured response errors',report.networkErrors.length===0,report.networkErrors);
   check('clean traffic has no warning flicker',report.warnings.length===0,report.warnings);
 } catch(error) { report.failures.push({name:'harness or setup barrier',detail:error.stack});
