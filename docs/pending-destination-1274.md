@@ -1,7 +1,7 @@
 # A pending reply uses the destination chosen at Send
 
-The local pending card names an implicit reply only when the validated source
-read at Send establishes the same topic and a compatible public/whisper send.
+The local pending card names an implicit reply only when validated source
+facts frozen at Send establish the same topic and a compatible public/whisper send.
 A message source sent to another topic's Conversation is about-only; it is not
 a reply in that Conversation. Other-topic sends and public sends from a whisper
 remain roots. Missing source facts cannot invent a reply or source excerpt.
@@ -9,9 +9,10 @@ An explicit frozen reply target retains precedence. Core remains the authority
 for preparation, publication and its canonical reply/about fields.
 
 The registry captures only source identity/topic/privacy and the destination
-and session authority at the synchronous Send boundary. The source read retains its own authority pin;
-a later runtime or session pin cannot relabel that old read as current. The editor copies those
-facts into submission A, separate from writing and public command arguments.
+and session authority at the synchronous Send boundary. The source read retains
+its own authority pin; a later runtime or session pin cannot relabel that old
+read as current. The editor copies those facts into submission A, separate from
+writing and public command arguments.
 Its existing local journal retains that submission metadata. Later writing B,
 Reader navigation, receipt settlement and status repaint cannot recompute A's
 context from another source, topic or authority. Old retained submissions with
