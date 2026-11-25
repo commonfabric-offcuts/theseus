@@ -79,8 +79,12 @@ function waitsLabel(doc, owner, wait, context) {
 // The cover as its sheet: where it stands; the payload, with its label, words,
 // link and pill and the message it came from; then each thing waiting on the
 // outcome's owner, with its default. context: { viewer, nameOf, topicId }.
-export function waitWords(wait) {
-  if (!(wait.options?.length) && wait.default == null) return 'Waiting for your answer.';
+export function waitWords(wait, context = {}) {
+  if (!(wait.options?.length) && wait.default == null) {
+    const actor = wait.actor_id ?? context.owner;
+    const mine = typeof context.viewer === 'string' && context.viewer.length > 0 && actor === context.viewer;
+    return mine ? 'Waiting for your answer.' : 'Waiting for an answer.';
+  }
   const details = [];
   if ('options' in wait) details.push(wait.options.length ? `Options: ${wait.options.join(' | ')}` : 'No choices');
   details.push(wait.default == null ? 'No default promised' : `Default: ${wait.default}.`);
@@ -147,7 +151,7 @@ export function coverSheet(doc, cover, context, previous = null) {
     const row = line('cover-wait', [wait, cover.owner]);
     const words = element(doc, 'span', 'cover-words');
     words.append(...inlineNodes(wait.text, { doc }));
-    row.append(waitsLabel(doc, wait.actor_id ?? cover.owner, wait, ctx), ' ', words, element(doc, 'span', 'cover-note', waitWords(wait)));
+    row.append(waitsLabel(doc, wait.actor_id ?? cover.owner, wait, ctx), ' ', words, element(doc, 'span', 'cover-note', waitWords(wait, ctx)));
     const answers = coverAnswers(doc, wait, ctx); if (answers) row.append(answers);
   }
   const refresh = refreshControl(doc, cover, ctx);
@@ -210,7 +214,7 @@ export function coverPills(doc, cover, context) {
     const pill = waitLink(doc, '', cover.waiting[0], ctx); pill.className = 'row-pill pill-waits'; pill.dataset.state = 'waiting';
     const count = cover.waiting.length;
     pill.append(glyph('waits', doc, 15), element(doc, 'span', 'pill-words', `${count === 1 ? 'waits' : `${count} wait`} on ${[...new Set(cover.waiting.map(wait => whom(wait.actor_id ?? cover.owner, ctx)))].join(', ')}`));
-    pill.title = cover.waiting.map(wait => `${wait.text} ${waitWords(wait)}`).join('\n');
+    pill.title = cover.waiting.map(wait => `${wait.text} ${waitWords(wait, ctx)}`).join('\n');
     pills.append(pill);
     for (const wait of cover.waiting) { const answers = coverAnswers(doc, wait, ctx); if (answers) pills.append(answers); }
   }
