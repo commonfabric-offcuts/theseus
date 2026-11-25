@@ -1943,9 +1943,9 @@ function paintMessageUpdates() {
   for (const [id, entry] of messageEntries) {
     const item = views.messages.get(id), card = cardIn(entry), author = card && messageUpdateHost(card, entry);
     if (item && author) {
-      for (const old of entry.querySelectorAll('.message-update')) old.remove();
-      const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
-      if (update) author.append(update);
+      const update = messageUpdateActivity(document, item, updateContext(item.topic_id), entry.querySelector('.message-update'));
+      for (const old of entry.querySelectorAll('.message-update')) if (old !== update) old.remove();
+      if (update && update.parentElement !== author) author.append(update);
       // A dossier's tab already has the shared New control. Its message's
       // own header (or folded row) carries the individual arrival mark.
       // A between-others entry wraps a button and a hidden card. Its badge
@@ -1972,6 +1972,7 @@ function paintReplyContext(card, item, messages = feedMessages()) {
   paintReplyLine(line, item, context);
 }
 function paintCardAuthor(author, item) {
+  const entry = messageEntries.get(item.id) ?? author, previousUpdate = entry.querySelector('.message-update');
   const struck = cardScroll?.revisions.get(item.id) === revisionOf(item) && cardScroll.wholes.has(item.id)
     ? cardScroll.strikes.get(item.id) : item.struck;
   const changes = { struck, shown: () => messageChanges?.shown(item.id, revisionOf(item)) ?? true,
@@ -1984,8 +1985,9 @@ function paintCardAuthor(author, item) {
   if (here?.conversation && !item.withdrawal && !item.removal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
   stackFeed?.paintStar(author, item);
-  const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
-  if (update) author.append(update);
+  const update = messageUpdateActivity(document, item, updateContext(item.topic_id), previousUpdate);
+  for (const old of entry.querySelectorAll('.message-update')) if (old !== update) old.remove();
+  if (update && update.parentElement !== author) author.append(update);
   paintVisitNew(author, author, Boolean(visitNew?.has(item.id)));
 }
 // Who the composers may whisper to, and who everyone in this topic is: the

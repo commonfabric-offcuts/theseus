@@ -31,7 +31,7 @@ function fixture(t, state = 'superseded') {
     question: terminal(state) };
   // Only unrelated page ports are stood in for. The cache and question
   // projection/pill construction are their actual imported owners.
-  const ports = { document: doc, cardScroll: null, revisionOf, messageChanges: null, toggleMessageChanges() {},
+  const ports = { document: doc, messageEntries: new Map([[item.id, card]]), cardScroll: null, revisionOf, messageChanges: null, toggleMessageChanges() {},
     paintAuthor, displayActor: id => id, marks: null, wasEdited, carriesOf, paintWithdrawal, paintRemoval,
     questionOf, questionPill, bootstrap: { actor: 'viewer' }, here: null,
     stackFeed: { paintStar(line) {
