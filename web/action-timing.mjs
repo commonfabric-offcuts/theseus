@@ -209,10 +209,16 @@ class ActionTrace {
     this.desired = outcome;
     this.change(() => { this.row.failure = failure; this.row.outcome = outcome === 'complete' && this.frames.size ? 'running' : outcome; });
     this.mark('action_end');
-    if (this.row.outcome !== 'running') { this.terminalAt ??= this.owner.now(); this.owner.completed(this); }
+    if (this.row.outcome !== 'running') this.seal();
     if (outcome !== 'complete' || !this.frames.size) this.owner.timers.clearTimeout(this.timeout);
   }
-  settle() { if (!this.frames.size && this.desired === 'complete') { this.change(() => { this.row.outcome = 'complete'; }); this.terminalAt ??= this.owner.now(); this.owner.completed(this); this.owner.timers.clearTimeout(this.timeout); } }
+  seal() {
+    if (this.terminalAt !== undefined) return;
+    this.terminalAt = this.owner.now();
+    this.row.elapsed_ms = finite(this.terminalAt - this.start);
+    this.owner.completed(this);
+  }
+  settle() { if (this.terminalAt === undefined && !this.frames.size && this.desired === 'complete') { this.change(() => { this.row.outcome = 'complete'; }); this.seal(); this.owner.timers.clearTimeout(this.timeout); } }
   retire(report = true) {
     if (this.retired) return;
     if (report && this.row.outcome === 'running') this.finish('incomplete', 'retired');

@@ -212,3 +212,27 @@ test('late publication after a measurement timeout cannot replace its incomplete
   assert.equal(trace.row.outcome,'incomplete'); assert.equal(trace.row.failure,'timeout'); assert.equal(trace.row.elapsed_ms,20);
   assert.equal(trace.hasEndpoint('send_canonical_dom'),false);
 });
+
+for (const mode of ['complete', 'failed', 'incomplete', 'frame-settle']) {
+  test(`an advancing clock seals one ${mode} endpoint before delayed long-task enrichment`, () => {
+    let clock = 0, observer;
+    class Observer { constructor(callback) { observer = this; this.callback = callback; } observe() {} disconnect() {} }
+    const f = fixture({ now: () => ++clock, Observer });
+    f.owner.observe(); const trace = f.owner.begin('send');
+    if (mode === 'frame-settle') {
+      trace.endpoint('send_canonical_dom'); trace.finish(); f.frame(); f.frame();
+    } else trace.finish(mode, mode === 'complete' ? null : mode === 'incomplete' ? 'timeout' : 'refused');
+    const completed = { elapsed_ms: trace.row.elapsed_ms, end: trace.start + trace.row.elapsed_ms,
+      outcome: trace.row.outcome, failure: trace.row.failure };
+    const interval = () => ({ elapsed_ms: trace.row.elapsed_ms, end: trace.terminalAt,
+      outcome: trace.row.outcome, failure: trace.row.failure });
+    const atCompletion = interval(); clock += 100;
+    observer.callback({ getEntries: () => [{ startTime: trace.start, duration: completed.elapsed_ms + 1000 }] });
+    const afterOverlap = interval(), overlap = { ...trace.row.long_tasks };
+    observer.callback({ getEntries: () => [{ startTime: completed.end + 0.5, duration: 10 }] });
+    assert.deepEqual({ atCompletion, afterOverlap, afterLater: interval() },
+      { atCompletion: completed, afterOverlap: completed, afterLater: completed }, 'completion and enrichment use the same original endpoint');
+    assert.deepEqual(overlap, { count: 1, duration_ms: completed.elapsed_ms }, 'overlap clips to the completed interval');
+    assert.deepEqual(trace.row.long_tasks, overlap, 'a wholly later entry is excluded');
+  });
+}
