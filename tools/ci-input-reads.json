@@ -5985,5 +5985,13 @@
         "web/app.mjs"
       ]
     }
+  },
+  "tests/ui_action_dom_1234.test.mjs": {
+    "d86d5b45b44bcc9209b1876a6bf7898ff87b257e01c7e16a452e95fc13b19eda": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
   }
 }

@@ -1,3 +1,5 @@
+import { timingCall } from './action-timing.mjs';
+const actionContexts = new WeakMap();
 // Private saves are serialized. Public send confirmation never holds that queue.
 import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
 import { holdsWriting, noWriting } from './editor.mjs';
@@ -148,8 +150,10 @@ export class EditorSession {
     });
   }
 
-  enqueue(task) {
-    const next = this.queue.catch(() => {}).then(task);
+  enqueue(task, timing) {
+    timingCall(timing, 'mark', 'session_queue');
+    const admitted = timingCall(timing, 'span', 'session_queue');
+    const next = this.queue.catch(() => {}).then(() => { admitted?.(); return task(); });
     this.queue = next;
     return next;
   }
@@ -165,15 +169,15 @@ export class EditorSession {
     this.noticeTimer = setTimeout(() => { this.noticeTimer = undefined; this.changed(this.editor); }, 0);
   }
 
-  async persist() {
+  async persist(timing) {
     const snapshot = this.snapshot(), meaningful = meaningfulSnapshot(snapshot);
     const sameAuthority = () => same(authorityPair(this.authority), authorityPair(this.runtime.current));
     if (!sameSnapshot(meaningful, this.acknowledgedSnapshot) || !sameAuthority()) this.acknowledgedSnapshot = null;
     try {
       const stamp = this.editor.uploadState
         ? await this.journal.saveLatest(this.editor.key, () => this.snapshot(), () => this.registered?.() !== false,
-          () => sameAuthority() && sameSnapshot(meaningfulSnapshot(this.snapshot()), this.acknowledgedSnapshot))
-        : await this.journal.save(snapshot, () => sameAuthority() && sameSnapshot(meaningful, this.acknowledgedSnapshot));
+          () => sameAuthority() && sameSnapshot(meaningfulSnapshot(this.snapshot()), this.acknowledgedSnapshot), timing)
+        : await this.journal.save(snapshot, () => sameAuthority() && sameSnapshot(meaningful, this.acknowledgedSnapshot), timing);
       this.editor.journalError = null;
       if (stamp) this.persisted(this, snapshot);
       return stamp;
@@ -326,7 +330,7 @@ export class EditorSession {
     return true;
   }
 
-  async apply(entry, receipt) {
+  async apply(entry, receipt, timing = actionContexts.get(entry)) {
     if (!this.editor.matches(receipt, entry.envelope.operation_id, entry.envelope.kind) ||
         !['committed', 'rejected'].includes(receipt.status)) return false;
     // Restored histories can reuse IDs, generations and revisions. Only the
@@ -338,10 +342,10 @@ export class EditorSession {
       else accepted = this.editor.acceptSend(receipt);
       if (!accepted) {
         entry.error = { code: 'RECEIPT_MISMATCH', message: 'The historical answer does not match the retained attempt.', retryable: false };
-        await this.persist(); return false;
+        await this.persist(timing); return false;
       }
       entry.receipt = copy(receipt); entry.error = null;
-      await this.persist(); return true;
+      await this.persist(timing); return true;
     }
     let accepted;
     if (entry.ticket) {
@@ -375,18 +379,20 @@ export class EditorSession {
         this.uploads?.validateRetained().catch(() => {});
       }
     }
-    await this.persist();
+    await this.persist(timing);
     // Reconciliation can confirm publication after the original Send ended
     // without its answer. Tell its surface only after keeping that exact fact.
     if (entry.envelope.kind === 'message.send' && receipt.status === 'committed' && !this.recovery &&
         same(authorityPair(this.authority), authorityPair(this.runtime.current))) {
       const item = this.editor.submissions.find(item => item.sendOperationId === entry.envelope.operation_id);
-      if (item && !item.detached) this.published(this.editor, item);
+      if (item && !item.detached) this.published(this.editor, item, timing);
     }
     return true;
   }
 
-  async dispatch(entry, { retries = 1, resumePreparation = false } = {}) {
+  async dispatch(entry, { retries = 1, resumePreparation = false, timing = actionContexts.get(entry) } = {}) {
+    if (timing) actionContexts.set(entry, timing);
+    timingCall(timing, 'link', entry.envelope.operation_id, entry.submissionId);
     if (entry.receipt) return entry.receipt;
     if (entry.detached) return null;
     const privateWrite = ['draft.save', 'note.save'].includes(entry.envelope.kind) ||
@@ -398,28 +404,28 @@ export class EditorSession {
       // operation fingerprint makes a repeated private save idempotent. Public
       // sends and recovery gaps remain parked for deliberate reconciliation.
       let answer;
-      try { answer = await this.api.view('operation', { operation_id: entry.envelope.operation_id }); }
+      try { answer = await this.api.view('operation', { operation_id: entry.envelope.operation_id }, { timing }); }
       catch (error) {
         entry.error = attemptError(error);
-        await this.persist();
+        await this.persist(timing);
         return null;
       }
-      if (await this.apply(entry, answer)) return entry.receipt;
+      if (await this.apply(entry, answer, timing)) return entry.receipt;
       if (answer.instance_id !== entry.envelope.instance_id || answer.operation_id !== entry.envelope.operation_id ||
           answer.status !== 'unknown' || answer.recorded !== false || answer.error) return null;
       entry.dispatched = false;
     }
     entry.dispatched = true;
-    try { await this.persist(); } catch (error) { entry.dispatched = false; throw error; }
+    try { await this.persist(timing); } catch (error) { entry.dispatched = false; throw error; }
     // Validate the journaled act locally; no preflight read can replace Core's
     // atomic comparison if authority changes while this write is in flight.
     if (!await this.permitsDispatch(entry)) {
       entry.dispatched = false;
-      await this.persist();
+      await this.persist(timing);
       return null;
     }
     let receipt;
-    try { receipt = await this.api.command(copy(entry.envelope)); }
+    try { receipt = await this.api.command(copy(entry.envelope), { timing }); }
     catch (error) {
       entry.error = attemptError(error);
       if (sessionRefused(error)) {
@@ -427,18 +433,18 @@ export class EditorSession {
         // act is undelivered: it waits for the new session, as the same
         // session would only be refused again.
         entry.dispatched = false;
-        await this.persist();
+        await this.persist(timing);
         return null;
       }
-      await this.persist();
+      await this.persist(timing);
       await this.authorityChanged(entry);
-      return retries > 0 ? this.dispatch(entry, { retries: retries - 1, resumePreparation }) : null;
+      return retries > 0 ? this.dispatch(entry, { retries: retries - 1, resumePreparation, timing }) : null;
     }
-    if (await this.apply(entry, receipt)) return entry.receipt;
+    if (await this.apply(entry, receipt, timing)) return entry.receipt;
     entry.error = copy(receipt?.error ?? { code: 'RECEIPT_MISMATCH', message: 'No matching recorded outcome was returned.', retryable: false });
-    await this.persist();
+    await this.persist(timing);
     await this.authorityChanged(entry);
-    return retries > 0 ? this.dispatch(entry, { retries: retries - 1, resumePreparation }) : null;
+    return retries > 0 ? this.dispatch(entry, { retries: retries - 1, resumePreparation, timing }) : null;
   }
 
   unsettledSave() {
@@ -490,20 +496,26 @@ export class EditorSession {
     return sending;
   }
 
+  timingFor(item) { return actionContexts.get(item); }
   start(item, options, resume = false) {
+    const timing = options.timing;
+    if (timing) actionContexts.set(item, timing);
+    timingCall(timing, 'link', item.prepareOperationId, item.id);
+    timingCall(timing, 'link', item.sendOperationId, item.id);
     // Freeze at the person's act, before any queued save or network wait.
     this.preparingSends.add(item.id);
     const preparing = this.enqueue(async () => {
-      try { return await this.prepare(item, resume); }
+      try { return await this.prepare(item, resume, timing); }
       finally { this.preparingSends.delete(item.id); }
-    });
+    }, timing);
     return this.track(item.id, preparing.then(async ready => {
-      if (!ready || item.detached) return item;
+      if (!ready || item.detached) { timingCall(timing, 'finish', 'incomplete', item.detached ? 'retired' : 'refused'); return item; }
       // prepare() persisted the successor and A before this navigation hook.
       this.prepared(this.editor, item, options);
       await this.sendPrepared(item);
+      if (item.status !== 'confirmed') timingCall(timing, 'finish', 'incomplete', 'unknown');
       return item;
-    }));
+    }).catch(error => { timingCall(timing, 'finish', 'failed', 'unknown'); throw error; }));
   }
 
   // The page reaches Theseus again: its session renewed after a restart, its
@@ -532,12 +544,12 @@ export class EditorSession {
     return false;
   }
 
-  async prepare(item, resume = false) {
+  async prepare(item, resume = false, timing = actionContexts.get(item)) {
     if (item.status !== 'preparing' || item.detached || this.recovery) return false;
     item.blocked = null;
-    await this.persist();
+    await this.persist(timing);
     const prior = this.unsettledSave();
-    if (prior) await this.dispatch(prior);
+    if (prior) await this.dispatch(prior, { timing });
     if (this.unsettledSave()) return this.block(item, this.unsettledSave());
     if (item.saveConflict) return this.block(item, null, item.saveConflict);
     // A click can make Tell/whisper defaults explicit without changing what
@@ -553,23 +565,23 @@ export class EditorSession {
       const ticket = { operationId: this.id(), key: this.editor.key, localVersion: item.localVersion,
         draft: copy(item.snapshot), sourceRef: copy(item.sourceRef) };
       const entry = this.attempt(this.saveEnvelope(ticket, item.authority), { ticket, submissionId: item.id });
-      const receipt = await this.dispatch(entry);
+      const receipt = await this.dispatch(entry, { timing });
       if (receipt?.status !== 'committed') return this.block(item, entry, item.saveConflict);
     }
     const envelope = this.envelope('submission.prepare', item.prepareOperationId,
       { topic_id: item.topicId }, { draft_revision: item.snapshot.revision },
       { draft_id: item.snapshot.id, submission_id: item.id, send_operation_id: item.sendOperationId }, item.authority);
     const entry = this.attempt(envelope, { submissionId: item.id });
-    const receipt = await this.dispatch(entry, { resumePreparation: resume });
+    const receipt = await this.dispatch(entry, { resumePreparation: resume, timing });
     if (!receipt) return this.block(item, entry);
     if (receipt?.status === 'rejected' && receipt.error?.code === 'REVISION_CONFLICT') {
       // The refusal is already a fact. Persist the block before reading so a
       // crash or busy lane cannot restart B's autosave over unknown writing.
       const conflict = { attempted: copy(this.editor.draft), error: copy(receipt.error) };
       this.editor.conflict = conflict;
-      await this.persist(); this.changed(this.editor);
+      await this.persist(timing); this.changed(this.editor);
       try {
-        const state = await this.api.view('editor_state', { source_ref: item.sourceRef, topic_id: item.topicId });
+        const state = await this.api.view('editor_state', { source_ref: item.sourceRef, topic_id: item.topicId }, { timing });
         if (state?.error) throw Object.assign(Error(state.error.message), { details: state });
         const d = state?.draft;
         if (state?.instance_id !== this.editor.context.instanceId || !same(state.source_ref, item.sourceRef) ||
@@ -580,15 +592,16 @@ export class EditorSession {
       } catch (error) {
         conflict.readError = copy(error.details?.error ?? { code: 'READ_UNKNOWN', message: error.message });
       }
-      await this.persist();
+      await this.persist(timing);
     }
     return item.preparationConfirmed;
   }
 
   async sendPrepared(item) {
+    const timing = actionContexts.get(item);
     if (!item.preparationConfirmed || item.status !== 'prepared' || item.detached) return null;
     return this.dispatch(this.attempt(this.envelope('message.send', item.sendOperationId,
-      { topic_id: item.topicId }, {}, { submission_id: item.id }, item.authority), { submissionId: item.id }));
+      { topic_id: item.topicId }, {}, { submission_id: item.id }, item.authority), { submissionId: item.id }), { timing });
   }
 
   async originalPublication(item) {

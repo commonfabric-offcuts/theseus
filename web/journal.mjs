@@ -1,3 +1,4 @@
+import { timingCall } from './action-timing.mjs';
 import { editorKey as keyFor } from './editor.mjs';
 import { ownsBytes, readableUploads } from './upload-state.mjs';
 const containsBytes = (value, seen = new Set()) => {
@@ -21,37 +22,44 @@ export class RecoveryJournal {
       scope: JSON.stringify([snapshot.context.instanceId, snapshot.context.actor]), active: 1,
       stamp: crypto.randomUUID(), saved_ms: Date.now(), snapshot: structuredClone(snapshot) };
   }
-  enqueue(editorKey, task) {
+  enqueue(editorKey, task, timing) {
+    timingCall(timing, 'mark', 'journal_queue');
+    const admitted = timingCall(timing, 'span', 'journal_queue');
     const previous = this.queues.get(editorKey) ?? Promise.resolve();
-    const next = previous.catch(() => {}).then(task);
+    const next = previous.catch(() => {}).then(() => { admitted?.(); return task(); });
     this.queues.set(editorKey, next);
     next.then(() => { if (this.queues.get(editorKey) === next) this.queues.delete(editorKey); }, () => { if (this.queues.get(editorKey) === next) this.queues.delete(editorKey); });
     return next;
   }
-  save(snapshot, alreadyAcknowledged = () => false) {
+  save(snapshot, alreadyAcknowledged = () => false, timing) {
     const stamp = crypto.randomUUID();
     const row = { id: this.id(snapshot.key), editorKey: snapshot.key, writerId: this.writerId,
       scope: JSON.stringify([snapshot.context.instanceId, snapshot.context.actor]), active: 1, stamp, saved_ms: Date.now(), snapshot: structuredClone(snapshot) };
     return this.enqueue(snapshot.key, async () => {
       if (alreadyAcknowledged()) return null;
-      await this.backend.put(row); return stamp;
-    });
+      await this.put(row, undefined, timing); return stamp;
+    }, timing);
   }
-  saveLatest(key, snapshot, guard = () => true, acknowledged = () => false) {
+  saveLatest(key, snapshot, guard = () => true, acknowledged = () => false, timing) {
     return this.enqueue(key, async () => {
       if (!guard()) throw Error('This image editor was replaced.');
       if (acknowledged()) return null;
       const row = this.row(snapshot());
-      await this.backend.put(row, guard); return row.stamp;
-    });
+      await this.put(row, guard, timing); return row.stamp;
+    }, timing);
   }
-  transition(key, snapshot, mutate, guard = () => true) {
+  transition(key, snapshot, mutate, guard = () => true, timing) {
     return this.enqueue(key, async () => {
       if (!guard()) throw Error('This image editor was replaced.');
       mutate();
       const row = this.row(snapshot());
-      await this.backend.put(row, guard); return row.stamp;
-    });
+      await this.put(row, guard, timing); return row.stamp;
+    }, timing);
+  }
+  async put(row, guard, timing) {
+    timingCall(timing, 'count', 'backend_puts');
+    const done = timingCall(timing, 'span', 'journal_backend');
+    try { return await this.backend.put(row, guard, timing); } finally { done?.(); }
   }
   capture(key, snapshot, bytes, entry, guard) {
     return this.enqueue(key, async () => {
@@ -237,12 +245,14 @@ export async function openJournal({ instanceId, actor, win = globalThis } = {}) 
         row.id === JSON.stringify([key, row.writerId]);
     } catch { return false; }
   };
-  const transact = (mode, operation) => new Promise((resolve, reject) => {
+  const transact = (mode, operation, timing) => new Promise((resolve, reject) => {
     if (closed) { reject(Error('Recovery storage is closed.')); return; }
     const tx = database.transaction('editors', mode, mode === 'readwrite' ? { durability: 'strict' } : undefined);
     const store = tx.objectStore('editors');
+    const transactionDone = timingCall(timing, 'span', 'journal_transaction');
+    timingCall(timing, 'count', 'journal_transactions');
     let result, failure;
-    tx.oncomplete = () => resolve(result ?? null);
+    tx.oncomplete = () => { transactionDone?.(); resolve(result ?? null); };
     tx.onerror = event => reject(failure ?? event?.target?.error ?? tx.error ?? new Error('Recovery storage failed.'));
     tx.onabort = () => reject(failure ?? tx.error ?? new Error('Recovery storage was interrupted.'));
     const fail = error => { failure = error; try { tx.abort(); } catch { reject(error); } };
@@ -296,14 +306,17 @@ export async function openJournal({ instanceId, actor, win = globalThis } = {}) 
     return { ...row, blob: new Blob([data], { type: row.metadata.type }) };
   };
   const journal = new RecoveryJournal({
-    put: (row, guard = () => true) => transact('readwrite', (store, _finish, get) => {
+    put: (row, guard = () => true, timing) => transact('readwrite', (store, _finish, get) => {
       if (!valid(row, row.editorKey) || row.writerId !== writerId || !held.has(writerId)) throw Error('Recovery write identity does not match this document.');
       get(row.id, existing => {
         if (existing && (!valid(existing, row.editorKey) || existing.superseded_by)) throw Error('Existing recovery ownership does not match this document.');
         if (!guard()) throw Error('This editor was replaced before its recovery write.');
-        store.put(row);
+        timingCall(timing, 'count', 'journal_writes');
+        const putDone = timingCall(timing, 'span', 'journal_put');
+        const request = store.put(row);
+        request.onsuccess = () => putDone?.();
       });
-    }),
+    }, timing),
     get: id => transact('readonly', (_store, finish, get) => {
       const [key, writer] = JSON.parse(id); scopedKey(key);
       get(id, row => {

@@ -458,6 +458,9 @@ class Handler(BaseHTTPRequestHandler):
         if length is not None:
             self.send_header("Content-Length", str(length))
         self.send_header("Cache-Control", "public, max-age=31536000, immutable" if immutable else "no-store")
+        timing = getattr(self, "_action_timing", {})
+        if timing and not static:
+            self.send_header("Server-Timing", ", ".join("%s;dur=%.3f" % (name, max(0, min(duration, 3600000))) for name, duration in timing.items()))
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
@@ -580,10 +583,17 @@ class Handler(BaseHTTPRequestHandler):
         ticket = None
         slots = lane or (self.server.command_slots if command else self.server.read_slots)
         read_class = None if command else self._read_class()
-        if admission is not None:
-            ticket = admission.acquire(read_class, self.deadline, disconnected or self._read_disconnected, arrived)
-        elif not slots.acquire(blocking=False):
-            raise RequestError(503, "SERVER_BUSY", "This request lane is busy; retain its operation.")
+        admitted_at = time.monotonic()
+        timing = getattr(self, "_action_timing", None)
+        try:
+            if admission is not None:
+                ticket = admission.acquire(read_class, self.deadline, disconnected or self._read_disconnected, arrived)
+            elif not slots.acquire(blocking=False):
+                raise RequestError(503, "SERVER_BUSY", "This request lane is busy; retain its operation.")
+        finally:
+            if timing is not None:
+                timing["aim_admission"] = (time.monotonic() - admitted_at) * 1000
+        store_at = time.monotonic()
         begun()
         store = None
         try:
@@ -596,12 +606,15 @@ class Handler(BaseHTTPRequestHandler):
                     if callable(close):
                         close()
             finally:
+                if timing is not None:
+                    timing["aim_store"] = (time.monotonic() - store_at) * 1000
                 if ticket is not None:
                     admission.release(ticket)
                 else:
                     slots.release()
 
     def _run(self, action):
+        self._action_timing = {}
         try:
             action()
         except RequestError as error:

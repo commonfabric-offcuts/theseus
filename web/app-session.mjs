@@ -1,3 +1,4 @@
+import { timingCall } from './action-timing.mjs';
 import { Editor, editorKey, restoreEditor, holdsWriting, noWriting } from './editor.mjs';
 import { dossierImage, dossierOccupied, dossierWriting } from './dossier-writing.mjs';
 import { EditorSession, RuntimeAuthority } from './session.mjs';
@@ -122,15 +123,15 @@ export class EditorRegistry {
 
   // Each message reply has its own presentation, but its registered writing is
   // the same EditorSession the Reader uses. Loading a saved reply opens no Reader.
-  async initializeCard(sourceRef, topic) {
+  async initializeCard(sourceRef, topic, timing = null) {
     const id = sourceRef.id;
     if (this.cards.has(id)) return this.cards.get(id);
     if (this.cardOpenings.has(id)) return this.cardOpenings.get(id);
     const foreground = this.cleanup.foreground();
     const load = async () => {
       const [source, state] = await foreground.read(options => pairedReads([
-        this.api.view('source', sourceRef, options),
-        this.api.view('editor_state', { source_ref: sourceRef, topic_id: topic.id, limit: this.pendingPageSize, unsent: true }, options),
+        this.api.view('source', sourceRef, { ...options, timing }),
+        this.api.view('editor_state', { source_ref: sourceRef, topic_id: topic.id, limit: this.pendingPageSize, unsent: true }, { ...options, timing }),
       ]));
       this.validateState(state, sourceRef, topic.id);
       if (source?.error || source?.instance_id !== this.bootstrap.instance_id || !same(source.source_ref, sourceRef) || !state.source_available)
@@ -258,7 +259,7 @@ export class EditorRegistry {
     const session = new EditorSession(editor, { api: this.api, journal: this.journal, authority: this.runtime.current,
       runtime: this.runtime, snapshot: row?.snapshot,
       changed: current => this.changed(current),
-      published: (current, item) => this.published(current, item),
+      published: (current, item, timing) => this.published(current, item, timing),
       persisted: (saved, snapshot) => {
         const row = { id: this.journal.id(editor.key), writerId: this.journal.writerId, stamp: 'eligibility',
           active: 1, scope: JSON.stringify([context.instanceId, context.actor]), editorKey: editor.key, snapshot };
@@ -320,7 +321,7 @@ export class EditorRegistry {
         editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)))) throw new ImageHeld();
   }
 
-  async open(sourceRef, { topicId, opener, mode = 'reply', replyCard = null, fromCardReply = false } = {}) {
+  async open(sourceRef, { topicId, opener, mode = 'reply', replyCard = null, fromCardReply = false, timing = null } = {}) {
     const foreground = this.cleanup.foreground();
     const token = ++this.generation;
     this.pendingOpen = token;
@@ -329,8 +330,8 @@ export class EditorRegistry {
     await this.keepBeforeStep(this.interactive);
     if (this.cards?.size) await this.keepEditorsLocal([...this.cards.values()].flatMap(p => Object.values(p.editors)));
     const [sourceAnswer, state] = await foreground.read(options => pairedReads([
-      this.api.view('source', sourceRef, options),
-      this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize, unsent: true }, options),
+      this.api.view('source', sourceRef, { ...options, timing }),
+      this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize, unsent: true }, { ...options, timing }),
     ]));
     // A message the person may not read, such as a whisper they are not in, is
     // refused exactly as one that is not there (docs/whispers.md): a link to
@@ -371,7 +372,7 @@ export class EditorRegistry {
     const source = sourceUnavailable ? { instance_id: this.bootstrap.instance_id, source_ref: copy(sourceRef),
       topic_id: topicId ?? null, title: 'Source unavailable', body: '', attachments: [] } : sourceAnswer;
     const presentation = { token, source, sourceUnavailable, destinationAvailable: state.destination_available,
-      editors: { reply, note }, mode, opener, mark: state.mark ?? null, replyCard, fromCardReply };
+      editors: { reply, note }, mode, opener, mark: state.mark ?? null, replyCard, fromCardReply, timing };
     this.pendingOpen = null;
     this.current = presentation; await this.present(presentation);
     if (token !== this.generation || this.disposed) return null;
@@ -998,6 +999,9 @@ export class EditorRegistry {
   }
   dispose() {
     this.disposed = true; ++this.generation;
-    for (const { editor } of this.sessions.values()) this.cancelSave(editor);
+    for (const { editor, timingFor } of this.sessions.values()) {
+      this.cancelSave(editor);
+      for (const item of editor.submissions) timingCall(timingFor(item), 'retire');
+    }
   }
 }

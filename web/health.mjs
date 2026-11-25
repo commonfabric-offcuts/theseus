@@ -212,6 +212,17 @@ export function healthLines(answer, { now, feed } = {}) {
   } else {
     lines.push({ group: 'This Mac and releases', key: 'release', label: 'Latest release', summary: 'No release is recorded yet', details: [], bad: false });
   }
+  const timing = answer.tab_performance;
+  const ms = value => Number.isFinite(value) ? `${Math.round(value)} ms` : 'unavailable';
+  const details = timing ? [
+    `Recorded window: ${timing.window_start_ms === null ? 'no observations' : datedTime(timing.window_start_ms)} to ${datedTime(timing.window_end_ms)}. Cap ${timing.record_limit}; retained for ${timing.retention_ms / 60000} minutes after receipt.`,
+    `${timing.counts.complete} complete, ${timing.counts.failed} failed, ${timing.counts.incomplete} incomplete and ${timing.counts.running} still running.`,
+    `${timing.cap_dropped} cap drops; ${timing.expired} expired; at least ${timing.local_lost} local drops and ${timing.report_failures} report failures observed. A tab lost before upload is unknown.`,
+    ...timing.slowest.map(row => `${row.kind}: ${ms(row.elapsed_ms)} · ${row.outcome} · loaded build ${row.build} · ${row.burden.loaded_messages} loaded messages, ${row.burden.rendered_cards} cards; recorder ${ms(row.overhead_ms)}; ${row.dropped_phases} phases omitted.`),
+    ...timing.unfinished.map(row => `Unfinished ${row.kind}: ${row.outcome}${row.failure ? ' (' + row.failure + ')' : ''}; last observed ${ms(row.elapsed_ms)}.`),
+    'Browser and server durations use separate clocks. Frame callbacks do not prove pixels; long tasks and idle gaps do not measure renderer CPU.'
+  ] : ['No timing observations are available.'];
+  lines.push({ group: 'Theseus', key: 'action-timing', label: 'Your tab actions', summary: timing ? `${timing.retained} recorded observations` : 'Unavailable', details, bad: false });
   return lines;
 }
 
