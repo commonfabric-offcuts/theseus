@@ -29,7 +29,7 @@ const fixture = t => {
   globalThis.IntersectionObserver=class {constructor(callback){this.callback=callback;observers.push(this);}observe(){}unobserve(){}disconnect(){}};
   t.after(()=>{globalThis.document=oldDoc;globalThis.IntersectionObserver=oldObserver;});
   const host=doc.createElement('div');doc.body.append(host);
-  const item={id:'submission-A',sendOperationId:'send-A',presentPending:true,topicId:'t',sourceRef:{kind:'message',id:'wrong-source'},authority:{...pin},status:'preparing',
+  const item={id:'submission-A',sendOperationId:'send-A',presentPending:true,topicId:'t',sourceRef:{kind:'topic',id:'t'},authority:{...pin},status:'preparing',
     snapshot:{body:'**Exact A** and [a link](https://example.test/)',attachments:[]}};
   const editor={key:'editor-A',context:{instanceId:'i',actor:'person',topicId:'t'},draft:{body:'later B'},submissions:[item]};
   const paint=options=>pending.paintPendingSends(host,[editor],{topicId:'t',underway:()=>true,...options});
@@ -40,6 +40,25 @@ const confirm = f => {
   f.item.status='confirmed';f.item.receipt={instance_id:'i',operation_id:'send-A',kind:'message.send',status:'committed',recorded:true,result:{message_id:'m-real',seq:42}};
   return {id:'m-real',topic_id:'t',seq:42,author_id:'person',author_kind:'human',body:f.item.snapshot.body,attachments:[],revision:1};
 };
+
+for (const status of ['preparing','prepared','confirmed']) test('1273 frozen message submission without reply_to targets its dossier ('+status+')',t=>{
+  const f=fixture(t);f.item.sourceRef={kind:'message',id:'earlier-parent'};f.item.status=status;
+  assert.equal(Object.hasOwn(f.item.snapshot,'reply_to'),false);
+  const folder=f.doc.createElement('section'),replies=f.doc.createElement('div'),later=f.doc.createElement('div'),end=f.doc.createElement('dialog');
+  folder.append(replies);replies.append(later);f.host.append(folder,end);
+  const before=structuredClone(f.item),seen=[];
+  f.editor.context.sourceRef={kind:'message',id:'later-opened-B'};
+  f.paint({target:ref=>{seen.push(ref);return ref?.id==='earlier-parent'?replies:null;},end});
+  const card=f.card();assert.equal(card.parentElement,replies);assert.equal(later.nextElementSibling,card);
+  assert.equal(seen[0].id,'earlier-parent');assert.deepEqual(f.item,before);assert.equal(f.editor.draft.body,'later B');
+  assert.equal(card.dataset.id,undefined);assert.equal(card.dataset.seq,undefined);
+});
+test('1273 explicit reply wins over source while topic/Notebook sources remain root sends',t=>{
+  const f=fixture(t);f.item.sourceRef={kind:'message',id:'original'};f.item.snapshot.reply_to='explicit';let ref;
+  f.paint({target:value=>{ref=value;return null;}});assert.equal(ref.id,'explicit');
+  delete f.item.snapshot.reply_to;
+  for(const kind of ['topic','memory']){f.item.sourceRef={kind,id:'not-a-message'};f.paint({target:value=>{ref=value;return null;}});assert.equal(ref,null);}
+});
 
 test('1249 first handoff is an ordinary formatted own card, without canonical identity or controls',t=>{
   const f=fixture(t);f.paint();const card=f.card();
