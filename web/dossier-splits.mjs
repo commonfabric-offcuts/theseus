@@ -8,10 +8,12 @@ export class SplitSources {
   constructor({ instanceId, topicId, rootId, read, current = () => true }) {
     Object.assign(this, { instanceId, topicId, rootId, read, current });
     this.cursor = null; this.started = false; this.pending = []; this.more = true;
+    this.batchSize = 8;
   }
-  check(page) {
-    if (!this.current() || page?.instance_id !== this.instanceId || page.topic_id !== this.topicId || !Array.isArray(page.items) ||
+  check(page, named = false) {
+    if (!this.current() || page?.instance_id !== this.instanceId || !named && page.topic_id !== this.topicId || !Array.isArray(page.items) ||
         page.items.length > size || !(page.next_cursor === null || integer(page.next_cursor))) throw unavailable();
+    if (named && page.next_cursor !== null) throw unavailable(); // Named reads are complete or refused.
   }
   async next() {
     if (!this.current()) throw unavailable();
@@ -28,17 +30,26 @@ export class SplitSources {
     }
     const choices = [];
     if (pending.length) {
-      const page = await this.read('topic_messages', { topic_id: this.topicId, message_ids: pending });
-      this.check(page);
+      const batch = pending.slice(0, this.batchSize);
+      let page;
+      try { page = await this.read('topic_messages', { topic_id: this.topicId, message_ids: batch }); }
+      catch (error) {
+        if (!this.current()) throw unavailable();
+        if ((error?.details?.error?.code ?? error?.code) !== 'VIEW_TOO_LARGE' || batch.length < 2) throw error;
+        // Core refuses oversized named responses; it never cuts one. Keep
+        // every ID and try a smaller batch only on the next explicit press.
+        Object.assign(this, { pending, cursor, more, started: true, batchSize: Math.max(1, Math.floor(batch.length / 2)) });
+        return { choices: [], more: true };
+      }
+      this.check(page, true);
       const ids = new Set();
       for (const item of page.items) {
-        if (!item || !pending.includes(item.id) || ids.has(item.id) || item.topic_id !== this.topicId) throw unavailable();
+        if (!item || !batch.includes(item.id) || ids.has(item.id) || item.topic_id !== this.topicId) throw unavailable();
         ids.add(item.id);
         if (active(item) && item.id !== this.rootId && item.stack_position?.root_id === this.rootId) choices.push(item);
       }
-      const remaining = pending.filter(id => !ids.has(id));
-      if (page.next_cursor !== null && remaining.length === pending.length) throw Error('The joined dossiers could not be read. Try again.');
-      pending = page.next_cursor === null ? [] : remaining;
+      if (ids.size !== batch.length) throw unavailable();
+      pending = pending.slice(batch.length);
     }
     // Publish a continuation only after both reads succeeded and stayed current.
     if (!this.current()) throw unavailable();
@@ -48,7 +59,7 @@ export class SplitSources {
   async fresh(choice) {
     if (!this.current()) throw unavailable();
     const page = await this.read('topic_messages', { topic_id: this.topicId, message_ids: [choice.id] });
-    this.check(page);
+    this.check(page, true);
     const item = page.items[0];
     if (page.items.length !== 1 || !item || item.id !== choice.id || item.topic_id !== this.topicId || !active(item) ||
         item.stack_position?.root_id !== this.rootId || item.acts.join_revision !== choice.acts.join_revision ||

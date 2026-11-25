@@ -26,7 +26,7 @@ function fixture({ state = 'unloaded', loaded = false } = {}) {
   const feed = Object.create(StackFeed.prototype);
   Object.assign(feed, { list: r.list, messages: () => r.messages, instanceId: 'instance', viewer: 'reader',
     authority: () => ({ authority_id: 'authority', authority_epoch: 'epoch' }), readNamed: async (name, args) => {
-      reads.push([name, args]); return { instance_id: 'instance', topic_id: 'topic', version: 8, next_cursor: null,
+      reads.push([name, args]); return { instance_id: 'instance', ...(name === 'message_acts' ? { topic_id: 'topic' } : {}), version: 8, next_cursor: null,
         items: name === 'message_acts' ? [{ message_id: 'source', seq: 2, acts: source.acts }] : [structuredClone(source)] };
     }, pending: new Map(), doubts: new Map(), undos: [], standIns: new Map(), drawn: new Map(), made: new WeakMap(), makes: 0,
     chain: Promise.resolve(), notices: new Map(), reads: 0, noticeShown: '',
@@ -75,7 +75,7 @@ test('1268 a newer admitted loaded join wins over the late chosen-source read wi
   f.feed.readNamed = (...args) => ++count === 3 ? wait : read(...args);
   await f.start(); const selected = f.select();
   f.messages.get('source').acts = { joined: { into: 'another-branch' }, join_revision: 4 };
-  resolve({ instance_id: 'instance', topic_id: 'topic', items: [structuredClone(f.source)], next_cursor: null });
+  resolve({ instance_id: 'instance', items: [structuredClone(f.source)], next_cursor: null });
   await selected; await f.feed.chain; assert.equal(f.calls.length, 0); assert.ok(f.notices.some(word => word.includes('join changed')));
 });
 for (const pending of ['pending', 'uncertain']) test('1268 discovery cannot duplicate a ' + pending + ' join operation', async () => {

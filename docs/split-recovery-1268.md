@@ -8,8 +8,12 @@ Discovery reads one `message_acts` page (at most100 records) per explicit
 press, then a bounded `topic_messages` named-ID page for active join heads.
 Only admitted source heads currently in the selected dossier become choices.
 The named read supplies the source's own name/preview and join revision.
-An empty page with a cursor offers More; a byte-cut named response retains
-the omitted IDs for the next press. Discovery never populates feed runs,
+An empty acts page with a cursor offers More. Named reads have no envelope
+topic_id: each admitted item's topic is checked. They return the complete
+named batch or refuse VIEW_TOO_LARGE. Start with at most8 named IDs, retain
+the other IDs for More, and after that refusal retain the entire batch while
+halving its size for the next explicit press. A single source that still
+exceeds Core's response bound remains an explicit read error. Discovery never populates feed runs,
 changes pagination frontiers, or scans automatically to the beginning.
 
 A choice rereads its source by ID, checks instance/topic/current membership,

@@ -4,13 +4,16 @@ import { SplitSources, openSplitSources } from '../web/dossier-splits.mjs';
 import { GLYPH_NAMES } from '../web/glyphs.mjs';
 import { openMessageMenu } from '../web/message-menu.mjs';
 import { Element, miniDocument } from './fixtures/mini_dom.mjs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { AttemptError } from '../web/api.mjs';
 
 const source = (id = 'source', extra = {}) => ({ id, seq: 2, topic_id: 'topic', body: 'Joined words', acts: {
   joined: { into: 'destination', by: 'author' }, join_revision: 3, name: { text: 'Tracking changes' }, cover: { stands: 'Kept source cover' } },
   stack_position: { root_id: 'destination', placed: 8, name: { text: 'Destination' } }, ...extra });
 const acts = (items = [{ message_id: 'source', seq: 2, acts: { joined: { into: 'destination' } } }], next_cursor = null) =>
   ({ instance_id: 'instance', topic_id: 'topic', version: 8, items, next_cursor });
-const named = (items = [source()], next_cursor = null) => ({ instance_id: 'instance', topic_id: 'topic', items, next_cursor });
+const named = (items = [source()], next_cursor = null) => ({ instance_id: 'instance', items, next_cursor });
 const deferred = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 function fixture(answers = [acts(), named()]) {
   const calls = []; let current = true;
@@ -29,11 +32,20 @@ test('1268 explicit More crosses empty/irrelevant pages without automatically sc
   assert.deepEqual(await f.sources.next(), { choices: [], more: true }); assert.equal(f.calls.length, 1);
   assert.equal((await f.sources.next()).choices[0].id, 'source'); assert.equal(f.calls.length, 3); assert.equal(f.calls[1][1].cursor, 20);
 });
-test('1268 byte-cut named answer retains omitted IDs for the next explicit More', async () => {
-  const f = fixture([acts([{ message_id: 'a', seq: 3, acts: { joined: { into: 'destination' } } }, { message_id: 'b', seq: 2, acts: { joined: { into: 'destination' } } }]), named([source('a')], 2), named([source('b')])]);
-  assert.deepEqual((await f.sources.next()).choices.map(x => x.id), ['a']); assert.deepEqual(f.sources.pending, ['b']);
-  assert.deepEqual((await f.sources.next()).choices.map(x => x.id), ['b']); assert.equal(f.calls.length, 3);
+test('1268 named batch retains unrequested IDs and real size refusal shrinks only on explicit More', async () => {
+  const items = Array.from({ length: 10 }, (_, n) => source('s' + n));
+  const tooLarge = Object.assign(Error('The named messages cannot fit in one bounded response'), { details: { error: { code: 'VIEW_TOO_LARGE' } } });
+  const f = fixture([acts(items.map((item, n) => ({ message_id: item.id, seq: 20 - n, acts: item.acts }))), tooLarge,
+    named(items.slice(0, 4)), named(items.slice(4, 8)), named(items.slice(8))]);
+  assert.deepEqual(await f.sources.next(), { choices: [], more: true }); assert.equal(f.calls.length, 2);
+  assert.equal(f.sources.pending.length, 10); assert.equal(f.sources.batchSize, 4);
+  assert.deepEqual((await f.sources.next()).choices.map(x => x.id), ['s0', 's1', 's2', 's3']);
+  assert.equal(f.calls.length, 3); assert.equal(f.sources.pending.length, 6);
+  await f.sources.next(); assert.deepEqual((await f.sources.next()).choices.map(x => x.id), ['s8', 's9']);
   assert.equal(f.calls.filter(([name]) => name === 'message_acts').length, 1);
+});
+test('1268 refuses an invented partial named response instead of skipping requested IDs', async () => {
+  const f = fixture([acts(), named([], 1)]); await assert.rejects(f.sources.next()); assert.equal(f.sources.started, false);
 });
 test('1268 only current admitted joins of this dossier are choices, including nested deliberate joins', async () => {
   const items = [source('nested', { acts: { joined: { into: 'branch' }, join_revision: 7 } }), source('elsewhere', { stack_position: { root_id: 'another' } }),
@@ -45,7 +57,7 @@ for (const bad of ['foreign instance', 'foreign topic', 'duplicate id', 'unreque
   test('1268 refuses malformed discovery: ' + bad, async () => {
     let first = acts(), second = named();
     if (bad === 'foreign instance') first.instance_id = 'other';
-    if (bad === 'foreign topic') second.topic_id = 'other';
+    if (bad === 'foreign topic') second.items[0].topic_id = 'other';
     if (bad === 'duplicate id') second.items.push(source());
     if (bad === 'unrequested id') second.items = [source('other')];
     if (bad === 'nonprogressing acts') first.next_cursor = 99;
@@ -142,4 +154,54 @@ for (const dismissal of ['Escape', 'Tab', 'outside pointer', 'scroll']) test('12
   else if (dismissal === 'scroll') { f.anchor.box = { top: 100, bottom: 130, left: 40, right: 70 }; f.listeners.get('scroll')({ target: f.doc.body }); }
   else f.shown[0].root.listeners.keydown({ key: dismissal, preventDefault() {}, stopPropagation() {} });
   wait.resolve(acts()); await pending; assert.equal(f.shown.length, 1); assert.equal(f.shown[0].root.isConnected, false);
+});
+
+test('1268 actual scratch Core named envelope and VIEW_TOO_LARGE feed reachable smaller-batch choices', async () => {
+  const python = String.raw`
+from __future__ import annotations
+import json,sys
+from pathlib import Path
+root=Path(sys.argv[1]);sys.path[:0]=[str(root),str(root/'tests')]
+from tests.test_stacks import StackCase
+from aim_next.contract import LIMITS
+c=StackCase();c.setUp()
+try:
+    destination=c.post('Destination')
+    ids=[c.post('Source '+str(i)+' '+('words '*500)) for i in range(2)]
+    for mid in ids:c.committed(c.join(mid,destination))
+    acts=c.store.view('owner','message_acts',{'topic_id':'t1','limit':100})
+    singles={mid:c.store.view('owner','topic_messages',{'topic_id':'t1','message_ids':[mid]}) for mid in ids}
+    pair=c.store.view('owner','topic_messages',{'topic_id':'t1','message_ids':ids})
+    assert 'error' not in acts and 'error' not in pair
+    measure=lambda value:len(json.dumps(value,ensure_ascii=False,separators=(',',':')).encode('utf-8'))
+    bound=(max(measure(value) for value in singles.values())+measure(pair))//2
+    original=LIMITS['summary_utf8_bytes'];LIMITS['summary_utf8_bytes']=bound
+    try:
+        refused=c.store.view('owner','topic_messages',{'topic_id':'t1','message_ids':ids})
+        reduced={mid:c.store.view('owner','topic_messages',{'topic_id':'t1','message_ids':[mid]}) for mid in ids}
+        assert refused.get('error',{}).get('code')=='VIEW_TOO_LARGE',refused
+        assert all('error' not in value for value in reduced.values()),reduced
+    finally:LIMITS['summary_utf8_bytes']=original
+    print(json.dumps({'destination':destination,'ids':ids,'acts':acts,'singles':reduced,'refused':refused,'bound':bound,'single_bytes':[measure(v) for v in singles.values()],'pair_bytes':measure(pair)}))
+finally:
+    c.tearDown();c.doCleanups()
+`;
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const actual = JSON.parse(execFileSync('/usr/bin/python3', ['-I', '-c', python, root], { encoding: 'utf8' }));
+  for (const page of Object.values(actual.singles)) { assert.equal('topic_id' in page, false); assert.equal(page.next_cursor, null); }
+  const reads = [], sources = new SplitSources({ instanceId: actual.acts.instance_id, topicId: 't1', rootId: actual.destination,
+    read: async (name, args) => {
+      reads.push([name, args]);
+      if (name === 'message_acts') return actual.acts;
+      if (args.message_ids.length > 1) throw new AttemptError(actual.refused.error.message, 413, actual.refused);
+      return actual.singles[args.message_ids[0]];
+    } });
+  assert.deepEqual(await sources.next(), { choices: [], more: true }); assert.equal(reads.length, 2);
+  assert.equal(sources.pending.length, 2); assert.equal(sources.batchSize, 1);
+  const first = await sources.next(), second = await sources.next();
+  assert.deepEqual([...first.choices, ...second.choices].map(item => item.id).sort(), actual.ids.sort());
+  assert.equal(second.more, false); assert.equal(reads.length, 4);
+  assert.equal((await sources.fresh(first.choices[0])).id, first.choices[0].id);
+  console.log(JSON.stringify({ actualCore: true, namedEnvelopeHasTopic: false, refusal: actual.refused.error.code,
+    bound: actual.bound, singleBytes: actual.single_bytes, pairBytes: actual.pair_bytes, admittedSources: 2 }));
 });
