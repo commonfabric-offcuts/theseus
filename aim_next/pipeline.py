@@ -35,6 +35,7 @@ from .message_edit import held_refusal, is_held, words as message_words, withhel
 from .removal import value as removal_value
 from .piece_freeze import PieceFreezes
 from .judgment import SHA
+from .piece_clock import PREFIX as CLOCK_PREFIX, read as clock_read
 
 
 # A stage entry keeps its past: once left, nothing in it changes, but (version 30) the derived end _settle wrote on a
@@ -1604,6 +1605,67 @@ class Pipeline(PieceFreezes):
             if piece:
                 item["piece"] = piece
         return item
+
+    def _onboarding_now(self, db, workspace, limit=100):
+        """Bounded current-work projection; never reconstruct release history (1222)."""
+        pipeline = self._pipeline_row(db, workspace["id"])
+        result = {"availability": "unconfigured", "items": [], "unverified": 0, "truncated": False,
+                  "workspace_revision": workspace["version"],
+                  "pipeline_revision": pipeline["version"] if pipeline else 0}
+        if pipeline is None:
+            return result
+        if not pipeline["enabled"]:
+            return dict(result, availability="disabled")
+        columns = "i.number,substr(i.title,1,1025) AS title,i.version,(i.finished_note<>'') AS finished"
+        candidates = db.execute("SELECT " + columns + " FROM pipeline_items i INDEXED BY pipeline_order "
+                                "WHERE i.workspace_id=? AND i.section='now' "
+                                "ORDER BY i.candidate_group,i.position,i.number LIMIT ?",
+                                (workspace["id"], limit + 1)).fetchall()
+        # Current memberships are separately bounded: old Now rows cannot crowd
+        # actual work out of the sample. These are settled Core records, not prose.
+        active = db.execute("SELECT " + columns + ",p.id AS piece_id,p.version AS piece_revision,e.seq AS stage_entry "
+                            "FROM pipeline_stage_entries e INDEXED BY open_entries "
+                            "CROSS JOIN pipeline_pieces p CROSS JOIN pipeline_piece_members m "
+                            "CROSS JOIN pipeline_items i "
+                            "WHERE e.workspace_id=? AND e.left_ms IS NULL AND p.id=e.piece_id "
+                            "AND m.piece_id=p.id AND m.workspace_id=e.workspace_id AND m.left_ms IS NULL "
+                            "AND i.workspace_id=m.workspace_id AND i.number=m.number AND i.section='now' "
+                            "ORDER BY e.piece_id,m.number LIMIT ?", (workspace["id"], limit + 1)).fetchall()
+        current = {r["number"]: dict(r) for r in active}
+        selected = dict(current)
+        for row in candidates:
+            selected.setdefault(row["number"], dict(row))
+        history_exists = pipeline["ships_in_releases"] and db.execute("SELECT 1 FROM releases LIMIT 1").fetchone() is not None
+        items, unverified = [], 0
+        for number, row in selected.items():
+            done = db.execute("SELECT 1 FROM pipeline_piece_members m INDEXED BY item_pieces "
+                              "JOIN pipeline_stage_entries e ON e.piece_id=m.piece_id "
+                              "WHERE m.workspace_id=? AND m.number=? AND e.left_outcome='done' LIMIT 1",
+                              (workspace["id"], number)).fetchone()
+            if row["finished"] or done:
+                continue
+            index = clock_read(db, CLOCK_PREFIX + "live:" + str(number), None) if pipeline["ships_in_releases"] else None
+            if index is not None:
+                release = index.get("release") if isinstance(index, dict) else None
+                # The existing index is a locator, not a substitute for its record.
+                shipped = (type(release) is int and db.execute(
+                    "SELECT 1 FROM releases r,json_each(r.items) j WHERE r.number=? AND j.value=? LIMIT 1",
+                    (release, number)).fetchone() is not None)
+                if not shipped:
+                    unverified += 1
+                continue
+            if history_exists and number not in current:
+                # Pre-index legacy rows can be shipped without a current piece.
+                # Absence of a clock index is not evidence of unshipped work.
+                unverified += 1
+                continue
+            item = {"number": number, "title": row["title"], "version": row["version"]}
+            if number in current:
+                item.update({k: row[k] for k in ("piece_id", "piece_revision", "stage_entry")})
+            items.append(item)
+        return dict(result, availability="partial" if unverified and items else "unavailable" if unverified else "available",
+                    items=items[:limit], unverified=unverified,
+                    truncated=len(candidates) > limit or len(active) > limit or len(items) > limit)
 
     def _pipeline_context(self, db, actor, workspace):
         """What every pipeline read shares: its row, stages, the release records, asks to the reader and the open pieces."""
