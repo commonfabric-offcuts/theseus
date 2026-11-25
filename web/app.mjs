@@ -2258,6 +2258,7 @@ function paintCardAuthor(author, item) {
   author.parentElement?.classList.toggle('retracted-message', item.removal?.kind === 'retracted');
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
   if (here?.conversation && !item.withdrawal && !item.removal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
+  else author.querySelector(':scope > .asks-you')?.remove();
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
   stackFeed?.paintStar(author, item);
   const update = messageUpdateActivity(document, item, updateContext(item.topic_id), previousUpdate);

@@ -5,6 +5,7 @@ import { linkWords } from './links.mjs';
 import { paintRemoval } from './message-removal.mjs';
 
 const EXCERPT = 60;
+const paintedReplies = new WeakMap();
 
 function excerpt(item, { parent = null, viewer = null } = {}) {
   if (ownWithdrawnQuestion(parent, viewer)) return '';
@@ -20,9 +21,14 @@ export function replyLine(item, context) {
 
 // Both initial card drawing and repaint use the same original-word boundary.
 export function paintReplyLine(line, item, context) {
+  const words = item?.reply_to ? excerpt(item, context) : '';
+  const key = JSON.stringify([item?.reply_to ?? null, item?.reply_to_author ?? null, words,
+    item?.reply_to_removal?.kind ?? null, item?.reply_to_removal?.at_ms ?? null]);
+  if (paintedReplies.get(line) === key) return line;
+  paintedReplies.set(line, key);
   line.replaceChildren();
   if (!item?.reply_to) return line;
-  const doc = line.ownerDocument, words = excerpt(item, context);
+  const doc = line.ownerDocument;
   line.append(`Replying to ${item.reply_to_author ?? 'an earlier message'}`);
   if (words) {
     const original = doc.createElement('span');

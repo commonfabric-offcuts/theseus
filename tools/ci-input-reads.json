@@ -6009,5 +6009,21 @@
         "web/app.mjs"
       ]
     }
+  },
+  "tests/ui_card_details_1264.test.mjs": {
+    "d86d5b45b44bcc9209b1876a6bf7898ff87b257e01c7e16a452e95fc13b19eda": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
+  },
+  "tests/ui_pending_destination_1274.test.mjs": {
+    "9aabc603da98cb5c8e5cce1ecef6d28dfda28cc2c0606e563e4413df36e4e735": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
   }
 }

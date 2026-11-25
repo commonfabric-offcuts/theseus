@@ -183,7 +183,7 @@ export class Editor {
     return true;
   }
 
-  beginPrepare({ prepareOperationId, sendOperationId, submissionId }) {
+  beginPrepare({ prepareOperationId, sendOperationId, submissionId, replySource = null }) {
     if (!this.validateComposition()) throw Error(this.conflict.error.message);
     if (this.context.kind === 'note') throw new Error('A private note cannot be sent.');
     const active = this.submissions.find(item => item.status === 'preparing' && !item.detached);
@@ -200,6 +200,7 @@ export class Editor {
       id: submissionId, prepareOperationId, sendOperationId,
       sourceRef: copy(this.sourceRef), topicId: this.context.topicId,
       snapshot: copy(this.draft), localVersion: this.localVersion,
+      ...(replySource ? { replySource: copy(replySource) } : {}),
       savedVersion: this.ackVersion, saveConflict: null,
       status: 'preparing', preparationConfirmed: false, receipt: null, presentPending: true,
     };

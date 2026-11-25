@@ -1,4 +1,5 @@
 import { timeNode } from './times.mjs';
+const paintedRemovals = new WeakMap();
 
 export async function readRemoval(read, id) {
   let source;
@@ -24,6 +25,9 @@ export function paintRemoval(line, item, doc = line.ownerDocument, first = false
   let label = line.querySelector('.message-retracted');
   if (item?.removal?.kind !== 'retracted') { label?.remove(); return; }
   if (!label) { label = doc.createElement('span'); label.className = 'message-retracted'; }
+  const key = JSON.stringify([item.removal.at_ms, first]);
+  if (paintedRemovals.get(label) === key && label.parentElement === line) return;
+  paintedRemovals.set(label, key);
   label.replaceChildren(first ? 'Retracted · ' : ' · Retracted · ', timeNode(item.removal.at_ms, doc), first ? ' · ' : '');
   if (first) line.prepend(label); else line.append(label);
 }
