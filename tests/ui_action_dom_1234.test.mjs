@@ -7,6 +7,7 @@ import { ActionTimings, timingCall } from '../web/action-timing.mjs';
 import { InlineComposer } from '../web/inline-composer.mjs';
 import { Reader } from '../web/reader.mjs';
 import { noWriting } from '../web/editor.mjs';
+import { keepPendingSendPlace } from '../web/pending-sends.mjs';
 const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const cut = (start, end) => { const a = app.indexOf(start), b = app.indexOf(end, a); assert.ok(a >= 0 && b > a); return app.slice(a, b); };
 function fixture() {
@@ -74,12 +75,14 @@ test('1234 actual pending-card and canonical-placement painters acknowledge only
   const f = fixture(), trace = f.ctx.beginTiming('send'), pending = { isConnected: true }, canonical = { isConnected: true };
   const item = { id: 'submission', presentPending: true, status: 'preparing', topicId: 'topic' }, editor = { submissions: [item] }, session = { editor, timingFor: () => trace };
   let painted = 0;
-  const ctx = { timingCall, registry: { sessions: new Map([['editor', session]]), sessionFor: () => session, cleanup: {}, generation: 1, disposed: false },
+  const doc = { activeElement: null, defaultView: { innerHeight: 900, scrollBy() {} }, getSelection: () => ({ isCollapsed: true }) };
+  const host = { ownerDocument: doc, querySelectorAll: () => [] };
+  const ctx = { timingCall, keepPendingSendPlace, registry: { sessions: new Map([['editor', session]]), sessionFor: () => session, cleanup: {}, generation: 1, disposed: false },
     views: { messages: new Map([['canonical', {}]]) }, topic: { id: 'topic' }, retired: false, topicUnavailable: false, authorityReviewPending: () => false,
     pendingSendCard: () => item.status === 'preparing' ? pending : null, messageEntries: new Map([['canonical', canonical]]),
-    paintPendingSends: () => { painted++; }, $: () => ({}), bootstrap: { actor_kind: 'human' }, displayActor() {}, displayRules: () => ({}), pendingSendTarget() {},
-    listAccessEpoch: 1, submittedPlacements: new Map(), document: { activeElement: null }, drawn: () => true };
-  const source = cut('function paintSubmittedWriting()', 'const submittedPlacements') + cut('function placeSubmittedWriting(', 'function paintReview');
+    paintPendingSends: () => { painted++; }, $: () => host, bootstrap: { actor_kind: 'human' }, displayActor() {}, displayRules: () => ({}), pendingSendTarget() {},
+    listAccessEpoch: 1, submittedPlacements: new Map(), document: doc, window: doc.defaultView, roomy: null, drawn: () => true };
+  const source = cut('function restorePendingSendPlace(', 'function pendingSendTarget(') + cut('function paintSubmittedWriting()', 'const submittedPlacements') + cut('function placeSubmittedWriting(', 'function paintReview');
   const functions = vm.runInNewContext(source + ';({ paintSubmittedWriting, placeSubmittedWriting });', ctx);
   functions.paintSubmittedWriting(); assert.equal(painted, 1); assert.equal(trace.hasEndpoint('send_pending_dom'), true);
   item.status = 'confirmed'; item.receipt = { result: { message_id: 'canonical' } };
