@@ -32,7 +32,7 @@ function fixture({ supplemental = false, replyHead = false } = {}) {
   const initial = page(1, 30); initial.items[1] = reply;
   if (replyHead) initial.items = initial.items.filter(item => item.id !== 'm1');
   views.messagesPage(initial, { initial: true });
-  const pressure = () => { for (let n = 30; n < 660; n += 30) {
+  const pressure = (from = 30, to = 660) => { for (let n = from; n < to; n += 30) {
     assert.equal(views.messagesPage(page(n + 1, n + 30), { live: true, cursor: n }), true);
     assert.ok(views.messages.size + views.windowRoots.size <= 300);
     assert.ok(new Set(views.runs.values()).size <= 8);
@@ -54,13 +54,40 @@ for (const route of ['passive arrivals while reading', 'wheel/touch scroll into 
     assert.ok(f.views.windowGaps.length > 0, 'ordinary eviction still creates bounded gaps');
   });
 }
-test('1278 scrolling away and releasing selection/focus removes cover pins; bounded explicit return restores current source', () => {
+test('1278 scrolling away releases viewport protection; bounded explicit return restores current source', () => {
   const f = fixture(); assert.ok(f.getOptions().pins.has('m1')); f.offscreen();
   f.doc.activeElement = null; f.doc.getSelection = () => ({ isCollapsed: true, rangeCount: 0 });
   assert.equal(f.getOptions().pins.has('m1'), false); f.pressure(); assert.equal(f.views.messages.has('m1'), false);
   const current = page(1, 30); current.items[0].body = 'Current stored words'; current.items[0].revision = 4;
   assert.equal(f.views.messagesPage(current, { anchored: true, cursor: 31 }), true);
   assert.equal(f.views.messages.get('m1').body, 'Current stored words'); assert.ok(f.views.messages.size <= 300);
+});
+test('1278 offscreen cover selection protects through pressure, then collapse or move-away releases it for eviction', () => {
+  for (const release of ['collapse', 'move-away']) {
+    const f = fixture(); f.offscreen();
+    const outside = f.doc.createElement('span'); f.list.append(outside);
+    let selected = f.cover, collapsed = false;
+    f.doc.getSelection = () => ({ isCollapsed: collapsed, rangeCount: collapsed ? 0 : 1,
+      getRangeAt: () => ({ intersectsNode: node => node === selected }) });
+    assert.ok(f.getOptions().pins.has('m1'), release + ': noncollapsed cover range establishes protection');
+    f.pressure(); assert.ok(f.views.messages.has('m1'), release + ': selected dossier survives ordinary pressure');
+    if (release === 'collapse') collapsed = true; else selected = outside;
+    assert.equal(f.getOptions().pins.has('m1'), false, release + ': changed range releases the offscreen cover');
+    f.pressure(660, 1320);
+    assert.equal(f.views.messages.has('m1'), false, release + ': ordinary eviction resumes');
+    assert.ok(f.views.messages.has('m1320')); assert.equal(f.views.newest, 1320);
+  }
+});
+test('1278 offscreen focused cover control protects through pressure, then focus elsewhere releases it for eviction', () => {
+  const f = fixture(); f.offscreen();
+  const outside = f.doc.createElement('button'); f.list.append(outside);
+  f.button.focus(); assert.ok(f.getOptions().pins.has('m1'), 'cover control establishes focus protection');
+  f.pressure(); assert.ok(f.views.messages.has('m1'), 'focused dossier survives ordinary pressure');
+  outside.focus(); assert.equal(f.doc.activeElement, outside);
+  assert.equal(f.getOptions().pins.has('m1'), false, 'moving focus elsewhere releases the offscreen cover');
+  f.pressure(660, 1320);
+  assert.equal(f.views.messages.has('m1'), false, 'ordinary eviction resumes');
+  assert.ok(f.views.messages.has('m1320')); assert.equal(f.views.newest, 1320);
 });
 for (const options of [{ replyHead: true }, { supplemental: true, replyHead: true }]) {
   test('1278 reply-headed cover reserves its current ' + (options.supplemental ? 'supplemental original and member' : 'loaded identity'), () => {
