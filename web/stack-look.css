@@ -413,7 +413,7 @@
 /* In a dossier a folded row is who wrote it and its line (item 471): "Folded" is said to a screen reader only, and
    its 👍 shows once someone has given one. */
 .reply-stack[data-single=false]:not(.only-new *) .folded-cue{position:absolute;width:1px;height:1px;padding:0;border:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.reply-stack[data-single=false]:not(.only-new *) .folded-thumb[data-count="0"]{display:none}
+.reply-stack[data-single=false]:not(.only-new *) .folded-thumb[data-count="0"]:not([aria-busy]){display:none}
 
 /* An open dossier of more than seven messages (item 476): its newest seven are sheets, and one quiet line at the top of
    the folder stands for the earlier ones, as wide as its words and 44px tall to touch. A press shows each earlier
