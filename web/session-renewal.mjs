@@ -45,6 +45,7 @@ export class SessionRenewal {
     let answer;
     try { answer = await this.makeApi(token).bootstrap(); } catch { return null; }
     if (answer?.instance_id !== this.bootstrap.instance_id || answer.actor !== this.bootstrap.actor) return null;
+    this.api.adoptReadFormats?.(answer);
     this.api.token = token;
     const live = this.live();
     if (live) live.token = token;

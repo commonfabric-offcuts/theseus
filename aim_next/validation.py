@@ -174,7 +174,7 @@ VIEWS = {
     "workspace_counts": {"workspace_ids"},
     "outcome_light": {"workspace_id"},
     "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done", "build"}, "topic": {"topic_id"},
-    "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction", "items", "message_ids"}, "source": {"source_ref", "kind", "id", "revision"},
+    "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction", "items", "message_ids", "position_format"}, "source": {"source_ref", "kind", "id", "revision"},
     "topic_images": {"topic_id", "limit"},
     "memory_stars": {"topic_id", "cursor", "limit"},
     "memory_items": {"owner_scope", "cursor", "limit"}, "memory_current": {"item_id"}, "memory_status": {"item_id"},
@@ -202,7 +202,7 @@ VIEWS = {
     "check_readings": {"workspace_id", "check_id", "cursor", "limit"},
     "outcome_live": {"workspace_id", "commit"},
     "topic_membership": {"topic_id", "message_ids"}, "dossier_move_targets": {"message_id", "cursor", "limit", "build"}, "dossier_moves": {"topic_id", "cursor", "limit"},
-    "stack_positions": {"topic_id", "message_ids"}, "stack_namer": {"message_id"}, "dossier_cover": {"message_id"}, "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"topic_id", "cursor", "limit"},
+    "stack_positions": {"topic_id", "message_ids", "position_format"}, "stack_namer": {"message_id"}, "dossier_cover": {"message_id"}, "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"topic_id", "cursor", "limit"},
     "tools": {"workspace_id"}, "tool": {"tool_id", "cursor", "limit"}, "topic_tools": {"topic_id"},
 }
 
@@ -263,6 +263,10 @@ def _view_arguments(name, args):
     # No public or private view can substitute an actor from a JSON field.
     if set(args) - VIEWS[name]:
         raise Refusal("INVALID_ARGUMENT", "Unsupported view arguments, including actor or owner overrides")
+    if name in ("topic_messages", "stack_positions") and "position_format" in args:
+        from .dossier_positions import FORMAT
+        if args["position_format"] != FORMAT:
+            raise Refusal("INVALID_ARGUMENT", "Unsupported dossier position format")
     if name == "topic_messages" and (args.get("audience", "all") not in ("all", "reader")
                                       or args.get("direction", "after") not in ("before", "after")):
         raise Refusal("INVALID_ARGUMENT", "Invalid message audience or direction")
