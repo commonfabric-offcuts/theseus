@@ -185,6 +185,10 @@ class RoutePins:
                     fence.verify()
                     self._check_instance(db)
                     self._pin_actor(db, actor_id)
+                    if expected['destination']['kind'] == QUEUE_KIND:
+                        from .queue_hosted import queue_retired
+                        if queue_retired(db, expected['binding']):
+                            raise RoutePinError('QUEUE_PIN_RETIRED', 'This queue pin was retired by an explicit hosted conversion; retain its operation receipt')
                     pin = _stored(db, key, None if recovery else expected)
                     if recovery and pin != expected:
                         pin = self._resolve_recovered_pin(db, actor_id, expected, pin)
