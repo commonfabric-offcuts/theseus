@@ -458,6 +458,7 @@ export class InlineComposer {
   paintStatus() {
     if (!this.editor) return;
     const state = this.state(), editor = this.editor, active = this.admits();
+    if (editor.restoredVersion === editor.localVersion && this.field.value !== editor.draft.body) this.drawEditor();
     this.root.inert = !active; this.field.readOnly = state.readOnly;
     if(state.readOnly||!active)this.input?.mentions?.close();
     this.$('save-state').textContent = this.presentation.availabilityUnconfirmed ? 'Topic access unconfirmed — writing kept on this device' : state.message;
@@ -540,6 +541,12 @@ export class InlineComposer {
       const completion = { p, editor, opening, version, cycle, noticeVersion,
         item: editor.submissions?.find(item => item.status === 'preparing' && !item.detached) };
       this.sendOpening = completion;
+      if (completion.item && this.callbacks.pending?.(p, editor, completion.item) === true) {
+        completion.leftPending = true;
+        this.bar.fold();
+        if (this.sheet?.open) { this.sentClosing = completion; this.sheet.close(); }
+        this.callbacks.pendingFocus?.(completion.item);
+      }
       const result = await sent;
       return await this.finishSend(completion, result);
     } catch (error) { this.notice(error, p, editor); }
@@ -554,6 +561,7 @@ export class InlineComposer {
     if (completion.finished || result?.status !== 'confirmed' || result.detached || completion.editor.authorityRecovery) return;
     completion.finished = true;
     if (this.sendOpening === completion) this.sendOpening = null;
+    if (completion.leftPending) return;
     const { p, editor, opening, version, cycle, noticeVersion } = completion;
     // Confirmation may arrive through reconciliation. The empty successor and
     // this opening must still belong to this send before folding or landing.

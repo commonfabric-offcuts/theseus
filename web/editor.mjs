@@ -201,7 +201,7 @@ export class Editor {
       sourceRef: copy(this.sourceRef), topicId: this.context.topicId,
       snapshot: copy(this.draft), localVersion: this.localVersion,
       savedVersion: this.ackVersion, saveConflict: null,
-      status: 'preparing', preparationConfirmed: false, receipt: null,
+      status: 'preparing', preparationConfirmed: false, receipt: null, presentPending: true,
     };
     freezeImages(this, submission);
     this.submissions.push(submission);
@@ -242,6 +242,17 @@ export class Editor {
       this.draft.generation = next.generation;
       this.follow();
     }
+    return true;
+  }
+
+  restoreRefused(item) {
+    if (item.status !== 'refused' || item.detached || this.localVersion !== item.localVersion ||
+        holdsWriting(this.draft) || this.imageReservation || this.imageBusy || this.uploadOpaque ||
+        this.conflict || this.authorityRecovery) return false;
+    for (const field of WRITING_FIELDS) if (Object.hasOwn(item.snapshot, field)) this.draft[field] = copy(item.snapshot[field]);
+    this.localVersion++;
+    item.restoredWriting = true;
+    this.restoredVersion = this.localVersion;
     return true;
   }
 

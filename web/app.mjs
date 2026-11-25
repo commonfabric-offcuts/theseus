@@ -1,7 +1,8 @@
+import { paintPendingSends } from './pending-sends.mjs';
 import { MessageChanges } from './message-changes.mjs';
 import { OlderFeed } from './older-feed.mjs';
 import { topicCloseUI } from './topic-close-ui.mjs';
-import { QuestionStates, configureQuestionStates, questionOf, questionPill, Resolutions } from './question-state.mjs';
+import { QuestionStates, configureQuestionStates, Resolutions } from './question-state.mjs';
 import { reviewDifferences } from './review-differences.mjs';
 import { railDensity } from './rail-density.mjs';
 import { railHotkeysFor } from './rail-hotkeys.mjs';
@@ -439,7 +440,76 @@ async function showCorrection(editor, item, opener, presentation = presentationF
 // A writing with no reply in doubt but one set aside whose words are kept only
 // on its line has a Set aside chip in the same place, which opens the same list
 // (docs/replies-in-doubt.md).
+const restoredSendViews = new WeakSet();
+function pendingSendCard(id) {
+  return [...$('messages').querySelectorAll('[data-pending-send]')].find(card => card.dataset.pendingSend === id) ?? null;
+}
+function paintSubmittedWriting() {
+  if (!registry || !views || !topic) return;
+  paintPendingSends($('messages'), [...registry.sessions.values()].map(session => session.editor), {
+    topicId: topic.id,
+    underway: (editor, item) => registry.sessionFor(editor).underWay(item.id),
+    parent: ref => ref?.kind === 'message' ? messageEntries.get(ref.id)?.closest('.reply-stack') ?? messageEntries.get(ref.id) : null,
+    placed: id => Boolean(id && messageEntries.get(id)?.isConnected && drawn($('messages'), id)),
+    check: (editor, item) => run(async () => {
+      if (item.status !== 'confirmed') await registry.checkConfirmation(editor);
+      if (item.status === 'confirmed') { await landOnMessage(item.receipt.result.message_id); paintSubmittedWriting(); }
+    }),
+    restored: (editor, item, card) => {
+      if (restoredSendViews.has(item) || editor.restoredVersion !== editor.localVersion ||
+          !(document.activeElement === card || card.contains(document.activeElement))) return;
+      restoredSendViews.add(item);
+      if (inline?.editor === editor && registry.isCurrent(inline.presentation, editor)) {
+        inline.drawEditor(); inline.pop();
+      } else if (item.sourceRef?.kind === 'message') {
+        const source = messageEntries.get(item.sourceRef.id);
+        if (source) cardReplies?.open(item.sourceRef.id, source).catch(error => status(error));
+      }
+    },
+  });
+}
+const submittedPlacements = new Map();
+function placeSubmittedWriting(editor, item) {
+  if (!item.presentPending || item.detached || item.status !== 'confirmed' || item.topicId !== topic?.id) return Promise.resolve(false);
+  if (submittedPlacements.has(item.id)) return submittedPlacements.get(item.id);
+  const currentTopic = topic, access = listAccessEpoch, generation = registry.generation;
+  const current = () => topic === currentTopic && access === listAccessEpoch && generation === registry.generation &&
+    !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending();
+  const task = (async () => {
+    const id = item.receipt.result.message_id;
+    if (!current()) return false;
+    if (!views.messages.has(id)) {
+      const foreground = registry.cleanup.foreground();
+      try {
+        let seq = item.receipt.result.seq;
+        if (!Number.isSafeInteger(seq) || seq < 1) {
+          const source = checkedView(await foreground.read(options => api.view('source', { kind: 'message', id }, options)), bootstrap.instance_id);
+          if (!current() || source.source_ref?.id !== id || source.topic_id !== item.topicId) return false;
+          seq = source.seq;
+        }
+        if (!Number.isSafeInteger(seq) || seq < 1) throw Error('The sent message could not be placed. Check confirmation.');
+        const cursor = seq + 1;
+        const page = checkedView(await foreground.read(options => api.view('topic_messages', { topic_id: item.topicId, audience: 'all', direction: 'before', cursor, limit: 30 }, options)), bootstrap.instance_id);
+        if (!current()) return false;
+        views.messagesPage(page, { anchored: true, cursor });
+      } finally { foreground.release(); }
+    }
+    if (current()) {
+      const pending = pendingSendCard(item.id);
+      if (pending && document.activeElement === pending) {
+        const card = landOn(id, { full: true });
+        card?.focus({ preventScroll: true });
+      }
+      paintSubmittedWriting();
+    }
+    return current() && Boolean(messageEntries.get(id)?.isConnected);
+  })().catch(error => { if (current()) status(error); return false; });
+  submittedPlacements.set(item.id, task);
+  task.finally(() => { if (submittedPlacements.get(item.id) === task) submittedPlacements.delete(item.id); });
+  return task;
+}
 function paintReview() {
+  paintSubmittedWriting();
   const entries = registry?.inDoubt ?? [], composer = !$('inline-composer').hidden;
   const drawn = [...entries, ...(registry?.keptAside ?? []).filter(kept => !entries.some(entry => entry.editor.key === kept.editor.key))];
   const inComposer = entry => composer && entry.editor.context.sourceRef.kind === 'topic';
@@ -1910,22 +1980,6 @@ function paintCardAuthor(author, item) {
   paintWithdrawal(author, item, document);
   paintRemoval(author, item, document);
   author.parentElement?.classList.toggle('retracted-message', item.removal?.kind === 'retracted');
-  const question = questionOf(item);
-  const questionKey = JSON.stringify([question, question?.by ? displayActor(question.by) : null]);
-  const pills = author.querySelectorAll(':scope > .question-state');
-  // paintAuthor may keep its cached line. Retire old labels even when the
-  // current question is hidden, and keep an unchanged successor link focused.
-  if (pills.length !== 1 || pills[0].dataset.question !== questionKey) {
-    for (const pill of pills) pill.remove();
-    if (['resolved', 'superseded'].includes(question?.state)) {
-      const pill = questionPill(document, item, { nameOf: displayActor });
-      if (pill) {
-        pill.dataset.question = questionKey;
-        pill.prepend(' '); // The separator retires with its label.
-        author.append(pill);
-      }
-    }
-  }
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
   if (here?.conversation && !item.withdrawal && !item.removal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
@@ -3594,6 +3648,11 @@ async function initialize() {
     edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
     status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, savedAt: editor => registry.savedTime(editor), needsReview, reviewState,
     send: (editor, p) => registry.send(editor, { presentation: p, stay: true }),
+    pending: (_p, _editor, item) => Boolean(pendingSendCard(item.id)),
+    pendingFocus: item => {
+      const card = pendingSendCard(item.id);
+      if (card) { card.tabIndex = -1; card.scrollIntoView({ block: 'nearest', behavior: 'instant' }); card.focus({ preventScroll: true }); }
+    },
     sent: (p, result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current),
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
     renderPending: () => paintReview(),
@@ -3679,7 +3738,7 @@ async function initialize() {
   // a window that crosses a phone's width shows or hides it again.
   reader.narrow.addEventListener('change', paintReaderMark);
   registry = new EditorRegistry({ api, bootstrap, journal, present, changed,
-    published: (editor, item) => { if (inline.editor === editor) inline.published(item); cardReplies?.published(editor, item); mentionNotices?.published(editor, item); },
+    published: (editor, item) => { placeSubmittedWriting(editor, item); if (inline.editor === editor) inline.published(item); cardReplies?.published(editor, item); mentionNotices?.published(editor, item); },
     activity: () => { inline.paintStatus(); reader.paintStatus(); cardReplies?.paint(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } cardReplies?.readerClosed(presentation); cardReplies?.paint(); noteRead(); } });
   mentionNotices = new MentionNotices({ host: $('page-notices'), api, instanceId: bootstrap.instance_id,
