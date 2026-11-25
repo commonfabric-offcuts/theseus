@@ -10,6 +10,20 @@ export function timingCall(timing, method, ...args) {
   try { return timing?.[method]?.(...args); } catch { return undefined; }
 }
 
+// One pending diagnostic envelope, including its original authority, survives an
+// uncertain report. Session/token renewal does not change that fingerprint.
+export function actionReporter({ instanceId, send, authority }) {
+  let saved = null;
+  return (records, operation) => {
+    if (saved?.operation_id !== operation) {
+      const { authority_id, authority_epoch } = authority();
+      saved = { v: 1, instance_id: instanceId, operation_id: operation, kind: 'performance.record', target: {},
+        expected: { authority: { authority_id, authority_epoch } }, args: { records: copy(records) } };
+    }
+    return send(copy(saved));
+  };
+}
+
 export class ActionTimings {
   constructor({ instanceId, build, report, burden = () => ({}), now = () => performance.now(), wall = () => Date.now(),
     frame = globalThis.requestAnimationFrame?.bind(globalThis), cancelFrame = globalThis.cancelAnimationFrame?.bind(globalThis),
@@ -17,7 +31,7 @@ export class ActionTimings {
     Object.assign(this, { instanceId, build, report, burden, now, wall, frame, cancelFrame, timers, uuid, Observer, flushDelayMs, actionTimeoutMs });
     this.tab = uuid(); this.records = new Map(); this.dirty = new Set(); this.localDropped = 0; this.failedReports = 0;
     this.support = { long_tasks: false, resource_timing: Boolean(globalThis.performance?.getEntriesByName), frames: Boolean(frame) };
-    this.disposed = false; this.flight = null; this.reporting = null;
+    this.disposed = false; this.flight = null; this.reporting = null; this.demand = false; this.pendingActions = new Map();
   }
 
   begin(kind, event = null) {
@@ -33,10 +47,10 @@ export class ActionTimings {
     if (kind !== 'idle') trace.timeout = this.timers.setTimeout(() => trace.finish('incomplete', 'timeout'), this.actionTimeoutMs);
     if (kind !== 'idle') trace.mark('input');
     while (this.records.size > 128) {
-      const oldest = this.records.keys().next().value, gone = this.records.get(oldest);
+      const oldest = [...this.records].find(([, trace]) => trace.row.kind !== 'idle')?.[0] ?? this.records.keys().next().value, gone = this.records.get(oldest);
       const covered = this.flight?.records.some(row => row.id === oldest && row.sequence === gone.row.sequence);
       const lost = this.dirty.has(oldest) && !covered;
-      gone.retire(false); this.records.delete(oldest); this.dirty.delete(oldest);
+      gone.retire(false); this.records.delete(oldest); this.dirty.delete(oldest); this.pendingActions.delete(oldest);
       if (lost) this.localDropped++;
     }
     this.schedule();
@@ -44,32 +58,52 @@ export class ActionTimings {
     return trace;
   }
 
-  schedule() {
-    if (this.disposed || this.flushTimer !== undefined || !this.dirty.size && !this.flight) return;
+  completed(trace) {
+    if (trace.row.kind === 'idle') return;
+    this.pendingActions.set(trace.row.id, trace.row.sequence);
+    this.schedule(true);
+  }
+  schedule(trigger = false) {
+    if (trigger) this.demand = true;
+    if (this.disposed || !this.demand || this.reporting || this.flushTimer !== undefined) return;
     this.flushTimer = this.timers.setTimeout(() => { this.flushTimer = undefined; void this.flush(); }, this.flushDelayMs);
   }
 
   async flush() {
     if (this.reporting) return this.reporting;
+    this.timers.clearTimeout(this.flushTimer); this.flushTimer = undefined; this.demand = false;
     if (!this.flight) {
-      const traces = [...this.dirty].map(key => this.records.get(key)).filter(Boolean).slice(0, 16);
+      const actions = [...this.dirty].map(key => this.records.get(key)).filter(trace => trace && trace.row.kind !== 'idle');
+      actions.sort((a, b) => Number(this.pendingActions.has(b.row.id)) - Number(this.pendingActions.has(a.row.id)));
+      const idle = this.idleTrace && !this.idleTrace.retired ? this.idleTrace : null;
+      const traces = actions.slice(0, idle ? 15 : 16);
+      if (traces.length && idle) traces.push(idle);
       if (!traces.length) return false;
-      const began = this.now(), records = traces.map(trace => trace.snapshot());
+      const began = this.now(), records = traces.map(trace => {
+        const row = trace.snapshot();
+        if (row.kind === 'idle') { row.outcome = 'complete'; row.elapsed_ms = finite(this.now() - trace.start); }
+        return row;
+      });
       const overhead = finite(this.now() - began) / records.length;
       for (const row of records) row.overhead_ms = finite(row.overhead_ms + overhead);
       this.flight = { id: this.uuid(), records };
     }
     const batch = this.flight;
+    let confirmed = false;
     const work = async () => {
       try {
         const answer = await this.report(copy(batch.records), batch.id);
         if (answer?.instance_id !== this.instanceId || answer.operation_id !== batch.id || answer.kind !== 'performance.record' ||
             answer.recorded !== true || answer.status !== 'committed') throw Error('Observation not confirmed');
-        for (const row of batch.records) if (this.records.get(row.id)?.row.sequence === row.sequence) this.dirty.delete(row.id);
+        for (const row of batch.records) {
+          if (this.records.get(row.id)?.row.sequence === row.sequence) this.dirty.delete(row.id);
+          if ((this.pendingActions.get(row.id) ?? Infinity) <= row.sequence) this.pendingActions.delete(row.id);
+        }
+        confirmed = true;
         if (this.flight === batch) this.flight = null;
         return true;
       } catch { this.failedReports++; return false; }
-      finally { this.reporting = null; this.schedule(); }
+      finally { this.reporting = null; if (confirmed && this.pendingActions.size) this.demand = true; this.schedule(); }
     };
     this.reporting = Promise.resolve().then(work);
     return this.reporting;
@@ -94,12 +128,15 @@ export class ActionTimings {
         this.observer.observe({ type: 'longtask', buffered: false }); this.support.long_tasks = true;
       } catch { this.observer?.disconnect(); this.observer = null; }
     }
-    let last = this.now(), window = this.begin('idle');
+    let last = this.now(); const window = this.idleTrace = this.begin('idle');
     const sample = () => {
       if (this.disposed) return;
       const now = this.now(), gap = finite(Math.max(0, now - last - 5000)); last = now;
       window?.change(() => { window.row.idle.samples++; window.row.idle.maximum_gap_ms = Math.max(window.row.idle.maximum_gap_ms ?? 0, gap); });
-      if (window && now - window.start >= 60000) { window.finish('complete'); window = this.begin('idle'); }
+      if (window && now - window.start >= 60000) window.change(() => {
+        window.start = now; window.row.started_ms = this.wall();
+        window.row.idle = { samples: 0, maximum_gap_ms: null }; window.row.long_tasks = { count: 0, duration_ms: 0 };
+      });
       this.idleTimer = this.timers.setTimeout(sample, 5000);
     };
     this.idleTimer = this.timers.setTimeout(sample, 5000);
@@ -107,10 +144,12 @@ export class ActionTimings {
 
   dispose() {
     if (this.disposed) return;
+    const active = [...this.records.values()].filter(trace => trace.row.kind !== 'idle' && trace.row.outcome === 'running');
+    const shouldFlush = this.demand || active.length > 0;
     for (const trace of this.records.values()) if (trace.row.outcome === 'running') trace.retire();
     this.disposed = true; this.observer?.disconnect();
     this.timers.clearTimeout(this.idleTimer); this.timers.clearTimeout(this.flushTimer); this.flushTimer = undefined;
-    void this.flush(); // Best effort only; page departure is not a receipt.
+    if (shouldFlush) void this.flush(); // Best effort only; page departure is not a receipt.
   }
 }
 
@@ -119,10 +158,11 @@ class ActionTrace {
   change(work) {
     if (this.retired || !this.owner.records.has(this.row.id)) return;
     const began = this.owner.now();
-    try { work(); this.row.sequence++; this.row.elapsed_ms = finite(this.owner.now() - this.start); this.owner.dirty.add(this.row.id); this.owner.schedule(); }
+    try { work(); this.row.sequence++; this.row.elapsed_ms = finite((this.terminalAt ?? this.owner.now()) - this.start); this.owner.dirty.add(this.row.id); this.owner.schedule(); }
     finally { this.row.overhead_ms = finite(this.row.overhead_ms + finite(this.owner.now() - began)); }
   }
   mark(name, { at_ms = finite(this.owner.now() - this.start), duration_ms = null, request = null, operation = null, clock = 'browser' } = {}) {
+    if (this.terminalAt !== undefined) return;
     this.change(() => {
       if (this.row.phases.length >= 32) {
         this.row.dropped_phases++;
@@ -139,16 +179,17 @@ class ActionTrace {
     return () => { if (!ended) { ended = true; this.mark(name, { ...fields, at_ms, duration_ms: finite(this.owner.now() - start) }); } };
   }
   link(operation, submission = null) {
+    if (this.terminalAt !== undefined) return;
     this.change(() => {
       if (operation && !this.row.operations.includes(operation) && this.row.operations.length < 8) this.row.operations.push(operation);
       if (submission) this.row.submission = submission;
     });
   }
   requestId() { return this.owner.uuid(); }
-  count(name) { this.change(() => { if (Object.hasOwn(this.row.counts, name)) this.row.counts[name]++; }); }
+  count(name) { if (this.terminalAt !== undefined) return; this.change(() => { if (Object.hasOwn(this.row.counts, name)) this.row.counts[name]++; }); }
   hasEndpoint(name) { return this.endpoints.has(name); }
   endpoint(name) {
-    if (this.endpoints.has(name) || this.retired) return;
+    if (this.endpoints.has(name) || this.retired || this.terminalAt !== undefined) return;
     this.endpoints.add(name);
     this.mark(name);
     if (!this.owner.frame || this.retired) return;
@@ -164,12 +205,14 @@ class ActionTrace {
     schedule('frame1', () => schedule('frame2'));
   }
   finish(outcome = 'complete', failure = null) {
+    if (this.terminalAt !== undefined) return;
     this.desired = outcome;
     this.change(() => { this.row.failure = failure; this.row.outcome = outcome === 'complete' && this.frames.size ? 'running' : outcome; });
     this.mark('action_end');
+    if (this.row.outcome !== 'running') { this.terminalAt ??= this.owner.now(); this.owner.completed(this); }
     if (outcome !== 'complete' || !this.frames.size) this.owner.timers.clearTimeout(this.timeout);
   }
-  settle() { if (!this.frames.size && this.desired === 'complete') { this.change(() => { this.row.outcome = 'complete'; }); this.owner.timers.clearTimeout(this.timeout); } }
+  settle() { if (!this.frames.size && this.desired === 'complete') { this.change(() => { this.row.outcome = 'complete'; }); this.terminalAt ??= this.owner.now(); this.owner.completed(this); this.owner.timers.clearTimeout(this.timeout); } }
   retire(report = true) {
     if (this.retired) return;
     if (report && this.row.outcome === 'running') this.finish('incomplete', 'retired');

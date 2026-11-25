@@ -65,10 +65,10 @@ test('838 docking preserves an explicitly expanded source', () => {
 test('907 the actual Reply entry opens that card without expanding its source', async () => {
   const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8'), calls = [];
   const card = { isConnected: true, getClientRects: () => [{}] }, p = { source: { source_ref: { kind: 'message', id: 'm' } } };
-  const reply = new Function('registry', 'stackFeed', 'messageEntries', 'opened', 'marks', 'clearVisitNew', 'cardReplies', 'openedHere', 'releaseTopArrivals',
+  const reply = new Function('beginTiming', 'timingCall', 'registry', 'stackFeed', 'messageEntries', 'opened', 'marks', 'clearVisitNew', 'cardReplies', 'openedHere', 'releaseTopArrivals',
     // The page's own request counters (module lets in app.mjs) are supplied here, as the other owners are.
     `let cardReplyRequest = 0, opening = 0; ${app.slice(app.indexOf('async function replyInCard('), app.indexOf('// Every page of the person'))}; return replyInCard;`)(
-    { isCurrent: value => value === p }, { land() { assert.fail('a visible card stays in its dossier'); } }, new Map([['m', card]]), value => value,
+    () => null, () => undefined, { isCurrent: value => value === p }, { land() { assert.fail('a visible card stays in its dossier'); } }, new Map([['m', card]]), value => value,
     { capture: id => id, read: id => calls.push(['read', id]) }, () => {}, { open: async (...args) => { calls.push(args); return p; } }, () => {}, () => {});
   assert.equal(await reply('m', card), p); assert.deepEqual(calls, [['m', card], ['read', 'm']]);
 });

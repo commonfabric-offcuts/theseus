@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import { timingCall } from '../web/action-timing.mjs';
 import { checkedView } from '../web/freshness.mjs';
 
 // Execute the unchanged actual app owner with explicit API/DOM ports. This
@@ -24,7 +25,7 @@ function fixture(seq, {loaded = false, source = {}, block = null} = {}) {
     registry:{generation:1,disposed:false,cleanup:{foreground:()=>({read:work=>work({}),release:()=>release++})}},
     api:{view:async(name,args)=>{ calls.push({name,args}); if (name === block) await gate;
       return name === 'source' ? {instance_id:'i',source_ref:{kind:'message',id:'m'},topic_id:'t',seq:7,...source} : {instance_id:'i',items:[{id:'m',seq:args.cursor-1}]}; }},
-    bootstrap:{instance_id:'i'},checkedView,messageEntries:entries,
+    timingCall, bootstrap:{instance_id:'i'},checkedView,messageEntries:entries,
     views:{messages,messagesPage:(page,options)=>{ assert.equal(options.anchored,true); messages.set('m',page.items[0]); entries.set('m',{isConnected:true}); }},
     pendingSendCard:()=>null,document:{activeElement:null},paintSubmittedWriting:()=>paint++,status:error=>notices.push(error.message),
   };

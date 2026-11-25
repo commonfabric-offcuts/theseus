@@ -15,7 +15,7 @@ There are no bodies, titles, quotes, arbitrary URLs or exception messages.
 Unknown/missing phases stay unknown; they are never zero or completion proof.
 
 Core validates the complete batch before changing anything. Records live in
-one actor-scoped metadata value; no schema version changes. At most 16 records
+separate actor-scoped metadata rows and a bounded retention index; no schema version changes. At most 16 records
 arrive per batch, 256 recent action records are retained, and records expire
 one hour after Core receives them. A newer observation of the same tab/action
 updates that record; an older sequence cannot replace it. Health reads only
@@ -63,8 +63,8 @@ A record keeps at most32 phases and4096 encoded bytes; omitted phases are
 counted and DOM/frame endpoints receive priority. Core retains at most256 rows.
 
 `input` starts when the owned action callback is invoked. It does not include
-OS input dispatch before that callback. Build identity comes from the loaded
-module `/b/<stamp>/` path, never a later server build lookup. An unstamped local
+OS input dispatch before that callback. Build identity comes from the document’s loaded
+module-entry script `/b/<stamp>/` path, never a later server build lookup. An unstamped local
 module says `unversioned`. The tab token identifies this document instance.
 Browser overhead measures recorder hot paths, burden sampling, observed-task
 processing and snapshot serialization. It is not total CPU, and per-action
@@ -89,3 +89,28 @@ source, missing canonical placement or missing thumb reconciliation is incomplet
 Local loss counts only discarded dirty observations not covered by the retained
 immutable batch. Evicting an already confirmed local cache entry is not an upload
 loss; a retained unconfirmed batch remains pending under its original operation.
+
+
+Cost repair: idle sampling maintains one local, rolling60-second observation.
+It queues no report and writes no server records by itself. An action’s terminal
+completion (including the last required frame or an incomplete timeout) triggers
+a bounded batch; its idle snapshot travels in that batch. A failed report keeps
+its immutable operation/payload parked until another action completes; there is
+no idle retry timer. Late observer enrichment waits for a later action batch and
+preserves the original terminal elapsed/end and overlap interval.
+
+Core stores each observation as one metadata row. An actor-private index holds
+only opaque row keys, sequences and Core receive times, at most256 references.
+A flush serializes/upserts only its accepted batch payloads plus that bounded
+index; it does not read or rewrite other payloads. Stale updates write no metadata.
+Expired/cap-evicted exact keys are removed on the next action report; Health
+already omits expired rows without a cleanup writer. No performance actor-scope
+change is published. Ordinary operation receipts/health settling still commit.
+The old unfrozen ed9 actor-blob layout was never deployed and is not migrated;
+this remains ordinary no-schema Core metadata work.
+
+A terminal measurement is sealed: later product publication cannot turn an
+incomplete timeout into a successful measured interval. Late long-task entries
+can enrich only their overlap with that fixed interval. A diagnostic retry also
+keeps the original authority pair and entire command envelope; renewal never
+changes the fingerprint of a pending observation operation.

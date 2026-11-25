@@ -314,7 +314,7 @@ export async function openJournal({ instanceId, actor, win = globalThis } = {}) 
         timingCall(timing, 'count', 'journal_writes');
         const putDone = timingCall(timing, 'span', 'journal_put');
         const request = store.put(row);
-        request.onsuccess = () => putDone?.();
+        if (request && putDone) request.onsuccess = () => putDone();
       });
     }, timing),
     get: id => transact('readonly', (_store, finish, get) => {

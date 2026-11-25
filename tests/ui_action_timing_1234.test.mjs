@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ActionTimings, timingCall } from '../web/action-timing.mjs';
+import { ActionTimings, actionReporter, timingCall } from '../web/action-timing.mjs';
 import { Api } from '../web/api.mjs';
 import { RecoveryJournal, openJournal } from '../web/journal.mjs';
 import { Editor } from '../web/editor.mjs';
@@ -167,4 +167,48 @@ test('evicting an already confirmed local observation does not invent an upload 
   const f = fixture();
   for (let n = 0; n < 129; n++) { f.owner.begin('thumb').finish('failed', 'refused'); await f.owner.flush(); }
   assert.equal(f.owner.records.size, 128); assert.equal(f.owner.localDropped, 0);
+});
+
+function clocked(extra = {}) {
+  let now = 0, serial = 0; const jobs = new Map();
+  const f = fixture({ now: () => now, timers: { setTimeout: (fn, ms) => { const id = ++serial; jobs.set(id, { fn, at: now + ms }); return id; }, clearTimeout: id => jobs.delete(id) }, ...extra });
+  return { ...f, jobs, async run(ms) { const end = now + ms; for (;;) { const next = [...jobs].filter(([, job]) => job.at <= end).sort((a,b) => a[1].at-b[1].at)[0]; if (!next) break; const [id,job]=next; jobs.delete(id); now=job.at; job.fn(); await flush(); } now=end; await flush(); } };
+}
+test('an idle tab writes nothing for ten minutes and carries a bounded idle observation on a finished action', async () => {
+  const f = clocked(); f.owner.observe(); await f.run(600000); assert.equal(f.sent.length, 0);
+  f.owner.begin('thumb').finish('failed', 'refused'); await f.run(10000); assert.equal(f.sent.length, 1);
+  assert.ok(f.sent[0].records.some(row => row.kind === 'idle' && row.idle.samples > 0));
+  await f.run(120000); assert.equal(f.sent.length, 1, 'sampling after the action does not commit');
+});
+test('failed reporting parks its original batch until another action, without an idle retry timer', async () => {
+  const calls = []; let fail = true;
+  const f = clocked({ report: async (records, operation_id) => { calls.push({ records, operation_id }); if (fail) throw Error('offline'); return { instance_id: 'instance', kind: 'performance.record', operation_id, recorded: true, status: 'committed' }; } });
+  f.owner.observe(); f.owner.begin('thumb').finish('failed', 'refused'); await f.run(10000); assert.equal(calls.length, 1);
+  await f.run(120000); assert.equal(calls.length, 1);
+  fail = false; f.owner.begin('send').finish('failed', 'refused'); await f.run(20000); assert.deepEqual(calls[1], calls[0]);
+  const total = calls.length; await f.run(120000); assert.equal(calls.length, total);
+});
+test('delayed long-task enrichment preserves the completed interval and excludes tasks wholly after it', () => {
+  let observer; class Observer { constructor(callback) { this.callback=callback; observer=this; } observe() {} disconnect() {} }
+  const f = fixture({ Observer }); f.owner.observe(); const trace=f.owner.begin('send'); f.advance(10); trace.endpoint('send_canonical_dom'); trace.finish();
+  f.advance(5); f.frame(); f.advance(5); f.frame(); assert.equal(trace.row.outcome,'complete'); assert.equal(trace.row.elapsed_ms,20);
+  f.advance(80); observer.callback({ getEntries: () => [{ startTime:5,duration:10 }] });
+  assert.equal(trace.row.long_tasks.count,1); assert.equal(trace.row.elapsed_ms,20,'observer delivery is not action completion');
+  observer.callback({ getEntries: () => [{ startTime:30,duration:10 }] }); assert.equal(trace.row.long_tasks.count,1); assert.equal(trace.row.elapsed_ms,20);
+});
+
+
+test('a diagnostic retry preserves its entire envelope including the authority observed on first dispatch', async () => {
+  const sent = []; let epoch = 'old';
+  const report = actionReporter({ instanceId:'instance', authority:()=>({authority_id:'authority',authority_epoch:epoch}), send: envelope => { sent.push(envelope); return Promise.resolve({}); } });
+  const records=[{id:'record',sequence:1}]; await report(records,'one'); epoch='new'; records[0].sequence=2; await report(records,'one');
+  assert.deepEqual(sent[1],sent[0]); assert.equal(sent[1].expected.authority.authority_epoch,'old'); assert.equal(sent[1].args.records[0].sequence,1);
+  await report(records,'two'); assert.equal(sent[2].expected.authority.authority_epoch,'new');
+});
+
+test('late publication after a measurement timeout cannot replace its incomplete outcome or interval', () => {
+  const f=fixture(), trace=f.owner.begin('send'); f.advance(20); trace.finish('incomplete','timeout');
+  f.advance(80); trace.endpoint('send_canonical_dom'); trace.finish('complete'); f.frame(); f.frame();
+  assert.equal(trace.row.outcome,'incomplete'); assert.equal(trace.row.failure,'timeout'); assert.equal(trace.row.elapsed_ms,20);
+  assert.equal(trace.hasEndpoint('send_canonical_dom'),false);
 });

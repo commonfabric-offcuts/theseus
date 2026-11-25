@@ -33,10 +33,11 @@ class ActionTimingCase(fixtures.StoreCase):
         self.assertEqual(value["counts"], dict(complete=1, failed=0, incomplete=0, running=0))
         self.assertEqual(value["slowest"][0]["id"], "action")
         self.assertEqual(value["slowest"][0]["elapsed_ms"], 20)
-        stored = self.sql("SELECT value FROM metadata WHERE key='tab_performance:owner'")
+        stored = self.sql("SELECT key,value FROM metadata WHERE key LIKE 'tab_performance:owner:%' ORDER BY key")
+        self.assertEqual(len(stored), 2)
         self.assertEqual(self.record([reading()], op="metrics-once"), receipt)
         self.assertEqual(self.store.view("owner", "operation", {"operation_id": "metrics-once"}), receipt)
-        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='tab_performance:owner'"), stored)
+        self.assertEqual(self.sql("SELECT key,value FROM metadata WHERE key LIKE 'tab_performance:owner:%' ORDER BY key"), stored)
         self.assertEqual(self.performance("agent-a")["counts"], dict(complete=0, failed=0, incomplete=0, running=0))
         self.assertEqual(self.performance("agent-a")["slowest"], [])
 
@@ -52,14 +53,14 @@ class ActionTimingCase(fixtures.StoreCase):
 
     def test_batch_validation_is_atomic_and_never_stores_writing_or_unknown_fields(self):
         self.record([reading()])
-        before = self.sql("SELECT value FROM metadata WHERE key='tab_performance:owner'")
+        before = self.sql("SELECT key,value FROM metadata WHERE key LIKE 'tab_performance:owner:%' ORDER BY key")
         for changes in [dict(body="private writing"), dict(elapsed_ms=True), dict(elapsed_ms=float("nan")),
                         dict(operations=["https://private.invalid/writing"]), dict(failure="arbitrary exception")]:
             bad = reading("bad", **changes)
             answer = self.command("performance.record", {"records": [reading("other"), bad]})
             self.assertNotEqual(answer["status"], "committed", answer)
             self.assertEqual(answer["error"]["code"], "INVALID_ARGUMENT")
-            self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='tab_performance:owner'"), before)
+            self.assertEqual(self.sql("SELECT key,value FROM metadata WHERE key LIKE 'tab_performance:owner:%' ORDER BY key"), before)
 
     def test_cap_and_expiry_keep_the_actual_recorded_window_and_drop_counts(self):
         with patch("aim_next.delivery._now_ms", return_value=1000000):
@@ -69,6 +70,11 @@ class ActionTimingCase(fixtures.StoreCase):
             self.assertEqual(value["retained"], 256)
             self.assertEqual(value["cap_dropped"], 16)
             self.assertEqual(sum(value["counts"].values()), 256)
+            stored = self.sql("SELECT value FROM metadata WHERE key LIKE 'tab_performance:owner:%'")
+            self.assertEqual(len(stored), 257, "256 payload rows and one retention index")
+            index = self.sql("SELECT value FROM metadata WHERE key='tab_performance:owner:index'")[0][0]
+            self.assertLess(len(index.encode("utf-8")), 65536)
+            self.assertNotIn('"phases"', index)
         with patch("aim_next.delivery._now_ms", return_value=4600001):
             value = self.performance()
             self.assertEqual(value["retained"], 0)
@@ -96,6 +102,26 @@ class ActionTimingCase(fixtures.StoreCase):
             kind="performance.record", target={}, expected=dict(authority=wrong), args=dict(records=[reading("wrong")])))
         self.assertFalse(answer["recorded"])
         self.assertEqual(self.performance()["retained"], 1)
+
+    def test_only_the_batch_payload_is_written_and_other_record_bytes_are_untouched(self):
+        self.record([reading("first"), reading("second")])
+        self.sql("CREATE TABLE timing_write_audit (key TEXT, value TEXT)")
+        for event in ("INSERT", "UPDATE"):
+            self.sql("CREATE TRIGGER timing_%s AFTER %s ON metadata WHEN NEW.key LIKE 'tab_performance:%%' BEGIN INSERT INTO timing_write_audit VALUES (NEW.key,NEW.value); END" % (event.lower(), event))
+        self.record([reading("first", sequence=2, elapsed_ms=25)])
+        writes = self.sql("SELECT key,value FROM timing_write_audit")
+        self.assertTrue(writes)
+        self.assertFalse(any('"id":"second"' in value for _key, value in writes), "another action's payload must not be reserialized or rewritten")
+        self.assertLessEqual(len(writes), 2, "one payload plus a bounded retention index")
+        self.assertEqual(self.performance()["retained"], 2)
+        self.sql("DELETE FROM timing_write_audit")
+        self.record([reading("first", sequence=1)])
+        self.assertEqual(self.sql("SELECT key,value FROM timing_write_audit"), [], "stale observations write no metadata")
+
+    def test_recording_does_not_publish_a_performance_actor_scope_change(self):
+        before = self.sql("SELECT seq FROM changes WHERE resource_kind='performance'")
+        self.record([reading()])
+        self.assertEqual(self.sql("SELECT seq FROM changes WHERE resource_kind='performance'"), before)
 
 
 for _name in list(fixtures.StoreCase.__dict__):

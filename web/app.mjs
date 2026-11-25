@@ -1,7 +1,6 @@
-import { ActionTimings, timingCall } from './action-timing.mjs';
+import { ActionTimings, actionReporter, timingCall } from './action-timing.mjs';
 let actionTimings = null;
 const beginTiming = kind => timingCall(actionTimings, 'begin', kind);
-const MESSAGE_WINDOW_LIMIT = 300;
 import { paintPendingSends, pendingSendVisual, pendingSendReplyTo, adoptPendingSend, reconcilePlacedSend, clearPendingSends, keepPendingSendPlace } from './pending-sends.mjs';
 import { paintCardWords, cardWordOptions } from './message-card-content.mjs';
 import { MessageChanges } from './message-changes.mjs';
@@ -524,14 +523,14 @@ function paintSubmittedWriting() {
     },
   });
   if (current()) for (const editor of editors) for (const item of editor.submissions ?? []) {
-    if (pendingSendCard(item.id)?.isConnected) timingCall(registry.sessionFor(editor).timingFor?.(item), 'endpoint', 'send_pending_dom');
+    if (pendingSendCard(item.id)?.isConnected) timingCall(registry.sessionFor?.(editor)?.timingFor?.(item), 'endpoint', 'send_pending_dom');
   }
 }
 const submittedPlacements = new Map();
 function placeSubmittedWriting(editor, item) {
   if (!item.presentPending || item.detached || item.status !== 'confirmed' || item.topicId !== topic?.id) return Promise.resolve(false);
   if (submittedPlacements.has(item.id)) return submittedPlacements.get(item.id);
-  const timing = registry.sessionFor(editor).timingFor?.(item);
+  const timing = registry.sessionFor?.(editor)?.timingFor?.(item);
   const currentTopic = topic, access = listAccessEpoch, generation = registry.generation;
   const current = () => topic === currentTopic && access === listAccessEpoch && generation === registry.generation &&
     !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending();
@@ -1695,7 +1694,7 @@ function topicWindowOptions() {
     if (sectionHead) pins.add(sectionHead);
     if (submission.status === 'confirmed') pins.add(submission.receipt.result.message_id);
   }
-  return { pins, budget: Math.max(0, MESSAGE_WINDOW_LIMIT - external.size), anchor: held ?? listActAnchor?.id ?? visible[0] ?? null };
+  return { pins, budget: Math.max(0, 300 - external.size), anchor: held ?? listActAnchor?.id ?? visible[0] ?? null };
 }
 function queueWindowEvictions(ids) {
   for (const id of ids) windowEvictions.add(id);
@@ -2592,7 +2591,7 @@ async function replyInCard(id, card) {
   const act = marks.capture(id);
   clearVisitNew(id);
   let p;
-  try { p = await cardReplies.open(id, card, { timing }); }
+  try { p = await (timing ? cardReplies.open(id, card, { timing }) : cardReplies.open(id, card)); }
   catch {
     // The Reader can show a source refusal alongside authorized kept writing.
     // An old failed click must not replace a newer card or Reader opening.
@@ -3707,11 +3706,11 @@ async function initialize() {
   if (!actionTimings) {
     try {
       actionTimings = new ActionTimings({ instanceId: bootstrap.instance_id,
-        build: new URL(import.meta.url).pathname.match(/^\/b\/([^/]+)\//)?.[1] ?? 'unversioned',
+        build: document.querySelector('script[type="module"][src]')?.src?.match(/\/b\/([^/]+)\//)?.[1] ?? 'unversioned',
         burden: () => ({ loaded_messages: views?.messages?.size ?? 0, retained_messages: feedMessages()?.size ?? 0,
-          rendered_cards: [...messageEntries.values()].filter(entry => entry.isConnected).length, window_limit: MESSAGE_WINDOW_LIMIT }),
-        report: (records, operation) => api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: operation,
-          kind: 'performance.record', target: {}, expected: { authority: (({ authority_id, authority_epoch }) => ({ authority_id, authority_epoch }))(registry?.runtime?.current ?? bootstrap.authority) }, args: { records } }) });
+          rendered_cards: [...messageEntries.values()].filter(entry => entry.isConnected).length, window_limit: 300 }),
+        report: actionReporter({ instanceId: bootstrap.instance_id, send: envelope => api.command(envelope),
+          authority: () => registry?.runtime?.current ?? bootstrap.authority }) });
       actionTimings.observe();
       window.addEventListener('pagehide', () => actionTimings?.dispose(), { once: true });
     } catch { actionTimings = null; }

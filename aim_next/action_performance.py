@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Bounded private observations, never authority for an action's outcome."""
 import json
+import hashlib
 import math
 import re
 
@@ -73,7 +74,7 @@ def validate(row):
 
 
 def state(db, actor):
-    saved = db.execute("SELECT value FROM metadata WHERE key=?", (PREFIX + actor,)).fetchone()
+    saved = db.execute("SELECT value FROM metadata WHERE key=?", (PREFIX + actor + ":index",)).fetchone()
     return json.loads(saved[0]) if saved else {"records": [], "cap_dropped": 0, "expired": 0}
 
 
@@ -84,7 +85,11 @@ def current(value, now):
 
 def health(db, actor, now):
     value = current(state(db, actor), now)
-    rows = value["records"]
+    rows = []
+    for ref in value["records"]:
+        saved = db.execute("SELECT value FROM metadata WHERE key=?", (PREFIX + actor + ":row:" + ref["key"],)).fetchone()
+        if saved is not None:
+            rows.append(json.loads(saved[0]))
     counts = {key: sum(row["outcome"] == key for row in rows) for key in sorted(OUTCOMES)}
     tabs = {}
     for row in rows:
@@ -108,18 +113,26 @@ class ActionPerformance:
         records = [validate(row) for row in records]  # Validate the entire batch before any write.
         require(len({(r["tab"], r["id"]) for r in records}) == len(records))
         now = _now_ms()
-        value = current(state(db, actor), now)
-        by_id = {(row["tab"], row["id"]): row for row in value["records"]}
+        original = state(db, actor)
+        value = current(original, now)
+        refs = {ref["key"]: ref for ref in value["records"]}
         accepted = 0
         for row in records:
-            key = (row["tab"], row["id"])
-            old = by_id.get(key)
+            key = hashlib.sha256(_json([row["tab"], row["id"]]).encode("utf-8")).hexdigest()
+            old = refs.get(key)
             if old is None or row["sequence"] > old["sequence"]:
-                by_id[key] = dict(row, received_ms=now)
+                db.execute("INSERT INTO metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                           (PREFIX + actor + ":row:" + key, _json(dict(row, received_ms=now))))
+                refs[key] = dict(key=key, sequence=row["sequence"], received_ms=now)
                 accepted += 1
-        rows = sorted(by_id.values(), key=lambda row: (row["received_ms"], row["tab"], row["id"]))
-        value["cap_dropped"] += max(0, len(rows) - MAX_RECORDS)
-        value["records"] = rows[-MAX_RECORDS:]
-        db.execute("INSERT INTO metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (PREFIX + actor, _json(value)))
-        self._change(db, "actor", actor, "performance", actor, now)
+        ordered = sorted(refs.values(), key=lambda ref: (ref["received_ms"], ref["key"]))
+        value["cap_dropped"] += max(0, len(ordered) - MAX_RECORDS)
+        value["records"] = ordered[-MAX_RECORDS:]
+        kept = {ref["key"] for ref in value["records"]}
+        discarded = ({ref["key"] for ref in original["records"]} | set(refs)) - kept
+        for key in discarded:
+            db.execute("DELETE FROM metadata WHERE key=?", (PREFIX + actor + ":row:" + key,))
+        if accepted or value != original:
+            db.execute("INSERT INTO metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                       (PREFIX + actor + ":index", _json(value)))
         return {"accepted": accepted, "retained": len(value["records"])}, []
