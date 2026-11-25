@@ -910,6 +910,14 @@ export function linkedFenceNodes(text, doc, images = null) {
 
 // Puts text, formatted, in host in place of what host held. struck: words the
 // reader had read that the text no longer holds, struck through where they stood (strike).
+// An identical local submission can acquire its real revision without
+// replacing the words or a focused link. Call only after body/options match.
+export function adoptWordsRevision(host, revision) {
+  if (revision === undefined) REVISIONS.delete(host); else REVISIONS.set(host, revision);
+  const options = MESSAGE_DRAWINGS.get(host);
+  if (options) MESSAGE_DRAWINGS.set(host, { ...options, revision });
+}
+
 export function formatWords(host, text, options = {}) {
   if (deferFencePaint(host, () => formatWords(host, text, options))) return host;
   host.replaceChildren();

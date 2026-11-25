@@ -127,6 +127,25 @@ export class Uploads {
     const media = await this.api.media(this.editor.context.instanceId, { id: d.media_id, name: d.name, content_type: d.content_type, size_bytes: d.size_bytes, sha256: d.sha256, inline: d.inline });
     return media.inline ? media.blob : null;
   }
+  // A submitted A owns its frozen links even after the editor starts B.
+  // Previewing A never consults B's current selection or sends a command.
+  submissionEntry(item, attachment) {
+    if (!this.valid() || this.editor.uploadOpaque || item.detached || this.editor.authorityRecovery ||
+        !samePin(item.authority, this.session.authority) || !samePin(item.authority, this.registry.runtime.current)) return null;
+    const link = this.editor.uploadState?.submission_links?.[item.id]?.refs?.find(link => link.media_id === attachment.id);
+    const entry = link && this.editor.uploadState.entries.find(entry => entry.selection_id === link.selection_id);
+    const binding = entry?.binding;
+    if (!entry || binding?.instance_id !== this.editor.context.instanceId || binding.actor_id !== this.editor.context.actor ||
+        binding.editor_key !== this.editor.key || binding.topic_id !== item.topicId || !samePin(binding.authority, item.authority) ||
+        entry.ready_descriptor?.media_id !== attachment.id || !item.snapshot.attachments.some(ref => ref.id === attachment.id)) return null;
+    return entry;
+  }
+  async previewSubmission(item, attachment) {
+    const entry = this.submissionEntry(item, attachment);
+    if (!entry) return null;
+    const blob = await this.preview(entry.selection_id);
+    return this.submissionEntry(item, attachment) === entry ? blob : null;
+  }
   async prepare(e, a) {
     const { blob, hash } = await this.bytes(e);
     await this.transition(() => {
