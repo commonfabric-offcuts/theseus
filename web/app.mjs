@@ -1082,14 +1082,18 @@ function captureListAnchor() {
   const control = anchor === list && (first?.dataset.line === 'older') ? first : null;
   const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
   const cardHold = !writing && !field && !acted && anchor !== list && list.contains(anchor);
-  const held = acted ? cards.slice(cards.indexOf(acted.entry)) : cardHold ? [anchor, ...cards.filter(card => anchor.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING)] : [anchor];
-  const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
+  const cardSet = new Set(cards);
+  const following = anchor ? cards.filter(card => card !== anchor && anchor.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING) : [];
+  const preceding = anchor ? cards.filter(card => card !== anchor && card.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING).reverse() : [];
+  const held = [anchor, ...following, ...preceding], backward = new Set(preceding);
+  const box = anchor?.getBoundingClientRect();
+  const tops = new Map([[anchor, box?.top]]);
   if (acted) tops.set(anchor, acted.mark.top);
   // Inside a long card, hold the line crossing the edge, so an image or
   // rewrap above that line is absorbed even when the card's own top stayed.
   let point = null;
   if (cardHold && tops.get(anchor) < 0) {
-    const box = anchor.getBoundingClientRect(), x = Math.max(1, Math.min(innerWidth - 1, box.left + box.width / 2));
+    const x = Math.max(1, Math.min(innerWidth - 1, box.left + box.width / 2));
     const caret = document.caretPositionFromPoint?.(x, 1), old = caret ? null : document.caretRangeFromPoint?.(x, 1);
     const text = caret?.offsetNode ?? old?.startContainer, offset = caret?.offset ?? old?.startOffset;
     if (text?.nodeType === Node.TEXT_NODE && anchor.contains(text)) {
@@ -1099,7 +1103,7 @@ function captureListAnchor() {
     }
   }
   const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
-  return { list, anchor, cards, held, tops, point, control, edge, last, present, y: window.scrollY,
+  return { list, anchor, cards, cardSet, held, backward, tops, point, control, edge, last, present, y: window.scrollY,
     topicViews: views,
     acted, baseline: Boolean(writing || field || acted || control || anchor !== cards[0] || tops.get(anchor) < 0),
     height: document.documentElement.scrollHeight,
@@ -1115,7 +1119,7 @@ function recordListArrivals(saved, revised = []) {
     const item = views.messages.get(entry.dataset.id);
     return item && item.topic_id === topic.id && item.author_id !== bootstrap.actor &&
       messageEntries.get(item.id) === entry &&
-      ((!saved.cards.includes(entry) && item.seq > saved.newest) || changed.has(item.id)) ? [[entry, item]] : [];
+      ((!saved.cardSet.has(entry) && item.seq > saved.newest) || changed.has(item.id)) ? [[entry, item]] : [];
   }));
 }
 // Record geometry in document coordinates: scrolling is a separate owner.
@@ -1162,17 +1166,19 @@ function restoreListAnchor(saved) {
   if (!saved || retired || !saved.list.isConnected || saved.list.hidden) return;
   // An arrival restoration may not reverse a scroll made since its capture.
   if (saved.arrivals?.size && saved.y !== window.scrollY) { anchorHold = null; return; }
-  const { list, anchor, cards, held, tops, point, control, edge, last, present, acted } = saved;
+  const { list, anchor, cards, cardSet, held, backward, tops, point, control, edge, last, present, acted } = saved;
   // Room an earlier hold kept is given back first; the hold measures without it.
   if (roomy) { roomy(); roomy = null; }
   const landed = control && last ? loadedAfter(list, present, last) : null;
   if (landed) { anchorHold = null; window.scrollBy({ top: landed.getBoundingClientRect().top - edge, behavior: 'instant' }); return; }
   const afterAct = acted && actedListCard(acted.mark);
   if (acted && !afterAct && listActAnchor === acted.mark) listActAnchor = null;
-  const hold = afterAct?.node ?? held.find(node => node?.isConnected && (cards.includes(node) ? drawn(list, node.dataset.id) && (!acted || node.getBoundingClientRect().height > 0) : node.getClientRects().length));
+  const hold = afterAct?.node ?? held.find(node => node?.isConnected && (cardSet.has(node) ? drawn(list, node.dataset.id) && (!acted || node.getBoundingClientRect().height > 0) : node.getClientRects().length));
   const line = hold === anchor && point?.text.isConnected && point.text.data === point.words && point.range.getClientRects().length ? point : null;
-  if (hold && (saved.baseline || saved.arrivals?.size)) {
-    const delta = holdRoom(list, hold, line ? line.top : tops.get(afterAct ? anchor : hold), line ? () => line.range.getBoundingClientRect().top : undefined, Boolean(afterAct));
+  if (hold && (saved.baseline || saved.arrivals?.size || hold !== anchor)) {
+    const position = line ? () => line.range.getBoundingClientRect().top
+      : !afterAct && backward.has(hold) ? () => hold.getBoundingClientRect().bottom : undefined;
+    const delta = holdRoom(list, hold, line ? line.top : tops.get(anchor), position, Boolean(afterAct));
     window.scrollBy({ top: delta, behavior: 'instant' });
     retainArrivalAnchor(saved);
   } else if (anchorHold === saved) anchorHold = null;

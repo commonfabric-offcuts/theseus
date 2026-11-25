@@ -36,11 +36,11 @@ export const traceInit785 = String.raw`(()=>{
 // replacing module bytes or pausing to inspect arbitrary objects.
 export function sourceProbes785(source) {
  const specs = [
-  ['capture', '  return { list, anchor, cards, held, tops, point, control, edge, last, present, y: window.scrollY,', `({anchor:window.__trace785.node(anchor),savedTop:tops.get(anchor)??null,pointTop:point?.top??null})`],
+  ['capture', '  const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;', `({anchor:window.__trace785.node(anchor),savedTop:tops.get(anchor)??null,pointTop:point?.top??null})`],
   ['restore enter', '  if (!saved || retired || !saved.list.isConnected || saved.list.hidden) return;', `({saved:window.__trace785.saved(saved),acting:anchorActing,depth:anchorDepth})`],
   ['restore after scroll', '  if (saved.newest && hold?.isConnected) for (const entry of entries(list)) {', `({saved:window.__trace785.saved(saved),hold:window.__trace785.node(hold)})`],
-  ['remember', '  paintNewAbove();', `({saved:window.__trace785.saved(listAnchor)})`],
-  ['paint', 'function paintViews(kind) {', `({kind})`],
+  ['remember', '  anchorWatch?.observe();', `({saved:window.__trace785.saved(anchorHold)})`],
+  ['paint', 'function paintViews(kind, reactionId = null) {', `({kind})`],
   ['frontier', 'function placeLine() {', `({olderCursor:views.olderCursor,loaded:[...views.messages.keys()],line:views.line?{id:views.line.id,seq:views.line.seq}:null,oldestUnread:views.oldestUnread?{id:views.oldestUnread.id,seq:views.oldestUnread.seq}:null})`],
  ];
  return specs.map(([event,target,data])=>{
@@ -60,7 +60,7 @@ export async function installTrace785(p) {
    capture:'lexical anchor, tops and point at captureListAnchor return',
    'restore enter':'lexical saved snapshot, anchorActing and anchorDepth at restore entry',
    'restore after scroll':'lexical saved snapshot and hold after compensation',
-   remember:'lexical listAnchor at paintNewAbove call',
+   remember:'lexical anchorHold after paintNewAbove',
    paint:'lexical paintViews kind at entry',
    frontier:'TopicViews olderCursor, loaded keys, line and oldestUnread',
   };

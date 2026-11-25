@@ -35,7 +35,25 @@ import { showGlyph } from './glyphs.mjs';
 import { firstCoverTarget, firstCoverControl, refreshLine } from './cover-refresh.mjs';
 
 const ENTRIES = ':scope > [data-id], :scope > .reply-stack > [data-id], :scope > .reply-stack > .stack-replies > [data-id]';
-const states = new WeakMap();
+const states = new WeakMap(), drawnIndexes = new WeakMap();
+// Replacement is the boundary shared by arrange and bounded-record disposal.
+// The index refers only to that current stack snapshot, never evicted bodies.
+function indexedStacks(state, initial) {
+  let stacks;
+  Object.defineProperty(state, 'stacks', { enumerable: true,
+    get: () => stacks,
+    set: next => {
+      stacks = next;
+      const index = new Map();
+      for (const stack of next) {
+        if (!index.has(stack.id)) index.set(stack.id, { stack, item: stack.head });
+        for (const item of stack.replies) if (!index.has(item.id)) index.set(item.id, { stack, item });
+      }
+      drawnIndexes.set(state, index);
+    },
+  });
+  state.stacks = initial;
+}
 const parts = new WeakMap();
 const headRows = new WeakMap();
 const foldedRows = new WeakMap();
@@ -135,9 +153,11 @@ export function stackState(list) {
       if (left || top) scrolled.set(box, { left, top });
       else scrolled.delete(box);
     }, { capture: true, passive: true });
-    states.set(list, { scrolled, levels: new Map(), savedLevels: new Map(), kept: new Set(), unreadKept: new Set(), contextRows: new Set(), peeked: new Set(), here: new Map(), renaming: null,
+    const state = { scrolled, levels: new Map(), savedLevels: new Map(), kept: new Set(), unreadKept: new Set(), contextRows: new Set(), peeked: new Set(), here: new Map(), renaming: null,
     stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: false, coordinationHere: new Set(), below: new Set(), viewer: null, again: () => {}, waiting: new Set(),
-    checking: new Map(), earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), apart: new Set() });
+    checking: new Map(), earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), apart: new Set() };
+    indexedStacks(state, state.stacks);
+    states.set(list, state);
   }
   return states.get(list);
 }
@@ -231,9 +251,9 @@ export const shownStacks = state => shownOrder(state.stacks, shownView(state));
 export function drawn(list, id) {
   const state = stackState(list), view = shownView(state);
   if (state.waiting.has(id)) return false;
-  const stack = state.stacks.find(each => each.id === id || each.replies.some(item => item.id === id));
+  const found = drawnIndexes.get(state).get(id), stack = found?.stack;
   if (stack && view.hidden(stack)) return false;
-  const item = !stack ? { id } : stack.id === id ? stack.head : stack.replies.find(each => each.id === id);
+  const item = found?.item ?? { id };
   if (view.only) return Boolean(view.only(item));
   return !stack || item === stack.head || shown(stack, item, { level: levelOf(state, stack.id), kept: each => state.kept.has(each.id), writing: each => state.writing?.has(each.id), newReply: each => state.unreadKept.has(each.id), earlier: state.earlier.has(stack.id), held: state.held.get(stack.id) ?? null });
 }
