@@ -91,3 +91,17 @@ checks still pass. Build `aabee367cddb542b6e06` contains132 assets.
 Evidence: `785-baseline122.tap`, `785-final122-node.tap`,
 `785-final122-python.log`, and `785-final122-comparison.json`.
 No preview, browser, full suite or CI was run for this rebuild.
+
+## 1242 arrival offer count
+
+New above shows the number of genuine retained arrival offers. Passive paints
+prune stale entry/message/topic identities without measuring offered cards or
+pretending to know their current viewport positions. A connected offer may
+remain after scrolling; it retires when its actual activation reaches it, or
+its source/entry ceases to be current. The count is not an unread total.
+Activation retains reveal, top-arrival release, scroll/focus and reached-identity
+fences. Hidden, retired, inaccessible or authority-held views cannot activate
+an old offer. The separate arrival/writing hold owners remain unchanged.
+The existing single message-column position read is not a per-card scan.
+Focused checks execute the actual painter with card geometry that throws on
+passive use; native action/traffic timing and geometry remain separate proof.

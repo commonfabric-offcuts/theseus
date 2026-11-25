@@ -1157,15 +1157,16 @@ function keepListAnchor(paint, act = null, revised = []) {
 function paintNewAbove() {
   const list = $('messages');
   for (const id of newAbove) {
-    const entry = messageEntries.get(id);
-    if (entry?.isConnected && stackState(list).waiting?.has(id) &&
-        views.messages.get(id)?.topic_id === topic?.id) continue;
-    if (!entry?.isConnected || !drawn(list, id) || entry.getBoundingClientRect().top >= 0) newAbove.delete(id);
+    const entry = messageEntries.get(id), item = views.messages.get(id);
+    // Count retained arrival offers, not an estimate of current visibility.
+    // Only activation measures its chosen card; passive paints need no scan.
+    if (!entry?.isConnected || entry.dataset.id !== id || !item || item.id !== id ||
+        item.topic_id !== topic?.id || item.author_id === bootstrap.actor) newAbove.delete(id);
   }
   if (!newAboveButton && newAbove.size) {
     newAboveButton = button('New above ↑', () => {
       const entry = entries(list).find(card => newAbove.has(card.dataset.id));
-      if (!entry || retired || !list.isConnected || list.hidden) return;
+      if (!entry || retired || topicUnavailable || authorityReviewPending() || !list.isConnected || list.hidden) return;
       const id = entry.dataset.id, currentTopic = topic, message = views.messages.get(id);
       if (!message || message.topic_id !== currentTopic?.id || messageEntries.get(id) !== entry) return;
       releaseTopArrivals();
@@ -1188,7 +1189,10 @@ function paintNewAbove() {
     $('main').append(newAboveButton);
   }
   if (newAboveButton) {
-    newAboveButton.hidden = !newAbove.size || list.hidden;
+    const count = newAbove.size, words = `New above · ${count} ↑`;
+    if (newAboveButton.textContent !== words) newAboveButton.textContent = words;
+    newAboveButton.setAttribute('aria-label', `Read ${count} new ${count === 1 ? 'message' : 'messages'} above`);
+    newAboveButton.hidden = !count || list.hidden || retired || topicUnavailable || authorityReviewPending();
     newAboveButton.style.left = `${list.getBoundingClientRect().left}px`;
   }
 }
