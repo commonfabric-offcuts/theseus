@@ -1,3 +1,6 @@
+import { ActionTimings, actionReporter, timingCall } from './action-timing.mjs';
+let actionTimings = null;
+const beginTiming = kind => timingCall(actionTimings, 'begin', kind);
 import { paintPendingSends, pendingSendVisual, pendingSendReplyTo, adoptPendingSend, reconcilePlacedSend, clearPendingSends, keepPendingSendPlace } from './pending-sends.mjs';
 import { paintCardWords, cardWordOptions } from './message-card-content.mjs';
 import { MessageChanges } from './message-changes.mjs';
@@ -137,7 +140,7 @@ import { showLine, lineText } from './lines.mjs';
 let retired = null, notebookSheet = null, outcomeColorPicker = null, mentionNotices = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
 let outcomePageLayout = null, topicClosing = null, notebookDeleting=null, olderFeed = null, paragraphSwitch=null;
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { anchorWatch?.stop(); roomy?.(); roomy = null; clearPendingSends(ids.get('messages')); retired = ids; dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { actionTimings?.dispose(); anchorWatch?.stop(); roomy?.(); roomy = null; clearPendingSends(ids.get('messages')); retired = ids; dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -521,11 +524,15 @@ function paintSubmittedWriting() {
       }
     },
   }), { current, restore: restorePendingSendPlace });
+  if (current()) for (const editor of editors) for (const item of editor.submissions ?? []) {
+    if (pendingSendCard(item.id)?.isConnected) timingCall(registry.sessionFor?.(editor)?.timingFor?.(item), 'endpoint', 'send_pending_dom');
+  }
 }
 const submittedPlacements = new Map();
 function placeSubmittedWriting(editor, item) {
   if (!item.presentPending || item.detached || item.status !== 'confirmed' || item.topicId !== topic?.id) return Promise.resolve(false);
   if (submittedPlacements.has(item.id)) return submittedPlacements.get(item.id);
+  const timing = registry.sessionFor?.(editor)?.timingFor?.(item);
   const currentTopic = topic, access = listAccessEpoch, generation = registry.generation;
   const current = () => topic === currentTopic && access === listAccessEpoch && generation === registry.generation &&
     !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending();
@@ -537,13 +544,13 @@ function placeSubmittedWriting(editor, item) {
       try {
         let seq = item.receipt.result.seq;
         if (!Number.isSafeInteger(seq) || seq < 1) {
-          const source = checkedView(await foreground.read(options => api.view('source', { kind: 'message', id }, options)), bootstrap.instance_id);
+          const source = checkedView(await foreground.read(options => api.view('source', { kind: 'message', id }, { ...options, timing })), bootstrap.instance_id);
           if (!current() || source.source_ref?.id !== id || source.topic_id !== item.topicId) return false;
           seq = source.seq;
         }
         if (!Number.isSafeInteger(seq) || seq < 1) throw Error('The sent message could not be placed. Check confirmation.');
         const cursor = seq + 1;
-        const page = checkedView(await foreground.read(options => api.view('topic_messages', { topic_id: item.topicId, audience: 'all', direction: 'before', cursor, limit: 30 }, options)), bootstrap.instance_id);
+        const page = checkedView(await foreground.read(options => api.view('topic_messages', { topic_id: item.topicId, audience: 'all', direction: 'before', cursor, limit: 30 }, { ...options, timing })), bootstrap.instance_id);
         if (!current()) return false;
         views.messagesPage(page, { anchored: true, cursor });
       } finally { foreground.release(); }
@@ -555,6 +562,7 @@ function placeSubmittedWriting(editor, item) {
         card?.focus({ preventScroll: true });
       }
       paintSubmittedWriting();
+      if (messageEntries.get(id)?.isConnected) timingCall(timing, 'endpoint', 'send_canonical_dom');
     }
     return current() && Boolean(messageEntries.get(id)?.isConnected);
   })().catch(error => { if (current()) status(error); return false; });
@@ -795,7 +803,7 @@ async function present(presentation) {
     retainRevisionTargets(presentation);
     offerAuthor(presentation);
     let dossierError = null;
-    try { await readReaderDossier(presentation, (name, args) => api.view(name, args, { readClass: 'foreground' })); }
+    try { await readReaderDossier(presentation, (name, args) => api.view(name, args, { readClass: 'foreground', timing: presentation.timing })); }
     catch (error) { dossierError = error; }
     if (!registry.isCurrent(presentation)) return;
     revokeMedia(); reader.presentation = presentation;
@@ -1070,14 +1078,14 @@ function rememberEditBodyClick(id, card, event, opened) {
 }
 // act: what the person's act of reading captured (Marks.capture), for a card
 // or Read it; every other open passes none and clears nothing.
-async function openSource(ref, opener, act = null, mode = 'reply', replyCard = null, { land = false, fromCardReply = false } = {}) {
+async function openSource(ref, opener, act = null, mode = 'reply', replyCard = null, { land = false, fromCardReply = false, timing = null } = {}) {
   if (ref.kind === 'message') clearVisitNew(ref.id);
   const request = ++opening;
   const from = registry.interactive, currentTopic = topic, currentViews = views, accessEpoch = listAccessEpoch;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
   status('');
   try {
-    const presentation = await marks.open(registry, ref, { topicId: topic.id, opener, mode, replyCard, fromCardReply }, act);
+    const presentation = await marks.open(registry, ref, { topicId: topic.id, opener, mode, replyCard, fromCardReply, timing }, act);
     // A cancelled open can resolve null. Even a returned presentation must
     // still be the current, available source actually shown by the Reader.
     const source = presentation?.source;
@@ -2011,8 +2019,8 @@ function paintCardReading(id = null, messages = views?.messages) {
 // Local pending feedback changes no confirmed reading/stack state and does no
 // feed scan or anchor capture. Reconciliation paints only the named card and
 // its dossier's existing New marks; actual fold/line effects keep their owners.
-function paintThumbMessage(id, pendingOnly = true) {
-  if (!pendingOnly && pressHold.down) { pressHold.after('thumb:' + id, () => paintThumbMessage(id, false)); return; }
+function paintThumbMessage(id, pendingOnly = true, timing = null, endpoint = null) {
+  if (!pendingOnly && pressHold.down) { pressHold.after('thumb:' + id, () => paintThumbMessage(id, false, timing, endpoint)); return; }
   const entry = messageEntries.get(id), item = feedMessages().get(id);
   const paint = () => {
     if (item && entry) {
@@ -2023,6 +2031,7 @@ function paintThumbMessage(id, pendingOnly = true) {
   };
   if (pendingOnly) paint(); else keepListAnchor(paint, entry ? { id, anchor: cardIn(entry) } : null);
   if (readerItem()?.id === id) paintReaderThumb$();
+  if (endpoint && (entry?.isConnected || readerItem()?.id === id && reader.dialog.open)) timingCall(timing, 'endpoint', endpoint);
 }
 // A message the page shows, brought into view: its stack opened first when it
 // folds the message away, and its fold opened. A hidden structural question
@@ -2595,9 +2604,12 @@ async function answerFromReader(id, choice) {
 // in the reply, and nothing quoted until the reader selects a passage. Return
 // on a passage lit on its card, or words selected there (chosen), quotes them.
 async function replyMessage(id, card, chosen = null) {
-  await openSource({ kind: 'message', id }, card, marks.capture(id));
-  if (!reader.dialog.open || registry.current?.source?.source_ref?.id !== id) return;
+  const timing = beginTiming('reply_open');
+  await openSource({ kind: 'message', id }, card, marks.capture(id), 'reply', null, { timing });
+  if (!reader.dialog.open || registry.current?.source?.source_ref?.id !== id) { timingCall(timing, 'retire'); return; }
   if (chosen) reader.quoteFrom({ kind: 'message', id }, chosen); else reader.reply({ kind: 'message', id });
+  if (reader.dialog.contains(document.activeElement) && document.activeElement?.matches('textarea, [contenteditable=true]')) timingCall(timing, 'endpoint', 'reply_focused');
+  timingCall(timing, 'finish', timingCall(timing, 'hasEndpoint', 'reply_focused') ? 'complete' : 'incomplete', null);
 }
 // Reply and the first body click open a message's own composer. A second
 // click opens the Reader with that same registered writing.
@@ -2612,24 +2624,27 @@ async function openMessageReader(id, card) {
   return p;
 }
 async function replyInCard(id, card) {
+  const timing = beginTiming('reply_open');
   const request = ++cardReplyRequest, readerRequest = opening;
   let entry = messageEntries.get(id);
   if (!card?.getClientRects?.().length) entry = stackFeed?.land(id) ?? entry;
   if (entry) card = opened(entry);
-  if (!card?.isConnected) return;
+  if (!card?.isConnected) { timingCall(timing, 'retire'); return; }
   const act = marks.capture(id);
   clearVisitNew(id);
   let p;
-  try { p = await cardReplies.open(id, card); }
+  try { p = await (timing ? cardReplies.open(id, card, { timing }) : cardReplies.open(id, card)); }
   catch {
     // The Reader can show a source refusal alongside authorized kept writing.
     // An old failed click must not replace a newer card or Reader opening.
     if (request !== cardReplyRequest || readerRequest !== opening || retired || !card.isConnected || registry.disposed) return;
+    timingCall(timing, 'finish', 'failed', 'unknown');
     return openSource({ kind: 'message', id }, card, act);
   }
   if (p && registry.isCurrent(p)) {
     marks.read(act, () => registry.isCurrent(p)); openedHere(id); releaseTopArrivals();
   }
+  timingCall(timing, 'finish', timingCall(timing, 'hasEndpoint', 'reply_focused') ? 'complete' : 'incomplete', null);
   return p;
 }
 // Every page of the person's marks in this topic.
@@ -3730,6 +3745,18 @@ async function initialize() {
   api = new Api(token); api.refused = () => run(reconnect);
   bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
+  if (!actionTimings) {
+    try {
+      actionTimings = new ActionTimings({ instanceId: bootstrap.instance_id,
+        build: document.querySelector('script[type="module"][src]')?.src?.match(/\/b\/([^/]+)\//)?.[1] ?? 'unversioned',
+        burden: () => ({ loaded_messages: views?.messages?.size ?? 0, retained_messages: feedMessages()?.size ?? 0,
+          rendered_cards: [...messageEntries.values()].filter(entry => entry.isConnected).length, window_limit: 300 }),
+        report: actionReporter({ instanceId: bootstrap.instance_id, send: envelope => api.command(envelope),
+          authority: () => registry?.runtime?.current ?? bootstrap.authority }) });
+      actionTimings.observe();
+      window.addEventListener('pagehide', () => actionTimings?.dispose(), { once: true });
+    } catch { actionTimings = null; }
+  }
   railHotkeysFor(document)?.bind(bootstrap,()=>!retired&&shell.page===thisRun&&document.body.dataset.ready==='true');
   notebookDeleting=await notebookDeleteUI({doc:document,shell,api,bootstrap,current:()=>!retired&&shell.page===thisRun,
     open:async(id,mode,scope)=>{if(!retired)await openNotebook(id,{mode});}});
@@ -3966,8 +3993,9 @@ async function initialize() {
     uploads: editor => registry.sessionFor(editor).uploads,
     edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
     status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, savedAt: editor => registry.savedTime(editor), needsReview, reviewState,
-    send: (editor, p) => registry.send(editor, { presentation: p, stay: true }),
+    send: (editor, p) => registry.send(editor, { presentation: p, stay: true, timing: beginTiming('send') }),
     pending: (_p, _editor, item) => Boolean(pendingSendCard(item.id)),
+    settled: (editor, item) => timingCall(item && registry.sessions.get(editor.key)?.timingFor?.(item), 'endpoint', 'composer_settled'),
     pendingFocus: focusPendingSend,
     sent: (p, result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current),
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
@@ -3999,7 +4027,8 @@ async function initialize() {
     },
     // A note that could not be saved says so in the Reader, beside its writing.
     saveNote: editor => registry.saveNote(editor).catch(error => { reader.notice(error); return null; }),
-    send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
+    send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation, timing: beginTiming('send') }),
+    settled: (editor, item) => timingCall(item && registry.sessions.get(editor.key)?.timingFor?.(item), 'endpoint', 'composer_settled'),
     pending: handoffReaderSend,
     sent: (p, result, current) => cardReplies?.readerSent(p, result, current),
     close: async (_sessions, reason) => {
@@ -4057,7 +4086,10 @@ async function initialize() {
   // a window that crosses a phone's width shows or hides it again.
   reader.narrow.addEventListener('change', paintReaderMark);
   registry = new EditorRegistry({ api, bootstrap, journal, present, changed,
-    published: (editor, item) => { placeSubmittedWriting(editor, item); if (inline.editor === editor) inline.published(item); cardReplies?.published(editor, item); mentionNotices?.published(editor, item); },
+    published: (editor, item, timing) => { placeSubmittedWriting(editor, item).then(placed => {
+      if (placed) { timingCall(timing, 'endpoint', 'send_canonical_dom'); timingCall(timing, 'finish'); }
+      else timingCall(timing, 'finish', 'incomplete', 'retired');
+    }); if (inline.editor === editor) inline.published(item); cardReplies?.published(editor, item); mentionNotices?.published(editor, item); },
     activity: () => { inline.paintStatus(); reader.paintStatus(); cardReplies?.paint(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } cardReplies?.readerClosed(presentation); cardReplies?.paint(); noteRead(); } });
   mentionNotices = new MentionNotices({ host: $('page-notices'), api, instanceId: bootstrap.instance_id,
@@ -4074,8 +4106,8 @@ async function initialize() {
   const reactionPage = shell.page, reactionRegistry = registry;
   reactions = new Reactions({ api, instanceId: bootstrap.instance_id, authority: () => reactionRegistry.runtime.current,
     current: () => !retired && shell.page === reactionPage && !reactionRegistry.disposed,
-    changed: id => paintThumbMessage(id),
-    learned: (answer, kind) => {
+    changed: (id, timing, endpoint) => paintThumbMessage(id, true, timing, endpoint),
+    learned: (answer, kind, timing) => {
       const source = registry.current?.source;
       if (source?.source_ref?.id === answer.message_id) Object.assign(source, { reactions: answer.reactions, go_ahead: answer.go_ahead });
       if (learnReactions(views.messages, answer)) {
@@ -4137,8 +4169,9 @@ async function initialize() {
   // places the New line afresh, as Mark read does, wherever the oldest unread
   // message now is; one on a message already read moves nothing.
   const thumbMessage = async (item, on, said = null) => {
+    const timing = beginTiming('thumb');
     clearVisitNew(item.id);
-    const receipt = await reactions.thumb(item, on, said);
+    const receipt = await reactions.thumb(item, on, said, timing);
     if (receipt?.result?.settled === true && receipt.result.topic_id === views?.topicId) { views.placeAfresh(); if (commitReload) run(commitReload); }
     return receipt;
   };

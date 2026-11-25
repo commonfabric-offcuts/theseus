@@ -1,3 +1,4 @@
+import { timingCall } from './action-timing.mjs';
 // An attempt that did not end in an answer the page can use. details is
 // Theseus's own answer, when it gave one: it answers every request it reads
 // with JSON (server.py _error and send_error), so an attempt without it got no
@@ -296,13 +297,25 @@ export class Api {
 
   request(path, data, options) {
     const foreground = (path === '/api/view' || path === '/api/bootstrap') && options?.readClass !== 'background';
-    return attempted(this, () => foreground ? foregroundRead(() => this.attempt(path, data, options), options?.signal)
-      : this.attempt(path, data, options), options?.signal);
+    timingCall(options?.timing, 'mark', 'api_queue');
+    const admitted = timingCall(options?.timing, 'span', 'api_queue');
+    return attempted(this, () => {
+      const job = () => { admitted?.(); return this.attempt(path, data, options); };
+      return foreground ? foregroundRead(job, options?.signal) : job();
+    }, options?.signal);
   }
-  async attempt(path, data, { signal, readClass } = {}) {
+  async attempt(path, data, { signal, readClass, timing } = {}) {
+    const request = timingCall(timing, 'requestId'), operation = data?.operation_id ?? null;
+    timingCall(timing, 'link', operation);
+    timingCall(timing, 'count', 'requests');
+    const fields = { request: request ?? null, operation };
+    // Only this opaque identity may match a ResourceTiming entry. No URL is recorded.
+    const url = request ? path + '?__aim_timing=' + encodeURIComponent(request) : path;
+    if (path === '/api/view') timingCall(timing, 'mark', 'followup_read', fields);
+    timingCall(timing, 'mark', 'fetch_dispatch', fields);
     let response;
     try {
-      response = await this.fetcher(path, {
+      response = await this.fetcher(url, {
         method: data === undefined ? 'GET' : 'POST',
         credentials: 'same-origin', cache: 'no-store',
         headers: { Authorization: `Bearer ${this.token}`, ...(data === undefined ? {} : { 'Content-Type': 'application/json' }),
@@ -313,10 +326,24 @@ export class Api {
     } catch (error) {
       throw interrupted('Connection interrupted. Confirmation is unknown; your writing is kept.', error);
     }
+    timingCall(timing, 'mark', 'response_headers', fields);
+    try {
+      const header = response.headers?.get?.('Server-Timing') ?? '';
+      for (const [metric, name] of [['aim_admission', 'server_admission'], ['aim_store', 'server_store']]) {
+        const match = header.match(new RegExp('(?:^|, )' + metric + ';dur=([0-9.]+)'));
+        if (match && Number.isFinite(Number(match[1]))) timingCall(timing, 'mark', name, { ...fields, clock: 'server', at_ms: 0, duration_ms: Number(match[1]) });
+      }
+    } catch { /* Optional observations cannot refuse an action. */ }
     let body;
     try { body = await response.json(); } catch (error) {
       throw new AttemptError('AIM returned an unreadable response. Confirmation is unknown.', response.status, null, { cause: error });
     }
+    timingCall(timing, 'mark', 'response_decoded', fields);
+    try {
+      const exact = request && globalThis.performance?.getEntriesByName?.(new URL(url, globalThis.location?.href).href, 'resource');
+      if (exact?.length === 1 && exact[0].requestStart > 0 && exact[0].fetchStart > 0)
+        timingCall(timing, 'mark', 'resource_stall', { ...fields, duration_ms: Math.max(0, exact[0].requestStart - exact[0].fetchStart) });
+    } catch { /* Missing/evicted entries are unavailable, never estimated. */ }
     if (!response.ok) throw new AttemptError(body.error?.message ?? `This connection attempt was refused (${response.status}).`, response.status, body);
     return body;
   }
@@ -324,7 +351,7 @@ export class Api {
   bootstrap(options) { return this.request('/api/bootstrap', undefined, options); }
   command(envelope, options) {
     const saved = JSON.parse(JSON.stringify(envelope));
-    return this.change(() => this.request('/api/command', saved, options), options?.signal);
+    return this.change(() => this.request('/api/command', saved, options), options?.signal, options?.timing);
   }
   view(name, args = {}, options) { return this.request('/api/view', { name, args }, options); }
 
@@ -333,7 +360,12 @@ export class Api {
     return this.change(() => attempted(this, () => this.sendUpload(saved, blob, options), options?.signal), options?.signal);
   }
 
-  async change(send, signal) {
+  async change(send, signal, timing) {
+    const pause = async ms => {
+      timingCall(timing, 'count', 'retries');
+      const done = timingCall(timing, 'span', 'api_busy_wait');
+      try { await this.pause(ms, signal); } finally { done?.(); }
+    };
     for (let retry = 0; ; retry++) {
       if (signal?.aborted) throw signal.reason ?? new DOMException('The change was cancelled.', 'AbortError');
       let receipt;
@@ -342,11 +374,11 @@ export class Api {
         // Only an explicit unrecorded busy answer permits automatic resend.
         // A lost/unreadable answer still needs ordinary reconciliation.
         if (error?.details?.recorded !== false || !isBusy(error.details) || retry === BUSY_BACKOFF_MS.length) throw error;
-        await this.pause(BUSY_BACKOFF_MS[retry], signal);
+        await pause(BUSY_BACKOFF_MS[retry]);
         continue;
       }
       if (receipt?.recorded !== false || !isBusy(receipt) || retry === BUSY_BACKOFF_MS.length) return receipt;
-      await this.pause(BUSY_BACKOFF_MS[retry], signal);
+      await pause(BUSY_BACKOFF_MS[retry]);
     }
   }
   async sendUpload(envelope, blob, { signal } = {}) {
