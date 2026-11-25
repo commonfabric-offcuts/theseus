@@ -58,7 +58,10 @@ export function foldFixture({ count = 10, phone = false, view = 'full' } = {}) {
   const opens = [], reads = [];
   const rail = new TopicRail({pages,...outcome.parts,area:outcome.own,reader:'fold-reader',
     read: async args => { reads.push(args); return {instance_id:pages.instanceId,items:rows,next_cursor:null}; },
-    open:(...args) => opens.push(args),denied:()=>false,painted:()=>outcome.fold?.soon()});
+    // This adapter has no automatic MutationObserver delivery. A changed
+    // TopicRail paint supplies its child/current-row notification explicitly.
+    open:(...args) => opens.push(args),denied:()=>false,
+    painted:()=>outcome.fold?.mutations?.callback([{type:'childList',target:outcome.parts.host}])});
   const flush = () => { const queued = [...frames.values()]; frames.clear(); for (const fn of queued) fn(); };
   const emit = (target,type,options = {}) => {
     const event = {target,button:0,detail:1,prevented:false,stopped:false,preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;},...options};
