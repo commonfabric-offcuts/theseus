@@ -57,6 +57,8 @@ const IMPORTS = /^import (\{[^}]*\}|\* as [\w$]+) from '\.\/([^']+)';$/gm;
 const webSource = file => readFileSync(new URL('../web/' + file, import.meta.url), 'utf8');
 function loadPageScope(context, root) {
   const wanted = new Map(), order = [];
+  const overrides = new Set(Object.keys(context));
+  context.__pageModules = Object.create(null);
   const want = file => {
     for (const [, clause, from] of webSource(file).matchAll(IMPORTS)) {
       const entries = clause.startsWith('* as ') ? [['*', clause.slice(5)]]
@@ -76,13 +78,22 @@ function loadPageScope(context, root) {
     // ES module imports are lexical bindings. Capture them before app.mjs
     // introduces a same-named local (for example its own paintMarks), so an
     // imported card renderer still calls topic-navigation's paintMarks.
-    const imports = [...source.matchAll(IMPORTS)].flatMap(([, clause]) => clause.startsWith('* as ')
-      ? [clause.slice(5)] : clause.slice(1, -1).split(',').map(s => s.trim()).filter(Boolean).map(entry => entry.split(/\s+as\s+/).at(-1)));
-    const body = (imports.length ? `const { ${imports.join(', ')} } = globalThis;\n` : '')
+    const imports = [...source.matchAll(IMPORTS)].flatMap(([, clause, from]) => {
+      const entries = clause.startsWith('* as ') ? [['*', clause.slice(5)]] : clause.slice(1,-1).split(',').map(s=>s.trim()).filter(Boolean).map(entry=>{const [name,alias=name]=entry.split(/\s+as\s+/);return[name,alias];});
+      return entries.map(([name,alias]) => `const ${alias} = ${overrides.has(alias) ? `globalThis[${JSON.stringify(alias)}]` : `globalThis.__pageModules[${JSON.stringify(from)}]${name==='*'?'':`[${JSON.stringify(name)}]`}`};`);
+    });
+    const body = imports.join('\n') + '\n'
       + source.replace(/^import [^;]*;\n/gm, '').replace(/^export (?=(const|let|class|function|async function) )/gm, '');
     const exports = [...webSource(file).matchAll(/^export (?:const|let|class|function|async function) ([\w$]+)/gm)].map(match => match[1]);
-    const names = [...wanted.get(file)].map(([alias, name]) => name === '*' ? alias + ': Object.freeze({ ' + exports.join(', ') + ' })' : alias === name ? name : alias + ': ' + name);
-    vm.runInContext('Object.assign(globalThis, (() => {\n' + body + '\nreturn { ' + names.join(', ') + ' }; })())', context, { filename: file });
+    const namespace = vm.runInContext('(() => {\n' + body + '\nreturn { ' + exports.join(', ') + ' }; })()', context, { filename: file });
+    context.__pageModules[file] = namespace;
+    for (const [alias,name] of wanted.get(file)) context[alias] = name==='*' ? Object.freeze(namespace) : namespace[name];
+  }
+  // The app itself is evaluated after imports are stripped. Resolve its names
+  // last, while dependencies retain their own module-specific lexical values.
+  for (const [,clause,from] of webSource(root).matchAll(IMPORTS)) {
+    const entries=clause.startsWith('* as ')?[['*',clause.slice(5)]]:clause.slice(1,-1).split(',').map(s=>s.trim()).filter(Boolean).map(entry=>{const[name,alias=name]=entry.split(/\s+as\s+/);return[name,alias];});
+    for(const[name,alias] of entries)if(!overrides.has(alias))context[alias]=name==='*'?context.__pageModules[from]:context.__pageModules[from][name];
   }
 }
 // overrides: names the app imports, replaced in its scope for one test.
@@ -8737,4 +8748,25 @@ test('1135 an actual app health read that finishes after navigation cannot paint
   const task = f.runObservation('healthLight.load()'); f.runObservation('retired = new Map()');
   gate.resolve({ instance_id: 'fixture', red: [], commit_seq: 11, release: { phase: 'starting', number: 364, commit: 'b'.repeat(40), started_ms: 1000 } });
   await task; await drain(); assert.equal(walk(f.get('body')).filter(n => n.className === 'release-toast').length, 0);
+});
+
+for (const canonicalFirst of [false,true]) test(`1249 actual app reconciles the local outer card when canonical arrival ${canonicalFirst?'precedes':'follows'} its exact receipt`,async()=>{
+  const f=fixture();await f.initialize();await drain();
+  Object.assign(f.bootstrap.authority,{authority_id:'a',authority_epoch:'e'});
+  const editor=f.editor,session=f.registry.sessionFor(editor);
+  Object.assign(editor.context,{instanceId:f.bootstrap.instance_id,actor:f.bootstrap.actor});
+  f.registry.sessionFor=()=>({...session,underWay:()=>true});
+  const item={id:'local1249',sendOperationId:'send1249',presentPending:true,topicId:'t1',sourceRef:{kind:'topic',id:'t1'},authority:structuredClone(f.bootstrap.authority),status:'preparing',snapshot:{body:'**Exact local words**',attachments:[]}};
+  editor.submissions.push(item);f.runObservation('paintSubmittedWriting()');
+  const local=f.get('messages').querySelector('[data-pending-send]');assert.ok(local);local.focus();
+  const words=local.querySelector('.message-preview'),message={id:'m1249',seq:100,topic_id:'t1',author_id:editor.context.actor,author_kind:'human',body:item.snapshot.body,attachments:[]};
+  const receipt={instance_id:editor.context.instanceId,operation_id:item.sendOperationId,kind:'message.send',status:'committed',recorded:true,result:{message_id:message.id,seq:100}};
+  if(!canonicalFirst){item.status='confirmed';item.receipt=receipt;}
+  f.views.messages.set(message.id,message);f.views.newest=100;f.paintViews('messages');await drain();
+  if(canonicalFirst){item.status='confirmed';item.receipt=receipt;f.runObservation('paintSubmittedWriting()');}
+  const canonical=entryIn(f,message.id);assert.ok(canonical);
+  if(!canonicalFirst){assert.equal(canonical,local);assert.equal(canonical.querySelector('.message-preview'),words);}
+  assert.equal(f.get('messages').querySelector('[data-pending-send]'),null);
+  assert.equal(entries(f.get('messages')).filter(entry=>entry.dataset.id===message.id).length,1);
+  assert.equal(f.document.activeElement,canonical);assert.equal(editor.submissions[0].snapshot.body,'**Exact local words**');
 });

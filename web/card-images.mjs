@@ -62,6 +62,7 @@ export function paintCardImages(card, item, read) {
     let host = [...strip.children].find(each => each.dataset.key === key);
     if (!host) {
       host = doc.createElement('span'); host.className = 'card-image'; host.dataset.key = key; host.setAttribute('role', 'group');
+      host.cardAttachment = structuredClone(attachment);
       const words = doc.createElement('span'); words.className = 'card-image-name'; words.setAttribute('aria-hidden', 'true');
       host.append(words); host.dataset.coming = '';
       whenNear(host, () => { delete host.dataset.coming; paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true }); });
@@ -70,6 +71,24 @@ export function paintCardImages(card, item, read) {
     host.setAttribute('aria-label', `Image: ${name}`); host.title = name;
     host.lastElementChild.textContent = name;
   });
+}
+
+// A local submission has now been matched to an authorized canonical record.
+// Preserve an already displayed identical picture; an unread square switches
+// to the canonical message's byte owner. Changed files use ordinary repaint.
+export function adoptCardImages(card, item, read) {
+  const images = cardImages(item), fields = ['id', 'name', 'content_type', 'size_bytes', 'sha256', 'inline'];
+  for (const host of card.querySelector(':scope > .card-images')?.children ?? []) {
+    const old = host.cardAttachment, attachment = images.find(each => fields.every(key => each[key] === old?.[key]));
+    if (!attachment) continue;
+    const key = `${item.id}:${attachment.id}`, image = host.querySelector(':scope > img.image-thumb');
+    forget(host); host.dataset.key = key; host.cardAttachment = structuredClone(attachment);
+    if (image?.src && !image.hidden) image.dataset.key = key;
+    else {
+      image?.remove(); host.dataset.coming = '';
+      whenNear(host, () => { delete host.dataset.coming; paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true }); });
+    }
+  }
 }
 
 // A topic the reader can no longer read keeps none of its pictures (docs/topic-reading.md): its cards' thumbnails

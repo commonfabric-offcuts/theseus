@@ -1,4 +1,5 @@
-import { paintPendingSends } from './pending-sends.mjs';
+import { paintPendingSends, pendingSendVisual, adoptPendingSend, reconcilePlacedSend, clearPendingSends, keepPendingSendPlace } from './pending-sends.mjs';
+import { paintCardWords, cardWordOptions } from './message-card-content.mjs';
 import { MessageChanges } from './message-changes.mjs';
 import { OlderFeed } from './older-feed.mjs';
 import { topicCloseUI } from './topic-close-ui.mjs';
@@ -112,7 +113,7 @@ import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom, paintFoldedNames, checkDossierNew } from './reply-stacks.mjs';
-import { cardImages, paintCardImages, dropCardImages } from './card-images.mjs';
+import { cardImages, paintCardImages, adoptCardImages, dropCardImages } from './card-images.mjs';
 import { paintThumb } from './image-pick.mjs';
 import { newestNew } from './stack-order.mjs';
 import { StackFeed } from './stack-feed.mjs';
@@ -135,7 +136,7 @@ import { showLine, lineText } from './lines.mjs';
 let retired = null, notebookSheet = null, outcomeColorPicker = null, mentionNotices = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
 let outcomePageLayout = null, topicClosing = null, notebookDeleting=null, olderFeed = null, paragraphSwitch=null;
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { clearPendingSends(ids.get('messages')); retired = ids; dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -444,12 +445,33 @@ const restoredSendViews = new WeakSet();
 function pendingSendCard(id) {
   return [...$('messages').querySelectorAll('[data-pending-send]')].find(card => card.dataset.pendingSend === id) ?? null;
 }
+function restorePendingSendPlace(card, top) {
+  // The focused submission is this repaint's anchor, including when its
+  // canonical stack moves beyond the page's available scroll range.
+  roomy?.(); roomy = null;
+  const moved = holdRoom($('messages'), card, top, () => card.getBoundingClientRect().top, true);
+  if (moved) window.scrollBy({ top: moved, behavior: 'instant' });
+}
 function paintSubmittedWriting() {
   if (!registry || !views || !topic) return;
-  paintPendingSends($('messages'), [...registry.sessions.values()].map(session => session.editor), {
+  const editors = [...registry.sessions.values()].map(session => session.editor);
+  const current = () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending();
+  if (current()) for (const editor of editors) for (const item of editor.submissions ?? []) {
+    const id = item.status === 'confirmed' ? item.receipt?.result?.message_id : null;
+    const canonical = id && messageEntries.get(id), message = id && views.messages.get(id);
+    if (canonical && message && pendingSendCard(item.id)) keepPendingSendPlace($('messages'),
+      () => reconcilePlacedSend($('messages'), editors, message, canonical, { topicId: topic.id, authority: registry.runtime.current, current }),
+      { current, restore: restorePendingSendPlace });
+  }
+  paintPendingSends($('messages'), editors, {
     topicId: topic.id,
+    current: () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending(),
+    visual: (editor, item) => pendingSendVisual(editor, item, { authorKind: bootstrap.actor_kind,
+      parent: item.snapshot.reply_to ? feedMessages().get(item.snapshot.reply_to) : null }),
+    nameOf: displayActor, displayRules: displayRules(), end: $('new-message-sheet'),
+    readImage: (editor, item, attachment) => registry.sessionFor(editor).uploads.previewSubmission(item, attachment),
     underway: (editor, item) => registry.sessionFor(editor).underWay(item.id),
-    parent: ref => ref?.kind === 'message' ? messageEntries.get(ref.id)?.closest('.reply-stack') ?? messageEntries.get(ref.id) : null,
+    parent: ref => ref?.kind === 'message' ? messageEntries.get(ref.id) : null,
     placed: id => Boolean(id && messageEntries.get(id)?.isConnected && drawn($('messages'), id)),
     check: (editor, item) => run(async () => {
       if (item.status !== 'confirmed') await registry.checkConfirmation(editor);
@@ -1440,8 +1462,9 @@ function paintViews(kind, reactionId = null) {
     if (registry?.current?.topicUpdatesPaused) { registry.current.topicUpdatesPaused = false; reader.paintStatus(); }
     paintMarks(); noteRead(); return;
   }
-  keepListAnchor(() => {
+  const paint = () => keepListAnchor(() => {
   // Newest first, so where each new card goes is at or after where the one before it went.
+  let adoptedFocus = null;
   const renderedMessages = kind === 'messages' ? feedMessages() : null;
   if (kind === 'messages') for (const [id, entry] of messageEntries) if (!renderedMessages.has(id)) {
     dropCardDocuments(entry); dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
@@ -1451,11 +1474,16 @@ function paintViews(kind, reactionId = null) {
   for (const item of messages ? [...messages.values()].sort((a, b) => b.seq - a.seq) : []) {
     let card = messageEntries.get(item.id);
     if (!card) {
+      const adoption = registry && adoptPendingSend($('messages'), [...registry.sessions.values()].map(session => session.editor), item, {
+        topicId: topic.id, authority: registry.runtime.current,
+        current: () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending(),
+      });
+      if (adoption?.refocus) adoptedFocus = adoption;
       const ref = { kind: 'message', id: item.id };
       // The revision a click or keypress may clear is the one the card shows.
       // A reply can live in the card: its controls must not be inside a
       // native button. Return remains the message menu's; Space opens it.
-      card = node('div'); card.tabIndex = 0; card.setAttribute('role', 'button');
+      card = adoption?.card ?? node('div'); card.tabIndex = 0; card.setAttribute('role', 'button');
       card.onclick = () => run(() => cardReplies?.shown(item.id) ? openMessageReader(item.id, card) : replyInCard(item.id, card));
       card.addEventListener('keydown', event => {
         if (event.target !== card || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -1494,12 +1522,13 @@ function paintViews(kind, reactionId = null) {
         return opened;
       };
       // On its card first, so a whisper's words name the card for a screen reader.
-      const author = node('span', undefined, 'message-author');
-      card.append(author);
+      const author = card.querySelector(':scope > .message-author') ?? node('span', undefined, 'message-author');
+      if (author.parentElement !== card) card.prepend(author);
       paintCardAuthor(author, item);
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, replyBasis: item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: revisionOf(item), struck: item.struck, showChanges: messageChanges?.shown(item.id, revisionOf(item)) ?? true, displayRules: displayRules() }));
-      if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
+      paintCardWords(card, item, cardWordOptions(item, { revision: revisionOf(item),
+        showChanges: messageChanges?.shown(item.id, revisionOf(item)) ?? true, displayRules: displayRules() }));
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
+      if (adoption) adoptCardImages(card, item, cardImageBytes(item.id));
       paintCardImages(card, item, cardImageBytes(item.id));
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
@@ -1528,8 +1557,15 @@ function paintViews(kind, reactionId = null) {
     movedDossiers.paint($('messages'), views.movedPointers ?? []);
     placeLine(); menu?.paint(); paintDossierSourceStatus();
   }
-  if (kind === 'messages') { paintMessageContext(); syncCardReplies(); }
+  if (kind === 'messages') {
+    paintMessageContext(); syncCardReplies(); paintSubmittedWriting();
+    if (adoptedFocus && !adoptedFocus.active?.isConnected) adoptedFocus.card.focus({ preventScroll: true });
+  }
   });
+  if (kind === 'messages') keepPendingSendPlace($('messages'), paint, {
+    current: () => !retired && !topicUnavailable && !authorityReviewPending(),
+    restore: restorePendingSendPlace,
+  }); else paint();
   if (kind === 'messages') noteRead();
 }
 // Each message's entry by id, kept for the page's life.
@@ -1616,7 +1652,7 @@ function syncDossierHeads() {
     entry.remove(); messageEntries.delete(id);
   }
 }
-function stackMessages() { syncDossierHeads(); feedOf().arrange(); paintDossierSourceStatus(); }
+function stackMessages() { syncDossierHeads(); feedOf().arrange(); paintDossierSourceStatus(); paintSubmittedWriting(); }
 function paintStarredStatus() {
   const line = $('starred-status'), words = $('starred-status-words'), retry = $('starred-retry');
   line.hidden = topicUnavailable || authorityReviewPending() || !views.starredPending;
@@ -3071,7 +3107,7 @@ async function checkAvailability(read, current, topicDenied = true) {
     dossierHeads?.invalidate();
     drawFeed(false);
     // Nor the pictures of its messages (card-images.mjs).
-    dropCardDocuments(); dropCardImages($('messages'));
+    clearPendingSends($('messages')); dropCardDocuments(); dropCardImages($('messages'));
     $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
     // No settings for a topic the reader cannot see.
     $('settings-open').hidden = true; $('topic-menu').hidden = true; settings?.close();
