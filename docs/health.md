@@ -410,3 +410,15 @@ keeps what was shown and says so; an answer without `red`, `runner` and
   of the transport and is shared with every view; the page reads the light
   again when it comes back into view, and that answer, being newer, is the
   one shown.
+
+### Unchanged paint values (1253)
+
+Health compares current link text, red class and accessible label before
+writing them. Current facts still decide checking, quiet, needs-attention
+and unavailable states on every paint. A changed value is drawn immediately;
+no cached last-state decision can conceal an altered DOM value. The same
+compare-before-write rule guards retained outline topics' hidden flag and
+starred-status text/hidden/screen-reader state. Existing read/reconnect,
+outline visibility/access and starred retry owners keep their decisions.
+This removes redundant setters at the measured scheduling sites; actual
+CPU/style relief is measured separately with the same fixed input after ship.

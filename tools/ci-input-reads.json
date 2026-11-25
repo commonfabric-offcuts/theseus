@@ -5931,5 +5931,19 @@
         "tests/fixtures/schema_46.sql"
       ]
     }
+  },
+  "tests/ui_guarded_paints_1253.test.mjs": {
+    "9aabc603da98cb5c8e5cce1ecef6d28dfda28cc2c0606e563e4413df36e4e735": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    },
+    "87ec06cddaca66eb784ef08fadbb57baac1a66d908dec3ee204071817d7d8ff6": {
+      "scope": "repository",
+      "inputs": [
+        "web/outline-rail.mjs"
+      ]
+    }
   }
 }
