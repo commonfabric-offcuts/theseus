@@ -1,3 +1,4 @@
+import { timingCall } from './action-timing.mjs';
 import { questionOf, terminalQuestion } from './question-state.mjs';
 // Thumbs-up and go-ahead answers on a message (docs/thumbs.md).
 //
@@ -151,9 +152,9 @@ export class Reactions {
     Object.assign(this, { api, instanceId, authority, learned, recorded, cleared, reading, changed, current });
     this.busy = new Set(); this.pending = new Map();
   }
-  async read(id) {
+  async read(id, timing) {
     const landed = this.reading(id);
-    const answer = await this.api.view('reactions', { message_id: id });
+    const answer = await this.api.view('reactions', { message_id: id }, { timing });
     if (answer?.error) throw Error(answer.error.message);
     if (answer?.instance_id !== this.instanceId || answer.message_id !== id) throw Error('The reactions answer is for another message.');
     reactionsOf(answer);
@@ -164,18 +165,20 @@ export class Reactions {
   // status line), told before the reactions are read again, so that read, begun
   // after it was said, ends it. Without one, or for a failure that reached no
   // Theseus, the failure is thrown, in words of the page's own.
-  async send(kind, item, args, expected, said = null) {
+  async send(kind, item, args, expected, said = null, timing = null) {
     if (this.busy.has(item.id)) return null;
     this.busy.add(item.id);
-    let current = () => this.current();
+    let current = () => this.current(), learnedConfirmed = false, observation = 'incomplete', observationFailure = 'unknown';
     try {
       const { authority_id, authority_epoch } = this.authority();
       current = () => this.current() && this.authority()?.authority_id === authority_id && this.authority()?.authority_epoch === authority_epoch;
-      if (kind === 'message.thumb') { this.pending.set(item.id, args.thumbed); this.changed(item.id); }
+      if (kind === 'message.thumb') { this.pending.set(item.id, args.thumbed); this.changed(item.id, timing, 'thumb_pending_dom'); }
+      const operation = crypto.randomUUID();
+      timingCall(timing, 'link', operation);
       let receipt = null, failure = null;
       try {
-        receipt = await this.api.command({ v: 1, instance_id: this.instanceId, operation_id: crypto.randomUUID(), kind,
-          target: { message_id: item.id }, expected: { ...expected, authority: { authority_id, authority_epoch } }, args });
+        receipt = await this.api.command({ v: 1, instance_id: this.instanceId, operation_id: operation, kind,
+          target: { message_id: item.id }, expected: { ...expected, authority: { authority_id, authority_epoch } }, args }, { timing });
       } catch (error) { failure = { error }; }
       const committed = receipt?.status === 'committed', result = committed ? receipt.result : null;
       if (current() && result?.message_id === item.id && Number.isSafeInteger(result.mark_revision)) this.cleared(result, kind);
@@ -183,17 +186,20 @@ export class Reactions {
       const answer = failure && notTaken(failure);
       const thrown = failure && (!said || answer.kind === 'unreached' ? unsaved(failure, answer) : (current() && said(failure), null));
       // Whatever the answer, the message's reactions as Core holds them now.
-      try { const value = await this.read(item.id); if (current()) this.learned(value, kind); } catch { /* the next commit reads them again */ }
-      if (thrown) throw thrown;
-      if (committed && current()) { this.recorded(receipt); return receipt; }
+      try { const value = await this.read(item.id, timing); if (current()) { this.learned(value, kind, timing); learnedConfirmed = committed; } } catch { /* the next commit reads them again */ }
+      if (thrown) { observation = 'failed'; observationFailure = 'transport'; throw thrown; }
+      if (committed && current()) { this.recorded(receipt); observation = 'complete'; observationFailure = null; return receipt; }
+      observation = 'failed'; observationFailure = 'refused';
       return null;
     } finally {
       this.busy.delete(item.id);
-      if (this.pending.delete(item.id) && current()) this.changed(item.id);
+      if (this.pending.delete(item.id) && current()) this.changed(item.id, timing, learnedConfirmed ? 'thumb_confirmed_dom' : null);
+      if (!current()) timingCall(timing, 'retire');
+      else timingCall(timing, 'finish', observation === 'complete' && !timingCall(timing, 'hasEndpoint', 'thumb_confirmed_dom') ? 'incomplete' : observation, observationFailure);
     }
   }
-  thumb(item, on, said = null) {
-    return this.send('message.thumb', item, { thumbed: on }, { thumb_revision: reactionsOf(item).thumb_revision }, said);
+  thumb(item, on, said = null, timing = null) {
+    return this.send('message.thumb', item, { thumbed: on }, { thumb_revision: reactionsOf(item).thumb_revision }, said, timing);
   }
   answer(item, answer, said = null) {
     if (!(answer in ANSWER_WORDS)) throw Error('A go-ahead is answered yes or no.');

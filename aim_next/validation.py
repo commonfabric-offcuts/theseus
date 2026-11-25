@@ -4,6 +4,7 @@ from .contract import LIMITS, Refusal, _identifier, _json
 
 
 COMMANDS = {
+    "performance.record": "_command_performance_record",
     "current_rule.update": "_command_current_rule_update",
     "pipeline.clock_record": "_command_pipeline_clock_record",
     **{"assessment."+name: "_command_assessment_"+name for name in ("request","attach","finish","renew","abandon")},
@@ -151,6 +152,7 @@ REQUIRED_EXPECTED = {"current_rule.update": "rule_revision","workspace.link_set"
                      "stack.place": "place_revision", "stack.level": "level_revision", "stack.name": "name_revision", "stack.join": "join_revision",
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 EXPECTED["pipeline.clock_record"] = {"clock_revision"}
+EXPECTED["performance.record"] = set()
 REQUIRED_EXPECTED["pipeline.clock_record"] = "clock_revision"
 VIEWS = {
     "current_rule": {"workspace_id", "history"},

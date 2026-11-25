@@ -856,6 +856,7 @@ class Health:
         """The runner, each agent's waiting work and wakes, the Mac's load and the latest release, read together."""
         from .delivery import _now_ms
         from . import wake_diagnostics
+        from . import action_performance
         now = _now_ms()
         state = self._runner_state(db)
         routes = self._health_routes(db)
@@ -924,7 +925,8 @@ class Health:
                        "scoped": _release_scoped(measured, attached)}
         schema = db.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()[0]
         return {"instance_id": self.instance_id, "read_ms": now, "commit_seq": self._commit_seq(db), "red": sorted(reds), "runner": runner, "agents": agents,
-                "failing_after": FAILING_AFTER, "release": release, "machine": (self._machine or machine_load)(), "schema_version": schema}
+                "failing_after": FAILING_AFTER, "release": release, "machine": (self._machine or machine_load)(), "schema_version": schema,
+                "tab_performance": action_performance.health(db, actor, now)}
 
 
 def report_lines(answer, at):

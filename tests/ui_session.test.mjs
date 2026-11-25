@@ -1,3 +1,4 @@
+import { ActionTimings } from '../web/action-timing.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -1883,4 +1884,26 @@ test('a reply sent with Ask on is published as an ask, and one with Ask off as a
   await f.session.send();
   const told = await f.api.view('source', { kind: 'message', id: f.editor.submissions[1].receipt.result.message_id });
   assert.deepEqual([told.body, told.intent], ['For your information', 'tell']);
+});
+
+
+test('1234 explicit send context follows durable prepare/publication and stays outside saved writing', async t => {
+  const f = await fixture(t), contexts = [], published = [];
+  const recorder = new ActionTimings({ instanceId: f.context.instanceId, build: 'fixture-build',
+    timers: { setTimeout: () => 1, clearTimeout() {} }, frame: null, Observer: null });
+  const timing = recorder.begin('send');
+  f.transport.command = (envelope, options) => { contexts.push([envelope.kind, options?.timing]); return f.api.command(envelope); };
+  f.session.published = (_editor, item, context) => published.push([item, context]);
+  f.editor.edit({ body: 'Kept exact action writing' });
+  const item = await f.session.send({ timing });
+  assert.equal(item.status, 'confirmed');
+  assert.deepEqual(contexts.map(([kind]) => kind), ['draft.save', 'submission.prepare', 'message.send']);
+  assert.ok(contexts.every(([, context]) => context === timing));
+  assert.deepEqual(published, [[item, timing]]);
+  assert.equal(f.session.timingFor(item), timing);
+  assert.ok(timing.row.operations.includes(item.prepareOperationId)); assert.ok(timing.row.operations.includes(item.sendOperationId));
+  assert.equal(timing.row.submission, item.id); assert.ok(timing.row.counts.backend_puts > 0);
+  assert.ok(timing.row.phases.some(phase => phase.name === 'session_queue'));
+  const saved = await f.storage.own(f.editor.key);
+  assert.doesNotMatch(JSON.stringify(saved), /elapsed_ms|overhead_ms|loaded-build|performance.record/);
 });

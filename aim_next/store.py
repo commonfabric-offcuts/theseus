@@ -66,6 +66,7 @@ from .tool_records import Records as ToolRecords
 from .withdrawal import Withdrawal, WITHDRAWAL_SCHEMA
 from .questions import Questions, QUESTION_SCHEMA
 from .answer_delivery import AnswerDelivery, ANSWER_UP
+from .action_performance import ActionPerformance
 from .refresh_delivery import RefreshDelivery, REQUEST_UP
 from . import message_edit, removal
 from .removal import Removal, REMOVAL_UP
@@ -207,7 +208,7 @@ from .current_rule import CurrentRule
 from .hosted_recovery import HostedRecovery
 
 
-class Store(CurrentRule, PieceClock, HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, OutcomeColors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
+class Store(ActionPerformance, CurrentRule, PieceClock, HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, OutcomeColors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
             OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Covers, CoverRefresh, DossierMove, AskCover, Blocking, MessageEdit, Invites, Tools, Withdrawal, RefreshDelivery, Questions, AnswerDelivery, Removal, HostedSeats):
     def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None, tools=None):
         self.path = Path(db_path).resolve()
