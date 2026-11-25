@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import { keepPendingSendPlace } from '../web/pending-sends.mjs';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,12 +20,13 @@ function model(s=source) {
  const win={scrollY:300,addEventListener:(k,f)=>listen('window',k,f),removeEventListener:(k,f)=>unlisten('window',k,f),scrollBy:({top})=>{win.scrollY+=top;scrolls.push(top)}};
  const node=(id,y,h=160)=>{const e={id,dataset:{id,seq:String(nodes.length+1)},isConnected:true,hidden:false,y,h,children:[],style:{setProperty:(k,v)=>{e.y+=parseFloat(v)},removeProperty:()=>{}},contains:n=>n===e||e.children.includes(n),getBoundingClientRect:()=>({top:e.y-win.scrollY,bottom:e.y+e.h-win.scrollY,left:20,right:420,width:400,height:e.h}),getClientRects:()=>e.hidden?[]:[e.getBoundingClientRect()],compareDocumentPosition:n=>nodes.indexOf(n)>nodes.indexOf(e)?4:0,querySelectorAll:()=>[],closest:()=>null,addEventListener:(k,f)=>listen(id,k,f),removeEventListener:(k,f)=>unlisten(id,k,f)};return e;};
  const list=node('messages',100),main=node('main',0),home=node('new-message-sheet',4000);home.parentElement=list;home.open=false;home.contains=()=>false;
- list.contains=n=>nodes.includes(n);list.querySelectorAll=()=>nodes;main.children=[list];main.contains=n=>n===list||nodes.includes(n);main.append=()=>{};
+ list.contains=n=>nodes.includes(n);list.querySelectorAll=selector=>selector==='[data-pending-send]'?[]:nodes;main.children=[list];main.contains=n=>n===list||nodes.includes(n);main.append=()=>{};
  const listBox=list.getBoundingClientRect;list.getBoundingClientRect=()=>({...listBox(),height:nodes.reduce((n,e)=>n+(e.hidden?0:e.h),0)});
  nodes.push(node('a',250),node('b',450),node('c',650));
  const document={activeElement:null,documentElement:{scrollHeight:5000},body:{},querySelectorAll:()=>nodes.filter(e=>!e.hidden),addEventListener:(k,f)=>listen('document',k,f),removeEventListener:(k,f)=>unlisten('document',k,f),caretPositionFromPoint:()=>null};
+ list.ownerDocument=document;document.defaultView=win;
  const Observer=class {constructor(cb){this.cb=cb;this.observed=new Set();this.disconnected=false;observers.push(this)}observe(n){this.observed.add(n)}unobserve(n){this.observed.delete(n)}disconnect(){this.observed.clear();this.disconnected=true}takeRecords(){return []}};
- const context=vm.createContext({windowReadSerial:0,window:win,document,innerWidth:600,innerHeight:800,Node:{DOCUMENT_POSITION_FOLLOWING:4,TEXT_NODE:3},inline:null,registry:{},retired:null,topicUnavailable:false,authorityReviewPending:()=>false,entries:()=>nodes,drawn:(l,id)=>nodes.some(n=>n.dataset.id===id&&!n.hidden),typingField:()=>false,views:{messages:new Map()},bootstrap:{actor:'viewer'},messageEntries:new Map(),topic:{id:'isolated-topic'},stackState:()=>({stacks:[]}),cardIn:e=>e,reveal:()=>{},button:(text,activate)=>({activate,style:{},setAttribute:()=>{}}),$:id=>({messages:list,main,'new-message-sheet':home})[id],opened:e=>e,ResizeObserver:Observer,MutationObserver:Observer,requestAnimationFrame:f=>{frames.set(++serial,f);return serial},cancelAnimationFrame:id=>frames.delete(id)});
+ const context=vm.createContext({windowReadSerial:0,listAccessEpoch:0,keepPendingSendPlace,restorePendingSendPlace:()=>assert.fail('canonical reading fixture has no local submission'),window:win,document,innerWidth:600,innerHeight:800,Node:{DOCUMENT_POSITION_FOLLOWING:4,TEXT_NODE:3},inline:null,registry:{},retired:null,topicUnavailable:false,authorityReviewPending:()=>false,entries:()=>nodes,drawn:(l,id)=>nodes.some(n=>n.dataset.id===id&&!n.hidden),typingField:()=>false,views:{messages:new Map()},bootstrap:{actor:'viewer'},messageEntries:new Map(),topic:{id:'isolated-topic'},stackState:()=>({stacks:[]}),cardIn:e=>e,reveal:()=>{},button:(text,activate)=>({activate,style:{},setAttribute:()=>{}}),$:id=>({messages:list,main,'new-message-sheet':home})[id],opened:e=>e,ResizeObserver:Observer,MutationObserver:Observer,requestAnimationFrame:f=>{frames.set(++serial,f);return serial},cancelAnimationFrame:id=>frames.delete(id)});
  vm.runInContext(cut(s)+`;globalThis.api785={captureListAnchor,recordListArrivals,restoreListAnchor,keepListAnchor,watchListAnchor,rememberListAnchor,paintNewAbove,offers:newAbove,pill:()=>newAboveButton,stop:()=>anchorWatch.stop(),settle:(records=[])=>anchorWatch.mutations.cb(records),act:()=>[...[]],state:()=>({anchorActing,anchorDepth,anchorHold})};`,context);
  // Real model arrivals populate the same accepted-record and entry maps used
  // by the product repaint producer. A test-only ownership token grants nothing.
