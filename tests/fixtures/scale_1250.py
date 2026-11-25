@@ -7,6 +7,7 @@ its real validation/effects/receipt path. Nothing patches a measured read.
 """
 import contextlib
 import hashlib
+import itertools
 import json
 from pathlib import Path
 import sqlite3
@@ -88,7 +89,8 @@ class Seed:
         self.serial, self.ledger = 0, []
         self.count, self.dossiers = count, dossiers
         scope = construction_batch(self.path) if batched else contextlib.nullcontext()
-        with scope:
+        identities = itertools.count(1)
+        with scope, mock.patch.object(uuid, "uuid4", side_effect=lambda: uuid.UUID(int=next(identities))):
             self.command("workspace.create", {"id": "w", "title": "Scale fixture", "team": ["reader", "worker"]})
             self.first = self.topic("target")
             for n in range(1, count):
@@ -195,6 +197,9 @@ def verify(root):
             assert db.execute("SELECT message_count,latest_message_id FROM topic_summaries WHERE topic_id=?", (topic,)).fetchone() == (len(rows), rows[-1]["id"])
         for group, pending in db.execute("SELECT id,pending_count FROM delivery_groups"):
             assert pending == db.execute("SELECT count(*) FROM deliveries WHERE group_id=? AND state='pending'", (group,)).fetchone()[0]
+        assert {row[0] for row in db.execute("SELECT recipient_id FROM recipient_schedule")} == {"reader"}, "Expected recipient schedule identities are missing"
+        assert {row[0] for row in db.execute("SELECT DISTINCT recipient_id FROM deliveries")} == {"reader"}, "Expected delivery recipient is missing"
+        assert {tuple(row) for row in db.execute("SELECT DISTINCT recipient_id,kind,topic_id FROM delivery_groups")} == {("reader", "subscription", "target"), ("reader", "subscription", "surrounding"), ("reader", "direct", "")}, "Expected delivery group identities differ"
         for actor, pending in db.execute("SELECT recipient_id,pending_count FROM recipient_schedule"):
             assert pending == db.execute("SELECT coalesce(sum(pending_count),0) FROM delivery_groups WHERE recipient_id=? AND active=1", (actor,)).fetchone()[0]
         assert db.execute("SELECT count(*) FROM pipeline_item_sources WHERE message_id=?", (ledger["first"],)).fetchone() == (3,)

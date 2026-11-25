@@ -12,8 +12,9 @@ import time
 from unittest import mock
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "tests"))
+sys.path[:0] = [str(REPO), str(REPO / "tests")]
 from fixtures.scale_1250 import Seed, open_seed, verify
+from aim_next import Store
 from aim_next import store as core
 from aim_next.server import create_server
 
@@ -40,7 +41,11 @@ def diagnostic(root):
 @contextlib.contextmanager
 def served(root):
     store, ledger = open_seed(root)
-    server = create_server(lambda: open_seed(root)[0], ledger["instance_id"], "reader", REPO / "web", token="isolated-scale-1250")
+    # The full ledger was verified before measurement. Request construction
+    # uses the same fixed descriptor as the normal server, never the ledger.
+    path, instance, binding = store.path, ledger["instance_id"], dict(ledger["binding"])
+    factory = lambda: Store(path, instance, expected_binding=binding, tools=Path(root) / "empty-tools")
+    server = create_server(factory, instance, "reader", REPO / "web", token="isolated-scale-1250")
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

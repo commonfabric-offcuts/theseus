@@ -5,9 +5,11 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
+from unittest import mock
+import urllib.request
 
 from fixtures.scale_1250 import Seed, verify, open_seed
-from tools.scale_1250 import diagnostic
+from tools.scale_1250 import diagnostic, served
 
 
 class SeedCase(unittest.TestCase):
@@ -56,6 +58,32 @@ class SeedCase(unittest.TestCase):
             verify(seed.root)
         ledger.write_bytes(original)
         self.assertTrue(verify(seed.root)["verified"])
+
+    def test_missing_maintained_schedule_is_rejected_and_exactly_restored(self):
+        seed = Seed(self.root / "missing", 40, 4)
+        with sqlite3.connect(str(seed.path)) as db:
+            original = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id='reader'").fetchone()
+            self.assertIsNotNone(original)
+            db.execute("DELETE FROM recipient_schedule WHERE recipient_id='reader'")
+            self.assertEqual(db.execute("SELECT count(*) FROM recipient_schedule WHERE recipient_id='reader'").fetchone(), (0,))
+        with self.assertRaisesRegex(AssertionError, "schedule identities"):
+            verify(seed.root)
+        with sqlite3.connect(str(seed.path)) as db:
+            db.execute("INSERT INTO recipient_schedule VALUES (" + ",".join("?" for _ in original) + ")", original)
+            self.assertEqual(db.execute("SELECT * FROM recipient_schedule WHERE recipient_id='reader'").fetchone(), original)
+        self.assertTrue(verify(seed.root)["verified"])
+
+    def test_actual_http_factory_does_not_reread_fixture_ledger_per_request(self):
+        seed = Seed(self.root / "http", 40, 4)
+        with mock.patch("tools.scale_1250.open_seed", wraps=open_seed) as opening:
+            with served(seed.root) as server:
+                for _ in range(2):
+                    data = json.dumps({"name": "topic_messages", "args": {"topic_id": "target", "direction": "before", "limit": 30}}).encode()
+                    request = urllib.request.Request(server["origin"] + "/api/view", data, headers={
+                        "Authorization": "Bearer " + server["token"], "Origin": server["origin"], "Content-Type": "application/json"})
+                    with urllib.request.urlopen(request) as response:
+                        self.assertEqual(len(json.load(response)["items"]), 30)
+            self.assertEqual(opening.call_count, 1)
 
 
 if __name__ == "__main__":
