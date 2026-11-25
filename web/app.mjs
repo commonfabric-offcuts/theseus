@@ -1,7 +1,7 @@
 import { MessageChanges } from './message-changes.mjs';
 import { OlderFeed } from './older-feed.mjs';
 import { topicCloseUI } from './topic-close-ui.mjs';
-import { QuestionStates, configureQuestionStates, questionOf, questionPill, Resolutions } from './question-state.mjs';
+import { QuestionStates, configureQuestionStates, Resolutions } from './question-state.mjs';
 import { reviewDifferences } from './review-differences.mjs';
 import { railDensity } from './rail-density.mjs';
 import { railHotkeysFor } from './rail-hotkeys.mjs';
@@ -1910,22 +1910,6 @@ function paintCardAuthor(author, item) {
   paintWithdrawal(author, item, document);
   paintRemoval(author, item, document);
   author.parentElement?.classList.toggle('retracted-message', item.removal?.kind === 'retracted');
-  const question = questionOf(item);
-  const questionKey = JSON.stringify([question, question?.by ? displayActor(question.by) : null]);
-  const pills = author.querySelectorAll(':scope > .question-state');
-  // paintAuthor may keep its cached line. Retire old labels even when the
-  // current question is hidden, and keep an unchanged successor link focused.
-  if (pills.length !== 1 || pills[0].dataset.question !== questionKey) {
-    for (const pill of pills) pill.remove();
-    if (['resolved', 'superseded'].includes(question?.state)) {
-      const pill = questionPill(document, item, { nameOf: displayActor });
-      if (pill) {
-        pill.dataset.question = questionKey;
-        pill.prepend(' '); // The separator retires with its label.
-        author.append(pill);
-      }
-    }
-  }
   if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
   if (here?.conversation && !item.withdrawal && !item.removal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
