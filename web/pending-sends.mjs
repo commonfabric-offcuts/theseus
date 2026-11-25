@@ -15,12 +15,31 @@ export function keepPendingSendPlace(host, paint, { current = () => true,
   top = node => node.getBoundingClientRect().top,
   restore = null,
   scroll = delta => host.ownerDocument.defaultView.scrollBy({ top: delta, behavior: 'instant' }) } = {}) {
-  const active = host.ownerDocument.activeElement, card = active?.closest?.('[data-pending-send]');
-  const held = card && host.contains(card) && current() ? card : null;
-  const before = held ? top(held) : null;
+  const doc = host.ownerDocument, active = doc.activeElement;
+  const card = active?.closest?.('[data-pending-send]');
+  // A browser reparent can blur a connected descendant to BODY. The captured
+  // owner, rather than post-move focus, decides whether the hold still applies.
+  let held = card && host.contains(card) && current() ? card : null;
+  let before = held ? top(held) : null;
+  // An outside button may keep focus while a visible submitted card moves.
+  // Active writing/selection elsewhere keeps the existing list hold instead.
+  const writing = /^(INPUT|TEXTAREA|SELECT)$/.test(active?.tagName) || active?.isContentEditable;
+  if (!held && current() && !writing && doc.getSelection?.()?.isCollapsed !== false) {
+    const edge = doc.defaultView.innerHeight ?? Infinity;
+    for (const candidate of host.querySelectorAll('[data-pending-send]')) {
+      const value = top(candidate);
+      if (candidate.getClientRects().length && value >= 0 && value < edge) { held = candidate; before = value; break; }
+    }
+  }
   const result = paint();
   const after = held?.isConnected ? held : result?.pendingReplacement;
-  if (held && after?.isConnected && current() && (host.ownerDocument.activeElement === after || after.contains(host.ownerDocument.activeElement))) {
+  const focused = doc.activeElement;
+  const lost = !focused || focused === doc.body;
+  if (held && after?.isConnected && current() && (lost || focused === active || after === focused || after.contains(focused))) {
+    if (lost && card === held) {
+      const same = active?.isConnected && after.contains(active) ? active : after;
+      same.focus({ preventScroll: true });
+    }
     const delta = top(after) - before;
     if (Number.isFinite(delta) && delta !== 0) { if (restore) restore(after, before); else scroll(delta); }
   }
@@ -50,14 +69,14 @@ export function clearPendingSends(host) {
   cardsOf(host).clear();
 }
 
-export function paintPendingSends(host, editors, { topicId, placed = () => false, parent = () => null,
+export function paintPendingSends(host, editors, { topicId, placed = () => false, target = () => null,
   check = () => {}, underway = () => false, restored = () => {}, current = () => true,
   visual = (editor, item) => pendingSendVisual(editor, item), nameOf = id => id,
   author = (node, item) => paintAuthor(node, nameOf(item.author_id), null, false),
   readImage = async () => null, displayRules = [], end = null } = {}) {
   if (!host) return;
   if (!current()) { clearPendingSends(host); return; }
-  const doc = host.ownerDocument, kept = new Set(), cards = cardsOf(host), afterParent = new Map(), roots = [];
+  const doc = host.ownerDocument, kept = new Set(), cards = cardsOf(host), groups = new Map();
   for (const editor of editors) for (const item of editor.submissions ?? []) {
     if (!item.presentPending || item.detached || item.topicId !== topicId || adopted.has(item)) continue;
     if (item.status === 'confirmed' && placed(item.receipt?.result?.message_id)) continue;
@@ -95,24 +114,23 @@ export function paintPendingSends(host, editors, { topicId, placed = () => false
     if (item.restoredWriting) restored(editor, item, card);
     const retry = card.querySelector('.pending-send-check'); retry.hidden = active;
     retry.onclick = event => { event?.stopPropagation(); check(editor, item); };
-    // Frozen reply_to owns placement, not the editor's possibly different source.
-    const offered = parent(message.reply_to ? { kind: 'message', id: message.reply_to } : null, item);
-    const where = offered && host.contains(offered) ? afterParent.get(offered) ?? offered : null;
-    if (where) {
-      if (card.parentElement !== where.parentElement || card.previousElementSibling !== where)
-        where.parentElement.insertBefore(card, where.nextElementSibling);
-      afterParent.set(offered, card);
-    } else roots.push(card);
+    // The frozen reply destination resolves a dossier container, never the
+    // immediate parent card. Canonical records and local submissions stay apart.
+    const offered = target(message.reply_to ? { kind: 'message', id: message.reply_to } : null, item);
+    const container = offered && host.contains(offered) ? offered : host;
+    if (!groups.has(container)) groups.set(container, []);
+    groups.get(container).push(card);
   }
   for (const [id, card] of cards) if (!kept.has(id)) { dropCardImages(card); card.remove(); cards.delete(id); }
-  // Place the ordered root group against one shared cursor. Checking each
-  // root against the composer independently would detach A then B on every
-  // unchanged A,B,composer repaint, even though the final order looked right.
-  let before = end?.parentElement === host ? end : null;
-  for (let index = roots.length - 1; index >= 0; index--) {
-    const card = roots[index];
-    if (card.parentElement !== host || card.nextElementSibling !== before) host.insertBefore(card, before);
-    before = card;
+  // One reverse cursor per dossier/root group avoids detaching A then B on
+  // every unchanged repaint. The root cursor remains before the composer.
+  for (const [container, group] of groups) {
+    let before = container === host && end?.parentElement === host ? end : null;
+    for (let index = group.length - 1; index >= 0; index--) {
+      const card = group[index];
+      if (card.parentElement !== container || card.nextElementSibling !== before) container.insertBefore(card, before);
+      before = card;
+    }
   }
 }
 

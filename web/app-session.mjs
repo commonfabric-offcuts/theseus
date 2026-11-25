@@ -508,7 +508,7 @@ export class EditorRegistry {
     }
   }
 
-  async close(presentation, { explicit = false } = {}) {
+  async close(presentation, { explicit = false, current = () => true } = {}) {
     if (presentation?.surface === 'inline') return false;
     if (explicit) {
       if (!presentation || this.current !== presentation || this.disposed) return false;
@@ -517,7 +517,7 @@ export class EditorRegistry {
       this.pendingOpen = null; this.closing = null;
     }
     const requestGeneration = this.generation;
-    if (!this.isCurrent(presentation)) return false;
+    if (!this.isCurrent(presentation) || !current()) return false;
     // An image the person is choosing is theirs to finish: Close is refused at
     // once, so the choice is not stopped and dropped by the close.
     if (Object.values(presentation.editors).some(editor => editor.imageReservation)) {
@@ -540,7 +540,7 @@ export class EditorRegistry {
         if (explicit && requestGeneration === this.generation) throw this.closeRefusal(error);
         return false;
       }
-      if (requestGeneration !== this.generation) return false;
+      if (requestGeneration !== this.generation || !current()) return false;
       this.current = null; ++this.generation; this.closed(presentation); return true;
     } finally { if (this.closing === stop) this.closing = null; this.activity(); }
   }

@@ -4,7 +4,7 @@ The exact frozen submission is a local presentation, outside TopicViews and
 messageEntries. It has no speculative message id, sequence, unread state or
 reactions. It uses ordinary card author/word/reply/image renderers, with an
 honest quiet pending mark. Topic writing rests before the bottom composer;
-reply writing rests immediately under its actual reply parent.
+reply writing rests at the end of the intended dossier, derived from the frozen reply destination, including when its parent is an earlier or folded row.
 Multiple root submissions share an ordered end cursor. An unchanged group
 is left in place, preserving its existing focused links and controls.
 
@@ -49,3 +49,36 @@ browser lexical imports; it no longer aliases unrelated `cardImages` exports.
 The 1233 visual assertion uses formatted words and frozen image identity in
 place of the retired preformatted panel/image-count label. Recovery assertions
 and existing ten app-consumer failure causes remain unchanged.
+
+
+## Live 438 repair contract
+
+Ordinary Reader Send hands off after the exact local submission and successor
+are kept on the device and its pending card is reachable. Neither direct Reader
+nor card-to-Reader waits for a server command or receipt to close. Explicit
+Send-and-stay keeps the Reader. A failed local keep, later writing, image choice,
+new opening, navigation, access loss or retirement keeps its current owner.
+Unknown/refused publication remains reachable from the retained submission.
+
+The initial pending card belongs to its dossier's replies container, after its
+canonical entries and in submission order, above the next dossier and red New
+line. It has no canonical identity. Root submissions keep the shared composer
+cursor. Canonical confirmation uses the dossier's authoritative placement. An
+adoption move that blurs a connected child to BODY restores that child (or the
+canonical replacement) and its captured screen position. A later focus owner is
+never stolen. A visible pending card also holds its screen position when an outside button retains focus; active writing or text selection elsewhere retains its own list owner. Both receipt-first and page-first order require composed app
+controls, including a folded parent, multiple pending replies, decoded-image
+identity, unfocused cards and newer writing. Modeled DOM movement is labeled;
+Flex owns native focus, geometry, Reader close, scroll and timing acceptance.
+
+
+1254 successor tests explicitly distinguish the old 941 no-handoff fallback
+from the application's pending-card handoff. The new 941 direct/card Reader
+ordinary/stay cases and stale-keep cases exercise Reader.send; the complete
+1233 file composes actual Reader, EditorRegistry, EditorSession, journal and
+pending painter with unresolved server commands, a failed local put/restoration,
+and actual refused/unknown publication. The app file composes actual dossier
+placement/arrange with connected-child BODY blur and valid modeled scroll range,
+plus the installed Reader callback and close fences for writing, navigation,
+access, authority and retirement. Browser geometry and local-save timing remain
+native evidence, not conclusions from these ports.
