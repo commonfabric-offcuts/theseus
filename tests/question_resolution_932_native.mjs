@@ -116,29 +116,28 @@ try {
       });
       if (width === 390) await resolve.tap(); else { await resolve.focus(); await page.keyboard.press('Enter'); }
       const answer = await (await receipt).json(); assert.equal(answer.status, 'committed');
-      await page.waitForFunction(() => document.querySelector('#reader-origin .question-state')?.textContent.startsWith('Resolved'));
+      await page.locator('#reader-origin .question-state').waitFor({ state: 'detached' });
       await aReadHeld;
       assert.ok(heldReads.length, 'at least one real refresh request is held');
       assert.equal(await page.locator(`#messages a[href*="${question}"].topic-state`).count(), 0, 'cover wait removed while background reads are held');
       assert.equal(await page.locator('#source-body').innerText(), displayedWords);
       assert.equal(await page.locator('#reader[open]').count(), 1, 'resolution keeps the Reader open');
-      await questionFits(page);
+      assert.equal(await page.locator('#reader-origin .question-state').count(), 0);
       await page.screenshot({ path: `${evidence}/${key}-resolved.png` });
     } finally { releaseReads(); await Promise.all(routeTasks); await page.unroute('**/api/view', holdRead); }
     await page.goto(origin + `/?topic=t1&message=${first}`);
-    const successor = page.locator('#reader-origin .question-state a');
-    await successor.waitFor({ state: 'visible' });
-    assert.equal(await successor.innerText(), 'Superseded by a later question');
-    await successor.click();
+    await page.waitForFunction(expected => document.querySelector('#source-body')?.textContent.includes(expected), `Older question ${key}?`);
+    assert.equal(await page.locator('#reader-origin .question-state').count(), 0, 'superseded question has no terminal label');
+    await page.goto(origin + `/?topic=t1&message=${question}`);
     await page.waitForFunction(expected => document.querySelector('#source-body')?.textContent.includes(expected), words);
-    assert.match(await page.locator('#reader-origin .question-state').innerText(), /Resolved/);
+    assert.equal(await page.locator('#reader-origin .question-state').count(), 0, 'resolved question has no terminal label');
     const source = await control({ method: 'agent_view', actor: facts.agent, name: 'source', args: { kind: 'message', id: question } });
     assert.equal(source.question.state, 'resolved'); assert.deepEqual(source.reactions.answers, []);
     const old = await control({ method: 'agent_view', actor: facts.agent, name: 'source', args: { kind: 'message', id: first } });
     assert.equal(old.question.state, 'superseded'); assert.deepEqual(old.reactions.answers, []);
     assert.deepEqual(errors, []);
     results.push({ width, colorScheme, question, first, nativeCoverOpen: true, nativeResolve: width === 390 ? 'tap' : 'Enter',
-      answeredPillGoneWithoutReopening: true, heldReadCount: heldReads.length, coverGoneBeforeBackgroundRead: true, wordsKept: true, reloadTerminal: true, nativeSuccessorLink: true, headerFits: true, errors });
+      answeredPillGoneWithoutReopening: true, heldReadCount: heldReads.length, coverGoneBeforeBackgroundRead: true, wordsKept: true, reloadTerminal: true, terminalLabelsOmitted: true, directSourceNavigation: true, waitingHeaderFits: true, errors });
     await context.close();
   }
 } catch (error) {
