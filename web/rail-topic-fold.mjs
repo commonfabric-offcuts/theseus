@@ -5,7 +5,7 @@ export const TOPICS_AT_REST = 7;
 export class RailTopicFold {
   constructor({ area, host, footer, doc = area.ownerDocument }) {
     Object.assign(this, { area, host, footer, doc, win: doc?.defaultView });
-    this.pending = null; this.frame = null; this.disposed = false;
+    this.pending = null; this.frame = null; this.disposed = false; this.dirty = true;
     // Detached HTML documents have no browsing context. Leave their list
     // available; there is no viewport, pointer or animation frame to fold for.
     if (!this.win) return;
@@ -49,52 +49,82 @@ export class RailTopicFold {
     this.actionRoot.addEventListener?.('wheel', this.swipe, true);
     area.addEventListener('pointerdown', this.down, true);
     area.addEventListener('click', this.click, true);
-    // CSS filters, refreshed words, reordered rows and newly drawn stars all
-    // change the same measured list. Style writes below are not observed.
+    this.invalidate = () => { if (!this.disposed) { this.dirty = true; this.soon(); } };
+    this.changed = records => !records || records.some(record => record.type !== 'attributes' ||
+      record.oldValue !== record.target.getAttribute(record.attributeName));
+    // Paint notifications alone do not imply new geometry. Observe actual
+    // words/rows/disclosure and CSS visibility owners; own fold writes are not
+    // observed. Read queued records before a synchronous painted callback too.
     if (this.win.MutationObserver) {
-      this.mutations = new this.win.MutationObserver(() => this.soon());
+      this.mutations = new this.win.MutationObserver(records => { if (this.changed(records)) this.invalidate(); });
       this.mutations.observe(area, { childList: true, subtree: true, attributes: true,
-        attributeFilter: ['hidden', 'open', 'aria-current', 'class'] });
+        characterData: true, attributeOldValue: true,
+        attributeFilter: ['hidden', 'inert', 'open', 'aria-current', 'class', 'src'] });
+      for (let parent = area.parentElement; parent; parent = parent.parentElement) {
+        this.mutations.observe(parent, {attributes: true, attributeOldValue: true,
+          attributeFilter: ['hidden', 'inert', 'open', 'class', 'data-only', 'style']});
+      }
     }
     if (this.win.ResizeObserver) {
-      this.sizes = new this.win.ResizeObserver(() => this.soon());
+      this.sizes = new this.win.ResizeObserver(this.invalidate);
       this.sizes.observe(host); this.sizes.observe(footer);
     }
+    this.win.addEventListener?.('resize', this.invalidate);
+    area.addEventListener('load', this.invalidate, true);
+    doc.fonts?.addEventListener?.('loadingdone', this.invalidate);
     this.soon();
   }
   soon() {
+    const records = this.mutations?.takeRecords?.();
+    if (records?.length && this.changed(records)) this.dirty = true;
+    if (!this.dirty) return;
     if (this.disposed || this.frame !== null || !this.win?.requestAnimationFrame) return;
     this.frame = this.win.requestAnimationFrame(() => { this.frame = null; this.measure(); });
   }
   measure() {
     if (this.disposed || !this.win || !this.host.getBoundingClientRect || !this.area.style) return;
+    this.dirty = false;
     this.revealZone = null;
-    const all = [...this.host.children].filter(node => node.matches('a[data-topic-id]'));
-    const rows = all.filter(node => node.getClientRects().length && node.getBoundingClientRect().height > 0);
-    for (const row of all) delete row.dataset.railFold;
-    rows.forEach((row, index) => { if (index >= TOPICS_AT_REST) row.dataset.railFold = index === TOPICS_AT_REST ? 'peek' : 'past'; });
     const current = this.area.querySelector('a[aria-current=page]');
     const group = current?.closest('details.topic-group');
     // A selected Done/Archived row must not remain behind its disclosure.
     if (group && !group.open) group.open = true;
+    const all = [...this.host.children].filter(node => node.matches('a[data-topic-id]'));
+    const boxes = new Map();
+    const rows = all.filter(node => {
+      if (!node.getClientRects().length) return false;
+      const box = node.getBoundingClientRect(); boxes.set(node, box); return box.height > 0;
+    });
     const keep = Boolean(current && (group || rows.indexOf(current) >= TOPICS_AT_REST));
-    this.area.toggleAttribute('data-topic-current', keep);
     const peek = rows[TOPICS_AT_REST], origin = this.host.getBoundingClientRect();
+    // Finish the current reads before any measured fold styles/markers change.
+    const box = boxes.get(peek), full = this.host.scrollHeight, foot = this.footer.scrollHeight;
+    const zoneStart = boxes.get(rows[TOPICS_AT_REST - 1])?.top - origin.top;
+    for (const row of all) {
+      const index = rows.indexOf(row), mark = index < TOPICS_AT_REST ? null : index === TOPICS_AT_REST ? 'peek' : 'past';
+      if (mark === null) { if (row.dataset.railFold !== undefined) delete row.dataset.railFold; }
+      else if (row.dataset.railFold !== mark) row.dataset.railFold = mark;
+    }
+    this.area.toggleAttribute('data-topic-current', keep);
     if (!peek || !Number.isFinite(origin.top)) { this.area.removeAttribute('data-topic-fold'); return; }
-    const box = peek.getBoundingClientRect(), start = box.top - origin.top, end = start + box.height * .85;
-    const full = this.host.scrollHeight, foot = this.footer.scrollHeight;
-    const zoneStart = rows[TOPICS_AT_REST - 1].getBoundingClientRect().top - origin.top;
+    const start = box.top - origin.top, end = start + box.height * .85;
     // A detached/hidden list cannot supply geometry. Keep the fail-open view.
     if (![zoneStart, start, end, full, foot].every(Number.isFinite) || start < 0 || end <= start || full < end) {
       this.area.removeAttribute('data-topic-fold'); return;
     }
-    for (const [name, value] of Object.entries({ start, end, full, foot })) this.area.style.setProperty('--topic-fold-' + name, value + 'px');
+    for (const [name, value] of Object.entries({ start, end, full, foot })) {
+      const key = '--topic-fold-' + name, text = value + 'px';
+      if (this.area.style.getPropertyValue(key) !== text) this.area.style.setProperty(key, text);
+    }
     this.revealZone = { start: zoneStart, end };
     this.area.setAttribute('data-topic-fold', '');
   }
   dispose() {
     this.disposed = true;
     this.mutations?.disconnect(); this.sizes?.disconnect();
+    this.win?.removeEventListener?.('resize', this.invalidate);
+    this.area.removeEventListener('load', this.invalidate, true);
+    this.doc.fonts?.removeEventListener?.('loadingdone', this.invalidate);
     if (this.frame !== null) this.win.cancelAnimationFrame(this.frame);
     this.frame = null;
     if (this.revealMove) this.area.removeEventListener('pointermove', this.revealMove);

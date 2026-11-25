@@ -55,7 +55,7 @@ test('a forbidden read clears titles, a transient error keeps them, and Retry re
 
 for (const fails of [false, true]) test(`923 B2 refresh waits for a queued star read and returns its ${fails ? 'failure' : 'success'}`, async () => {
   const f = fixture(); let first, second, settled = false;
-  f.subject.sync = () => {}; f.subject.parents = () => [{ dataset: { topicId: 't' } }];
+  f.subject.parents = () => [{ dataset: { topicId: 't' } }]; f.subject.sync = () => f.subject.parents();
   f.subject.states = new Map([['t', f.state]]);
   f.queue.push(() => new Promise(resolve => { first = resolve; }), () => new Promise((resolve, reject) => { second = fails ? reject : resolve; }));
   const busy = f.subject.load(f.state); await Promise.resolve();
