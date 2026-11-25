@@ -182,7 +182,7 @@ class OpeningsCase(fixtures.StoreCase):
         receipt = self.act("opening.publish", op="publish-o1")
         result = self.committed(receipt)
         message_id = result["message_id"]
-        self.assertEqual(result, {"opening_id": "o1", "opening_revision": 2, "message_id": message_id,
+        self.assertEqual(result, {"opening_id": "o1", "opening_revision": 2, "message_id": message_id, "seq": 1,
                                   "topic": {"id": "t-new", "version": 1},
                                   "delivery": {"queued": 1, "unavailable_subscribers": []}})
         self.assertEqual(receipt["affected"], [{"kind": "topic", "id": "t-new", "version": 1},
@@ -349,7 +349,7 @@ class OpeningsCase(fixtures.StoreCase):
         receipt = self.command("topic.create_and_send", {"submission_id": "legacy"}, {"topic_id": "t-legacy"}, op="legacy-send")
         result = self.committed(receipt)
         message_id = result["message_id"]
-        self.assertEqual(result, {"message_id": message_id, "submission_id": "legacy", "topic": {"id": "t-legacy", "version": 1},
+        self.assertEqual(result, {"message_id": message_id, "seq": 1, "submission_id": "legacy", "topic": {"id": "t-legacy", "version": 1},
                                   "delivery": {"queued": 1, "unavailable_subscribers": []}})
         self.assertEqual(receipt["affected"], [{"kind": "topic", "id": "t-legacy", "version": 1},
                                                {"kind": "message", "id": message_id, "version": 1}])
