@@ -1,3 +1,4 @@
+import { detailText, detailChildren } from './card-detail-dom.mjs';
 import { keepOnEscape } from './keep-on-escape.mjs';
 // Replies gathered into stacks (docs/reply-stacks.md). A message and every
 // loaded reply to it, and to those replies, read as one stack, with any stack
@@ -595,12 +596,18 @@ const replies = n => (n === 1 ? 'reply' : 'replies');
 // started the stack and the marks of what that first message carries (an
 // image, the reader's own note and saved reply: marks.mjs, item 127), how many
 // replied and who, and what is new. The 646 star toggles its actual first message.
+const headDetails = new WeakMap();
 function paintHead(card, stack, { open, state, unread, nameOf, doc, separate = false }) {
   let row = headRows.get(card);
   if (!row) { row = element(doc, 'span', 'stack-head'); headRows.set(card, row); }
   if (card.firstElementChild !== row) card.prepend(row);
   card.classList.add('stack-head-card');
+  let kept = headDetails.get(row);
+  if (!kept) { kept = new Map(); headDetails.set(row, kept); }
+  const piece = (key, make) => { if (!kept.has(key)) kept.set(key, make()); return kept.get(key); };
   const original = stack.id === stack.dossier;
+  const current = target => row.isConnected && row.contains(target) &&
+    row.closest('.reply-stack')?.dataset.stack === stack.id && drawnIndexes.get(state)?.get(stack.id)?.stack.id === stack.id;
   card.dataset.dossierHead = String(original);
   const head = headOf(stack, { preview: original ? messagePreview : () => 'Dossier', unread });
   if (!original) {
@@ -613,73 +620,82 @@ function paintHead(card, stack, { open, state, unread, nameOf, doc, separate = f
     const span = element(doc, 'span', `stack-act ${className}`, text); span.dataset.stackAct = name;
     if (title) span.title = title; return span;
   };
-  const name = row.querySelector(':scope > .stack-name') ?? act('rename', 'stack-name');
-  name.textContent = head.name;
+  const name = piece('name', () => act('rename', 'stack-name'));
+  detailText(name, head.name);
   name.classList.toggle('retracted-words', original && !head.typed && stack.head.removal?.kind === 'retracted');
   name.title = head.typed ? `Named by ${nameOf(head.typed.by)}${head.mintedBy ? ' when the first reply landed' : ''} for everyone here. Click to rename.` : 'Click to give it a short name everyone here sees';
-  // A singleton (or Only new) has a title independent of its message's
-  // visibility and between-others fold. Rename stays on the pointer/menu path,
-  // outside the feed's Tab and spatial-arrow reading order (954).
   if (separate) {
     name.setAttribute('role', 'button'); name.tabIndex = -1;
     name.setAttribute('aria-label', `Rename dossier: ${head.name}`);
-    const rename = event => { event.preventDefault(); event.stopPropagation(); state.on?.rename?.(stack); };
+    const rename = event => {
+      if (!current(name)) return;
+      event.preventDefault(); event.stopPropagation(); state.on?.rename?.(stack);
+    };
     row.onclick = rename;
     name.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') rename(event); };
-  } else row.onclick = null;
-  const pen = act('rename', 'stack-pen', '', 'Rename'); pen.setAttribute('aria-hidden', 'true');
-  // Use the same pencil and direction as the page's New message control.
-  const pencil = doc.getElementById('new-message')?.querySelector('svg')?.cloneNode(true);
-  if (pencil) pen.append(pencil);
-  // The count in a part of its own, which never gives way on a narrow tab (stack-look.css); who replied and what is new may.
-  const meta = element(doc, 'span', 'stack-meta');
-  meta.append(element(doc, 'span', 'stack-count', `${head.count} ${replies(head.count)}`));
-  if (head.repliers.length) meta.append(element(doc, 'span', 'stack-repliers', ` · ${head.repliers.map(nameOf).join(', ')}`));
+  } else {
+    row.onclick = null; name.onkeydown = null;
+    name.removeAttribute('role'); name.removeAttribute('aria-label'); name.removeAttribute('tabindex');
+  }
+  const pen = piece('pen', () => {
+    const node = act('rename', 'stack-pen', '', 'Rename'); node.setAttribute('aria-hidden', 'true');
+    const pencil = doc.getElementById('new-message')?.querySelector('svg')?.cloneNode(true);
+    if (pencil) node.append(pencil);
+    return node;
+  });
+  const meta = piece('meta', () => element(doc, 'span', 'stack-meta'));
+  const count = piece('count', () => element(doc, 'span', 'stack-count'));
+  detailText(count, `${head.count} ${replies(head.count)}`);
+  const repliers = head.repliers.length ? piece('repliers', () => element(doc, 'span', 'stack-repliers')) : null;
+  if (repliers) detailText(repliers, ` · ${head.repliers.map(nameOf).join(', ')}`);
   const checking = state.checking.get(stack.id);
   const newMark = (className, words) => {
-    if (checking) return checking.node;
-    const mark = act('new', className + ' stack-new-action', words, 'Open and read the newest new message');
+    const mark = checking?.node ?? piece(className, () => act('new', className + ' stack-new-action', undefined, 'Open and read the newest new message'));
+    detailText(mark, words);
     mark.setAttribute('role', 'button'); mark.tabIndex = 0;
     mark.setAttribute('aria-label', checking ? 'Checked; no new messages' : 'Open and read the newest new message');
+    // Binding is refreshed independently of DOM identity. Retired controls
+    // cannot act, and current owners still decide permission/refusal.
     mark.onkeydown = event => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
+      if (!current(mark)) return;
       event.preventDefault(); event.stopPropagation(); state.on?.newest?.(stack, mark);
     };
     return mark;
   };
-  if (checking?.kind === 'fresh' || (!checking && head.fresh)) meta.append(newMark('stack-fresh', checking ? '✓' : ' · ' + head.fresh + ' new'));
-  // A minted name says who named it, in the row (item 479); a typed one says so in its tooltip.
-  const minted = head.mintedBy ? element(doc, 'span', 'stack-named', `Named by ${nameOf(head.mintedBy)}`) : null;
-  if (minted) minted.title = `Named by ${nameOf(head.mintedBy)} when the first reply landed; a name anyone types replaces it`;
-  // Who began it gives way last on a narrow tab (stack-look.css), cut short: its whole name is its tooltip.
-  const who = element(doc, 'span', 'stack-who', original ? nameOf(stack.head.author_id) : 'First message not shown'); who.title = who.textContent;
-  const carried = original ? carriesNode(doc, carriesOf(stack.head)) : null;
-  // Keep the star attached through repaint so its keyboard focus survives.
-  let star = row.querySelector(':scope > .stack-star');
-  if (!star) {
-    star = element(doc, 'span', 'stack-act stack-star');
-    star.setAttribute('role', 'button'); star.tabIndex = 0; star.dataset.stackAct = 'star';
-    // Preserve writing focus without suppressing WebKit's touch click (951).
-    star.onmousedown = event => event.preventDefault();
-    star.onkeydown = event => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      event.preventDefault(); event.stopPropagation(); star.click();
-    };
+  const fresh = checking?.kind === 'fresh' || (!checking && head.fresh) ? newMark('stack-fresh', checking ? '✓' : ' · ' + head.fresh + ' new') : null;
+  detailChildren(meta, [count, ...(repliers ? [repliers] : []), ...(fresh ? [fresh] : [])]);
+  const minted = head.mintedBy ? piece('minted', () => element(doc, 'span', 'stack-named')) : null;
+  if (minted) {
+    detailText(minted, `Named by ${nameOf(head.mintedBy)}`);
+    minted.title = `Named by ${nameOf(head.mintedBy)} when the first reply landed; a name anyone types replaces it`;
   }
-  star.onclick = event => { event.preventDefault(); event.stopPropagation(); state.on?.star?.(stack); };
+  const who = piece('who', () => element(doc, 'span', 'stack-who'));
+  detailText(who, original ? nameOf(stack.head.author_id) : 'First message not shown'); who.title = who.textContent;
+  const carried = headCarries(row, original ? carriesOf(stack.head) : null, doc);
+  const star = piece('star', () => {
+    const node = element(doc, 'span', 'stack-act stack-star'); node.setAttribute('role', 'button'); node.tabIndex = 0; node.dataset.stackAct = 'star';
+    node.onmousedown = event => event.preventDefault();
+    node.onkeydown = event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault(); event.stopPropagation(); node.click();
+    };
+    return node;
+  });
+  star.onclick = event => {
+    if (!current(star)) return;
+    event.preventDefault(); event.stopPropagation(); state.on?.star?.(stack);
+  };
   const firstStarred = state.on?.firstStarred?.(stack) ?? (original ? Boolean(stack.head.acts?.starred) : Boolean(positionOf(stack)?.starred?.includes(dossierOf(stack))));
   const starWords = firstStarred ? 'Unstar' : 'Star for me';
-  star.textContent = firstStarred ? '★\uFE0E' : '☆\uFE0E';
+  detailText(star, firstStarred ? '★\uFE0E' : '☆\uFE0E');
   star.setAttribute('aria-label', starWords); star.title = starWords;
   star.setAttribute('aria-pressed', String(firstStarred));
-  // The first message's marks stand beside who began it, then its minted name.
-  for (const child of [...row.children]) if (child !== star) child.remove();
-  row.prepend(name, pen, who, ...(carried ? [carried] : []),
-    ...(minted ? [minted] : []),
-    ...(checking?.kind === 'head' || (!checking && head.headNew) ? [newMark('stack-new', checking ? '✓' : 'New')] : []));
-  if (star.parentNode !== row) row.append(star);
-  row.append(meta, ...(open ? [act('hide', 'stack-hide', 'Show latest and unread replies')] : []));
+  const newHead = checking?.kind === 'head' || (!checking && head.headNew) ? newMark('stack-new', checking ? '✓' : 'New') : null;
+  const hide = open ? piece('hide', () => act('hide', 'stack-hide', 'Show latest and unread replies')) : null;
   paintRemoval(row, original ? stack.head : null, doc);
+  const removal = row.querySelector('.message-retracted');
+  detailChildren(row, [name, pen, who, ...(carried ? [carried] : []), ...(minted ? [minted] : []), ...(newHead ? [newHead] : []), star, meta, ...(hide ? [hide] : []), ...(removal ? [removal] : [])]);
   row.dataset.renaming = String(state.renaming === stack.id);
   return head;
 }
@@ -722,16 +738,24 @@ export function paintHeadReading(card, messages, unread, nameOf) {
 // The marks alone on the row of the stack a message heads, when only what that message
 // carries changed (item 127): the row's other parts, the stacks' order and the New line
 // stay as they are, so nothing is arranged again. A card heading no stack has no row.
+function headCarries(row, carries, doc) {
+  const kept = headDetails.get(row), key = JSON.stringify(carries);
+  if (kept.get('carries-key') !== key) {
+    kept.set('carries-key', key); kept.set('carries', carries ? carriesNode(doc, carries) : null);
+  }
+  return kept.get('carries');
+}
+
 export function paintHeadCarries(card, item, doc = card.ownerDocument) {
   const section = card.closest('.reply-stack');
   if (section?.dataset.stack !== item.id) return;
   card = section.querySelector(':scope > .stack-frame-head') ?? card;
   if (card.dataset.dossierHead !== 'true') return;
-  const row = headRows.get(card), who = row?.parentNode === card ? row.querySelector(':scope > .stack-who') : null;
+  const row = headRows.get(card), who = row?.parentElement === card ? row.querySelector(':scope > .stack-who') : null;
   if (!who) return;
-  row.querySelector(':scope > .card-carries')?.remove();
-  const carried = carriesNode(doc, carriesOf(item));
-  if (carried) who.after(carried);
+  const carried = headCarries(row, carriesOf(item), doc), previous = row.querySelector(':scope > .card-carries');
+  if (previous !== carried) previous?.remove();
+  if (carried && carried.parentElement !== row) who.after(carried);
 }
 
 // A message that no longer heads a stack is a card again.

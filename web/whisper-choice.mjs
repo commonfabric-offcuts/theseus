@@ -1,5 +1,6 @@
 // How a message is sent: Whisper, Tell or Ask (docs/whispers.md), and the
 // line above Send that says in words who will see it.
+import { detailText } from './card-detail-dom.mjs';
 //
 // The draft holds the person's own choice: `whisper` true when they chose
 // Whisper (or held it while a second name made it a Tell), false when they
@@ -214,15 +215,16 @@ export function whisperWords(item, viewer) {
   return `whisper to ${item.private_to === viewer ? 'you' : item.private_to}`;
 }
 export function paintWhisperAuthor(author, item, viewer, doc = document) {
-  for (const old of author.querySelectorAll('.whisper-label, .whisper-wait')) old.remove();
+  let label = author.querySelector('.whisper-label'), wait = author.querySelector('.whisper-wait');
   const words = whisperWords(item, viewer);
-  const label = doc.createElement('span'); label.className = 'whisper-label'; label.textContent = ` · ${words}`;
-  author.insertBefore(label, author.querySelector('.message-time'));
+  if (!label) { label = doc.createElement('span'); label.className = 'whisper-label'; }
+  detailText(label, ` · ${words}`);
+  if (label.parentElement !== author) author.insertBefore(label, author.querySelector('.message-time'));
   if (item.no_answer) {
-    const wait = doc.createElement('span'); wait.className = 'whisper-wait'; wait.textContent = ' · no answer yet';
-    author.append(wait);
-  }
+    if (!wait) { wait = doc.createElement('span'); wait.className = 'whisper-wait'; wait.textContent = ' · no answer yet'; author.append(wait); }
+  } else wait?.remove();
   const card = author.closest('.message-card'), time = author.querySelector('.message-time')?.textContent.replace(/^ · /, '');
   const carried = [...author.querySelectorAll('.carry')].map(mark => `, ${mark.getAttribute('aria-label')}`).join('');
-  card?.setAttribute('aria-label', `${item.author_id}, ${words}${time ? `, ${time}` : ''}${carried}. ${item.body}`);
+  const spoken = `${item.author_id}, ${words}${time ? `, ${time}` : ''}${carried}. ${item.body}`;
+  if (card && card.getAttribute('aria-label') !== spoken) card.setAttribute('aria-label', spoken);
 }

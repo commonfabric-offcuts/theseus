@@ -1,3 +1,4 @@
+import { detailChildren } from './card-detail-dom.mjs';
 import { editChangeMark } from './message-changes.mjs';
 // The person's marks on messages, as this page knows them. A mark's revision
 // is its whole state (odd marked, even not, 0 never marked) and only grows, so
@@ -230,18 +231,20 @@ export function paintAuthor(author, name, sent, marked, edited = false, carries 
   const shows = JSON.stringify([marks, name, sent, sent === null ? null : shownTime(sent), marked, edited, changes?.struck, changes?.shown()]);
   if (author.dataset.shows === shows) return;
   author.dataset.shows = shows;
-  author.replaceChildren();
+  const details = new Map([...author.children].filter(child => ['message-retracted', 'whisper-label', 'whisper-wait', 'asks-you'].some(name => child.classList.contains(name)))
+    .map(child => [['message-retracted', 'whisper-label', 'whisper-wait', 'asks-you'].find(name => child.classList.contains(name)), child]));
+  const content = document.createElement('span');
   const last = marked && name ? Array.from(graphemes.segment(name)).at(-1).segment : '';
   const named = document.createElement('span');
   named.className = marked ? 'author-name author-name-start' : 'author-name'; named.append(name.slice(0, name.length - last.length));
-  author.append(named);
+  content.append(named);
   if (marked) {
     const together = document.createElement('span'), pill = document.createElement('span'), spoken = document.createElement('span');
     together.className = 'together'; pill.className = 'unread-mark'; pill.textContent = 'Unread'; pill.setAttribute('aria-hidden', 'true');
     spoken.className = 'sr-only'; spoken.textContent = ', marked unread';
     const end = document.createElement('span');
     end.className = 'author-name author-name-end'; end.append(last);
-    together.append(end, pill, spoken); author.append(together);
+    together.append(end, pill, spoken); content.append(together);
   }
   // The marks are joined to the time, so a line that wraps keeps them beside it.
   const held = carriesNode(document, carries, marks);
@@ -250,10 +253,15 @@ export function paintAuthor(author, name, sent, marked, edited = false, carries 
     at.className = 'message-time';
     if (held) { const together = document.createElement('span'); together.className = 'together'; together.append(time, held); at.append(' · ', together); }
     else at.append(' · ', time);
-    author.append(at);
-  } else if (held) author.append(held);
+    content.append(at);
+  } else if (held) content.append(held);
   const edit = editChangeMark(document, edited, changes);
-  if (edit) author.append(edit);
+  if (edit) content.append(edit);
+  const core = [...content.children], at = core.findIndex(child => child.classList.contains('message-time'));
+  const kept = names => names.flatMap(name => details.has(name) ? [details.get(name)] : []);
+  const desired = at < 0 ? [...core, ...kept(['message-retracted', 'whisper-label', 'whisper-wait', 'asks-you'])]
+    : [...core.slice(0, at), ...kept(['whisper-label', 'asks-you']), ...core.slice(at), ...kept(['message-retracted', 'whisper-wait'])];
+  detailChildren(author, desired);
 }
 
 // Item 649: a shortcut on the drawn card to the reader's own private note.
