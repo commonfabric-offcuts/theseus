@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "slice": "topic_messages-before30-warm",
+  "view": "topic_messages",
+  "args": {"topic_id": "target", "direction": "before", "limit": 30},
+  "negotiated_extra": {"position_format": "root-table-v1"},
+  "caller": "web/app.mjs initialize, through web/api.mjs Api.view and checkedView",
+  "blocks": 9,
+  "warmups": 2,
+  "limit": 1.5,
+  "deferred": ["other views and argument shapes", "cold/fresh-clone strata", "complete page action inventory", "full-history canonical/DOM/native retention"]
+}

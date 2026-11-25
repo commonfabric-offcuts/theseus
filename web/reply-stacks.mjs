@@ -462,6 +462,55 @@ export function unkeep(list, pick) {
   if (changed) state.again();
 }
 
+// Snapshot endpoints as identities, not a cloned Range: clones retarget too.
+// The live clone is instead a witness of DOM-only retargeting. A replacement
+// Selection Range or a direct edit of its boundaries must win over our restore.
+function keepRangeDuringMove(parent, node, ref) {
+  const doc = parent.ownerDocument, selection = doc?.getSelection?.();
+  const range = selection?.rangeCount === 1 && !selection.isCollapsed ? selection.getRangeAt(0) : null;
+  if (!range || !node.isConnected || !selection.setBaseAndExtent ||
+      ![selection.anchorNode, selection.focusNode].some(end => node.contains(end))) {
+    parent.insertBefore(node, ref); return;
+  }
+  const endpoint = (node, offset) => ({ node, offset, data: node.data,
+    before: node.childNodes?.[offset - 1], after: node.childNodes?.[offset] });
+  const anchor = endpoint(selection.anchorNode, selection.anchorOffset), focus = endpoint(selection.focusNode, selection.focusOffset);
+  const witness = range.cloneRange(), active = doc.activeElement;
+  let chosen = false;
+  const choice = event => { if (event.type !== 'focusin' || event.target !== active) chosen = true; };
+  const choices = ['focusin', 'pointerdown', 'keydown', 'beforeinput', 'selectstart'];
+  for (const type of choices) doc.addEventListener?.(type, choice, true);
+  const valid = end => end.node.isConnected && (end.data !== undefined ? end.node.data === end.data && end.offset <= end.data.length :
+    end.offset <= end.node.childNodes.length && end.node.childNodes[end.offset - 1] === end.before && end.node.childNodes[end.offset] === end.after);
+  try {
+    parent.insertBefore(node, ref);
+    if (chosen || doc.getSelection() !== selection || selection.rangeCount !== 1 || selection.getRangeAt(0) !== range ||
+        !['startContainer', 'startOffset', 'endContainer', 'endOffset'].every(key => range[key] === witness[key]) ||
+        !valid(anchor) || !valid(focus) ||
+        doc.activeElement !== active && doc.activeElement && doc.activeElement !== doc.body) return;
+    if (selection.anchorNode !== anchor.node || selection.anchorOffset !== anchor.offset ||
+        selection.focusNode !== focus.node || selection.focusOffset !== focus.offset) {
+      selection.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset);
+    }
+  } finally {
+    for (const type of choices) doc.removeEventListener?.(type, choice, true);
+    witness.detach?.();
+  }
+}
+
+// Detachment can send focus to the body. A real focus/input choice made by
+// a caller during painting wins, including a deliberate choice of the body.
+function keepArrangementFocus(doc, active) {
+  let changed = false;
+  const chosen = event => { if (event.type !== 'focusin' || event.target !== active) changed = true; };
+  const types = ['focusin', 'pointerdown', 'keydown', 'beforeinput', 'selectstart'];
+  if (active) for (const type of types) doc.addEventListener?.(type, chosen, true);
+  return () => {
+    if (active) for (const type of types) doc.removeEventListener?.(type, chosen, true);
+    if (!changed && active?.isConnected && doc.activeElement !== active && (!doc.activeElement || doc.activeElement === doc.body)) active.focus({ preventScroll: true });
+  };
+}
+
 // Puts each node of desired, in order, among parent's children that count,
 // moving only what is out of place.
 function reconcile(parent, desired, moved, counts = () => true) {
@@ -469,7 +518,7 @@ function reconcile(parent, desired, moved, counts = () => true) {
   let ref = next(parent.firstElementChild);
   for (const node of desired) {
     if (node === ref) { ref = next(ref.nextElementSibling); continue; }
-    parent.insertBefore(node, ref);
+    keepRangeDuringMove(parent, node, ref);
     moved.push(node);
   }
 }
@@ -1090,6 +1139,8 @@ export function repaintStackReading(list, ids, messages) {
   }
   const { keep = () => false, unread = () => false, nameOf = id => id, colorOf = () => null, doc = list.ownerDocument } = frame.options;
   const active = list.contains(doc.activeElement) ? doc.activeElement : null, moved = [];
+  const restoreFocus = keepArrangementFocus(doc, active);
+  try {
   for (const { before, stack, section, byId } of ready) {
     state.stacks[state.stacks.indexOf(before)] = stack;
     for (const item of [stack.head, ...stack.replies]) {
@@ -1120,9 +1171,9 @@ export function repaintStackReading(list, ids, messages) {
     if (!moved.some(node => node.contains(box))) continue;
     box.scrollLeft = position.left; box.scrollTop = position.top; state.scrolled.delete(box);
   }
-  if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
   state.on?.arranged?.();
   return true;
+  } finally { restoreFocus(); }
 }
 
 export function arrangeStacks(list, messages, options = {}) {
@@ -1131,6 +1182,8 @@ export function arrangeStacks(list, messages, options = {}) {
   Object.assign(state, { viewer, colorOf, again: on?.arrange ?? (() => arrangeStacks(list, messages, options)) });
   if (on) state.on = on;
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
+  const restoreFocus = keepArrangementFocus(doc, active);
+  try {
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
   // At document top New above stands for arrivals not drawn yet. Keep their
   // actual cards connected, without admitting them to dossier layout. Their
@@ -1267,8 +1320,8 @@ export function arrangeStacks(list, messages, options = {}) {
     box.scrollLeft = left; box.scrollTop = top;
     state.scrolled.delete(box);
   }
-  if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
   state.on?.arranged?.();
   paintFoldedNames(list, messages, state);
   rememberReadingFrame(list, messages, byId, state, options);
+  } finally { restoreFocus(); }
 }
