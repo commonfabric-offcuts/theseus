@@ -137,7 +137,8 @@ for (const messageOrigin of [false,true]) for (const fromCard of [false,true]) f
     else {if(outcome==='unknown')throw Error('network result unavailable');return {instance_id:context.instanceId,operation_id:envelope.operation_id,kind:envelope.kind,status:'rejected',recorded:true,error:{code:'FORBIDDEN',message:'refused'}};}
     return {instance_id:context.instanceId,operation_id:envelope.operation_id,kind:envelope.kind,status:'committed',recorded:true,result};
   }};
-  const p={surface:'reader',fromCardReply:fromCard,editors:{reply:editor},mode:'reply'};
+  const p={surface:'reader',fromCardReply:fromCard,editors:{reply:editor},mode:'reply',destinationAvailable:true,
+    sourceAuthority:{...authority},source:{instance_id:context.instanceId,source_ref:{...editor.sourceRef},topic_id:'topic',whisper:false}};
   const registry=new EditorRegistry({api,journal,bootstrap:{instance_id:context.instanceId,actor:context.actor,authority},closed:()=>{closed++;}});
   const session=new EditorSession(editor,{api,journal,authority,runtime:registry.runtime,id:()=>`reader-op-${++serial}`,changed:()=>paintPendingSends(host,[editor],{topicId:'topic',underway:()=>true,target:ref=>ref?.id==='earlier-parent'?replies:null})});
   registry.sessions.set(editor.key,session);registry.current=p;

@@ -16,10 +16,15 @@ export function keepPendingSendPlace(host, paint, { current = () => true,
   restore = null,
   scroll = delta => host.ownerDocument.defaultView.scrollBy({ top: delta, behavior: 'instant' }) } = {}) {
   const doc = host.ownerDocument, active = doc.activeElement;
+  const selectionOutside = node => {
+    const selected = doc.getSelection?.();
+    return selected?.isCollapsed === false &&
+      !(node?.contains(selected.anchorNode) && node?.contains(selected.focusNode));
+  };
   const card = active?.closest?.('[data-pending-send]');
   // A browser reparent can blur a connected descendant to BODY. The captured
   // owner, rather than post-move focus, decides whether the hold still applies.
-  let held = card && host.contains(card) && current() ? card : null;
+  let held = card && host.contains(card) && current() && !selectionOutside(card) ? card : null;
   let before = held ? top(held) : null;
   // An outside button may keep focus while a visible submitted card moves.
   // Active writing/selection elsewhere keeps the existing list hold instead.
@@ -35,25 +40,40 @@ export function keepPendingSendPlace(host, paint, { current = () => true,
   const after = held?.isConnected ? held : result?.pendingReplacement;
   const focused = doc.activeElement;
   const lost = !focused || focused === doc.body;
-  if (held && after?.isConnected && current() && (lost || focused === active || after === focused || after.contains(focused))) {
+  if (held && after?.isConnected && current() && !selectionOutside(after) && (lost || focused === active || after === focused || after.contains(focused))) {
     if (lost && card === held) {
       const same = active?.isConnected && after.contains(active) ? active : after;
       same.focus({ preventScroll: true });
     }
     const delta = top(after) - before;
-    if (Number.isFinite(delta) && delta !== 0) { if (restore) restore(after, before); else scroll(delta); }
+    // The restore owner also settles temporary room. An inner list hold can
+    // make the measured delta zero while leaving that room installed.
+    if (Number.isFinite(delta)) {
+      if (restore) restore(after, before);
+      else if (delta !== 0) scroll(delta);
+    }
   }
   return result;
 }
 
-// Core derives message-origin replies from source_ref. The writing snapshot
-// need not duplicate that destination, and later editor state cannot supply it.
+// Core derives only eligible same-topic replies from source_ref. The source
+// facts were read and frozen with A; later editor/Reader state supplies none.
 export function pendingSendReplyTo(item) {
-  return item.snapshot?.reply_to ?? (item.sourceRef?.kind === 'message' ? item.sourceRef.id : null);
+  if (item.snapshot?.reply_to != null) return item.snapshot.reply_to;
+  const ref = item.sourceRef, source = item.replySource;
+  return ref?.kind === 'message' && source?.sourceRef?.kind === 'message' && source.sourceRef.id === ref.id &&
+    typeof source.topicId === 'string' && source.topicId && source.topicId === item.topicId &&
+    source.destinationId === item.topicId && samePin(source.authority, item.authority) &&
+    typeof source.whisper === 'boolean' && (!source.whisper || item.snapshot?.whisper === true) ? ref.id : null;
 }
 
 export function pendingSendVisual(editor, item, { authorKind = 'human', parent = null } = {}) {
   const snapshot = item.snapshot;
+  const replyTo = pendingSendReplyTo(item);
+  // Unknown, unrelated or private-incompatible parent words are not context
+  // for this public card, even when a caller still holds that readable source.
+  const context = replyTo && parent?.id === replyTo && parent.topic_id === item.topicId &&
+    (parent.whisper === false || parent.whisper === true && snapshot.whisper === true) ? parent : null;
   const refs = editor.uploadState?.submission_links?.[item.id]?.refs ?? [];
   const attachments = (snapshot.attachments ?? []).map(ref => {
     const link = refs.find(link => link.media_id === ref.id);
@@ -65,8 +85,8 @@ export function pendingSendVisual(editor, item, { authorKind = 'human', parent =
   return { id: `local:${editor.context.instanceId}:${item.id}`, topic_id: item.topicId,
     author_id: editor.context.actor, author_kind: authorKind, body: snapshot.body, attachments,
     whisper: snapshot.whisper === true, private_to: snapshot.whisper ? snapshot.addressees?.[0] : null,
-    reply_to: pendingSendReplyTo(item), reply_to_author: parent?.author_id,
-    reply_to_excerpt: parent?.body, reply_to_removal: parent?.removal, sent_ms: null };
+    reply_to: replyTo, reply_to_author: context?.author_id,
+    reply_to_excerpt: context?.body, reply_to_removal: context?.removal, sent_ms: null };
 }
 
 export function clearPendingSends(host) {

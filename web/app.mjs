@@ -137,7 +137,7 @@ import { showLine, lineText } from './lines.mjs';
 let retired = null, notebookSheet = null, outcomeColorPicker = null, mentionNotices = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
 let outcomePageLayout = null, topicClosing = null, notebookDeleting=null, olderFeed = null, paragraphSwitch=null;
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { clearPendingSends(ids.get('messages')); retired = ids; dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { anchorWatch?.stop(); roomy?.(); roomy = null; clearPendingSends(ids.get('messages')); retired = ids; dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -450,10 +450,11 @@ function pendingSendCard(id) {
   return [...$('messages').querySelectorAll('[data-pending-send]')].find(card => card.dataset.pendingSend === id) ?? null;
 }
 function restorePendingSendPlace(card, top) {
-  // The focused submission is this repaint's anchor, including when its
-  // canonical stack moves beyond the page's available scroll range.
+  // A send keeps its place within the natural scroll range. Manufacturing
+  // range here leaves padding that the next generic hold captures and renews.
+  // Release room from the inner list paint before measuring the settled card.
   roomy?.(); roomy = null;
-  const moved = holdRoom($('messages'), card, top, () => card.getBoundingClientRect().top, true);
+  const moved = card.getBoundingClientRect().top - top;
   if (moved) window.scrollBy({ top: moved, behavior: 'instant' });
 }
 function pendingSendTarget(ref) {
@@ -484,7 +485,9 @@ async function handoffReaderSend(p, editor, item, current, owns) {
 function paintSubmittedWriting() {
   if (!registry || !views || !topic) return;
   const editors = [...registry.sessions.values()].map(session => session.editor);
-  const current = () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending();
+  const sourceViews = views, access = listAccessEpoch, destination = topic;
+  const current = () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending() &&
+    views === sourceViews && listAccessEpoch === access && topic === destination;
   if (current()) for (const editor of editors) for (const item of editor.submissions ?? []) {
     const id = item.status === 'confirmed' ? item.receipt?.result?.message_id : null;
     const canonical = id && messageEntries.get(id), message = id && views.messages.get(id);
@@ -492,7 +495,7 @@ function paintSubmittedWriting() {
       () => reconcilePlacedSend($('messages'), editors, message, canonical, { topicId: topic.id, authority: registry.runtime.current, current }),
       { current, restore: restorePendingSendPlace });
   }
-  paintPendingSends($('messages'), editors, {
+  keepPendingSendPlace($('messages'), () => paintPendingSends($('messages'), editors, {
     topicId: topic.id,
     current: () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending(),
     visual: (editor, item) => pendingSendVisual(editor, item, { authorKind: bootstrap.actor_kind,
@@ -517,7 +520,7 @@ function paintSubmittedWriting() {
         if (source) cardReplies?.open(item.sourceRef.id, source).catch(error => status(error));
       }
     },
-  });
+  }), { current, restore: restorePendingSendPlace });
 }
 const submittedPlacements = new Map();
 function placeSubmittedWriting(editor, item) {
@@ -1302,30 +1305,39 @@ function releaseTopArrivals(absorb = false) {
   }
 }
 function keepListAnchor(paint, act = null, revised = []) {
-  const list = $('messages');
-  if (act) {
-    anchorHold = null;
-    const entry = entries(list).find(node => node.dataset.id === act.id);
-    listActAnchor = entry ? { list, views, id: act.id,
-      title: Boolean(act.anchor?.closest?.('.stack-tools, .stack-head')) || entry.getBoundingClientRect().height === 0,
-      dossier: stackState(list).stacks.find(stack => stack.id === entry.closest('.reply-stack')?.dataset.stack)?.dossier } : null;
-    const captured = actedListCard(listActAnchor);
-    if (captured && inView(captured.node)) listActAnchor.top = captured.node.getBoundingClientRect().top;
-    else listActAnchor = null;
-  }
+  const list = $('messages'), sourceViews = views, access = listAccessEpoch;
+  const paintHeld = () => {
+    if (act) {
+      anchorHold = null;
+      const entry = entries(list).find(node => node.dataset.id === act.id);
+      listActAnchor = entry ? { list, views, id: act.id,
+        title: Boolean(act.anchor?.closest?.('.stack-tools, .stack-head')) || entry.getBoundingClientRect().height === 0,
+        dossier: stackState(list).stacks.find(stack => stack.id === entry.closest('.reply-stack')?.dataset.stack)?.dossier } : null;
+      const captured = actedListCard(listActAnchor);
+      if (captured && inView(captured.node)) listActAnchor.top = captured.node.getBoundingClientRect().top;
+      else listActAnchor = null;
+    }
 
-  // Nested stack arrangements belong to the same repaint and the same hold.
-  if (anchorDepth || anchorActing && !act) return paint();
-  // A new paint starts from the current place, never a previous hold's top.
-  anchorHold = null;
-  const saved = captureListAnchor();
-  anchorDepth++;
-  try { return paint(); }
-  finally {
-    recordListArrivals(saved, revised);
-    if (saved.arrivals?.size) holdTopArrivals(saved);
-    anchorDepth--; restoreListAnchor(saved); rememberListAnchor();
-  }
+    // Nested stack arrangements belong to the same repaint and the same hold.
+    if (anchorDepth || anchorActing && !act) return paint();
+    // A new paint starts from the current place, never a previous hold's top.
+    anchorHold = null;
+    const saved = captureListAnchor();
+    anchorDepth++;
+    try { return paint(); }
+    finally {
+      recordListArrivals(saved, revised);
+      if (saved.arrivals?.size) holdTopArrivals(saved);
+      anchorDepth--; restoreListAnchor(saved); rememberListAnchor();
+    }
+  };
+  // A local submission may be the visible reading owner while it is absent
+  // from canonical selectors. Nested paints and deliberate acts keep theirs.
+  return !act && !anchorDepth && !anchorActing ? keepPendingSendPlace(list, paintHeld, {
+    current: () => Boolean(registry && views && !registry.disposed && !retired && !topicUnavailable &&
+      !authorityReviewPending() && views === sourceViews && listAccessEpoch === access),
+    restore: restorePendingSendPlace,
+  }) : paintHeld();
 }
 function paintNewAbove() {
   const list = $('messages');
@@ -1420,6 +1432,7 @@ function watchListAnchor() {
   main.addEventListener('scroll', scrolled, { capture: true, passive: true });
   window.addEventListener('resize', acted);
   anchorWatch = { mutations, observe, stop: () => {
+    roomy?.(); roomy = null;
     mutations.disconnect(); sizes.disconnect();
     if (actionFrame) cancelAnimationFrame(actionFrame);
     anchorActing = false; anchorHold = null;
@@ -1439,6 +1452,18 @@ function watchListAnchor() {
 // list's end for a hold below it. The
 // next hold gives that room back, and keeps only what it needs.
 function holdRoom(list, hold, top, position = () => hold.getBoundingClientRect().top, acted = false) {
+  const keep = (room, side, value) => {
+    const before = room.style.getPropertyValue(side), priority = room.style.getPropertyPriority(side);
+    room.style.setProperty(side, value);
+    const installed = room.style.getPropertyValue(side), installedPriority = room.style.getPropertyPriority(side);
+    const release = () => {
+      if (roomy !== release || room.style.getPropertyValue(side) !== installed ||
+          room.style.getPropertyPriority(side) !== installedPriority) return;
+      if (before) room.style.setProperty(side, before, priority);
+      else room.style.removeProperty(side);
+    };
+    roomy = release;
+  };
   const moved = position() - top, short = -(window.scrollY + moved);
   // An acted card can cross More or move to either end. Supply only the
   // scroll range missing at that end, through the same temporary-room owner.
@@ -1447,17 +1472,15 @@ function holdRoom(list, hold, top, position = () => hold.getBoundingClientRect()
     const extra = short > 0 ? short : window.scrollY + moved - end;
     if (extra > 0) {
       const side = short > 0 ? 'padding-top' : 'padding-bottom';
-      const before = list.style.getPropertyValue(side), priority = list.style.getPropertyPriority(side);
       const padding = parseFloat(getComputedStyle(list).getPropertyValue(side)) || 0;
-      list.style.setProperty(side, `${padding + extra}px`);
-      roomy = () => { if (before) list.style.setProperty(side, before, priority); else list.style.removeProperty(side); };
+      keep(list, side, `${padding + extra}px`);
     }
     return hold.getBoundingClientRect().top - top;
   }
   const home = $('new-message-sheet'), resting = home.parentElement === list && !home.open && home.contains(hold);
   if (!(short > 0) || !resting && !list.contains(hold) && !(list.compareDocumentPosition(hold) & Node.DOCUMENT_POSITION_FOLLOWING)) return moved;
   const [room, side] = resting ? [home, '--hold-room'] : [list, list.contains(hold) ? 'padding-top' : 'padding-bottom'];
-  room.style.setProperty(side, `${short}px`); roomy = () => room.style.removeProperty(side);
+  keep(room, side, `${short}px`);
   return position() - top;
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
