@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { renderer799 } from './fixtures/renderer799.mjs';
+import { foldCard, cardIn } from '../web/fold.mjs';
 import { paintAuthor, carriesOf } from '../web/marks.mjs';
 import { revisionOf, wasEdited } from '../web/message-edit-writing.mjs';
 import { paintWithdrawal } from '../web/question-withdrawal.mjs';
@@ -13,7 +14,7 @@ const updatesCode=app.slice(app.indexOf('function paintMessageUpdates()'),app.in
 let serial=0;
 const pending={request_id:'request',operation_id:'operation',state:'pending',by:'viewer',recipient:'agent',root_id:'message',observed_revision:1,at_ms:1795580000000};
 function fixture(t,refresh=null){
- const r=renderer799(),doc=r.list.ownerDocument,kept=new Map(),sent=[];
+ const r=renderer799(),doc=r.list.ownerDocument,kept=new Map(),sent=[];doc.createTextNode=text=>text;
  const before=globalThis.document;globalThis.document=doc;t.after(()=>{globalThis.document=before;configureCoverRefresh(null);});
  doc.defaultView={localStorage:{getItem:k=>kept.get(k)??null,setItem:(k,v)=>kept.set(k,v),removeItem:k=>kept.delete(k)}};
  doc.querySelectorAll=s=>r.list.querySelectorAll(s);
@@ -25,9 +26,9 @@ function fixture(t,refresh=null){
  const item={id:'message',topic_id:'topic',author_id:'agent',author_kind:'agent',revision:1,sent_ms:1795580000000,acts:{message_refresh:refresh,message_refresh_revision:refresh?1:0}};
  const records=new Map([[item.id,item]]),entries=new Map([[item.id,card]]);
  const context={viewer:'viewer',nameOf:id=>id,topicId:'topic'};
- const ports={document:doc,cardScroll:null,revisionOf,messageChanges:null,toggleMessageChanges(){},paintAuthor,displayActor:id=>id,marks:null,wasEdited,carriesOf,paintWithdrawal,paintRemoval,bootstrap,here:null,stackFeed:null,messageUpdateActivity,messageUpdateHost,updateContext:()=>context,visitNew:null,paintVisitNew(){},messageEntries:entries,views:{messages:records},cardIn:e=>e,reader:null};
+ const ports={document:doc,cardScroll:null,revisionOf,messageChanges:null,toggleMessageChanges(){},paintAuthor,displayActor:id=>id,marks:null,wasEdited,carriesOf,paintWithdrawal,paintRemoval,bootstrap,here:null,stackFeed:null,messageUpdateActivity,messageUpdateHost,updateContext:()=>context,visitNew:null,paintVisitNew(){},messageEntries:entries,views:{messages:records},cardIn,reader:null};
  const methods=new Function(...Object.keys(ports),authorCode+updatesCode+';return {paintCardAuthor,paintMessageUpdates};')(...Object.values(ports));
- return {...r,doc,card,author,folded,item,records,context,kept,sent,reply,bootstrap,paint:()=>methods.paintCardAuthor(author,item),updates:()=>methods.paintMessageUpdates()};
+ return {...r,doc,card,author,folded,item,records,context,kept,sent,reply,bootstrap,entries,paint:()=>methods.paintCardAuthor(author,item),updates:()=>methods.paintMessageUpdates()};
 }
 test('1243 actual cached author has one stable hidden activity after 32 paints',t=>{
  const f=fixture(t);f.paint();const host=f.author.querySelector('.message-update'),name=f.author.querySelector('.author-name');
@@ -68,4 +69,24 @@ test('1243 actual menu request keeps the exact unknown operation for retry and f
  f.bootstrap.authority={authority_id:'new',authority_epoch:'epoch'};await act.act();assert.equal(f.sent.length,2,'no saved operation crosses authority');assert.equal(f.kept.size,1);
  f.bootstrap.authority=original.expected.authority;f.reply.run=async e=>({...e,status:'committed',recorded:true,result:{refresh:{...pending,operation_id:e.operation_id},refresh_revision:1}});
  await act.act();assert.deepEqual(f.sent[2],original);assert.equal(f.kept.size,0);assert.equal(f.card.querySelectorAll('.message-update').length,1);assert.equal(f.author.querySelector('.message-update').hidden,false);
+});
+
+test('1243 direct cached author repaint preserves folded, closed-head and wrapped activity hosts', t => {
+ for (const mode of ['folded','head','wrapped']) {
+  const f=fixture(t,pending);f.paint();let visible;
+  if(mode==='folded'){f.card.dataset.folded='true';visible=f.folded;}
+  if(mode==='head'){
+   const section=f.doc.createElement('section');section.className='reply-stack';section.dataset.headOpen='false';
+   f.card.classList.add('stack-head-card');const head=f.doc.createElement('span');head.className='stack-head';f.card.append(head);
+   f.card.parentElement.append(section);section.append(f.card);visible=head;
+  }
+  if(mode==='wrapped'){
+   const parent=f.card.parentElement,entry=foldCard(f.card,{...f.item,seq:1,body:'Source',addressees:['other']},f.doc);parent.append(entry);
+   f.entries.set(f.item.id,entry);visible=entry;
+  }
+  f.updates();const activity=visible.querySelector('.message-update'),line=activity.querySelector('.refresh-request-line');
+  assert.ok(activity);for(let i=0;i<8;i++)f.paint();
+  assert.equal(activity.parentElement,visible,mode);assert.equal(visible.querySelector('.message-update'),activity,mode);
+  assert.equal(activity.querySelector('.refresh-request-line'),line,mode+' descendants');
+ }
 });

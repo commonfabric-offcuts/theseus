@@ -1972,7 +1972,7 @@ function paintReplyContext(card, item, messages = feedMessages()) {
   paintReplyLine(line, item, context);
 }
 function paintCardAuthor(author, item) {
-  const entry = messageEntries.get(item.id) ?? author, previousUpdate = entry.querySelector('.message-update');
+  const retained = messageEntries.get(item.id), entry = retained ?? author, previousUpdate = entry.querySelector('.message-update');
   const struck = cardScroll?.revisions.get(item.id) === revisionOf(item) && cardScroll.wholes.has(item.id)
     ? cardScroll.strikes.get(item.id) : item.struck;
   const changes = { struck, shown: () => messageChanges?.shown(item.id, revisionOf(item)) ?? true,
@@ -1987,7 +1987,8 @@ function paintCardAuthor(author, item) {
   stackFeed?.paintStar(author, item);
   const update = messageUpdateActivity(document, item, updateContext(item.topic_id), previousUpdate);
   for (const old of entry.querySelectorAll('.message-update')) if (old !== update) old.remove();
-  if (update && update.parentElement !== author) author.append(update);
+  const host = retained ? messageUpdateHost(cardIn(retained), retained) ?? author : author;
+  if (update && update.parentElement !== host) host.append(update);
   paintVisitNew(author, author, Boolean(visitNew?.has(item.id)));
 }
 // Who the composers may whisper to, and who everyone in this topic is: the
