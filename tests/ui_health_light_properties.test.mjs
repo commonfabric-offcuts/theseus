@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { HealthLight, standing } from '../web/health-light.mjs';
 
 class ClassList { constructor() { this.names = new Set(); } toggle(name, on) { if (on) this.names.add(name); else this.names.delete(name); } contains(name) { return this.names.has(name); } }
-const link = () => ({ classList: new ClassList(), textContent: 'Health', attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, removeAttribute(key) { delete this.attributes[key]; } });
+const link = () => ({ classList: new ClassList(), textContent: 'Health', attributes: {}, getAttribute(key) { return this.attributes[key] ?? null; }, setAttribute(key, value) { this.attributes[key] = value; }, removeAttribute(key) { delete this.attributes[key]; } });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 // A small deterministic generator, so a failing seed can be run again.

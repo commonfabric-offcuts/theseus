@@ -868,12 +868,13 @@ export class OutlineRail {
       outcome.li.toggleAttribute('data-open', open);
       outcome.li.toggleAttribute('data-fresh', count(item.unread) > 0);
       outcome.li.toggleAttribute('data-waiting', waitingIn(item) > 0);
-      outcome.topics.hidden = !open;
+      if (outcome.topics.hidden !== !open) outcome.topics.hidden = !open;
       outcome.disclosure.setAttribute('aria-expanded', String(open));
       outcome.disclosure.setAttribute('aria-label', `${open ? 'Fold' : 'Open'} topics in ${item.title}`);
       // One retained owner supplies these rows on both topic and outcome pages.
       outcome.own.hidden = false;
-      outcome.topics.setAttribute('aria-label', `Topics in ${item.title}`);
+      const topicLabel = `Topics in ${item.title}`;
+      if (outcome.topics.getAttribute('aria-label') !== topicLabel) outcome.topics.setAttribute('aria-label', topicLabel);
       const target = this.nameTarget(outcome);
       outcome.name.href = routeHref(target);
       if (route?.kind === 'workspace' && route.id === item.id) outcome.name.setAttribute('aria-current', 'page'); else outcome.name.removeAttribute('aria-current');

@@ -113,10 +113,14 @@ export class HealthLight {
 
   paint() {
     const said = standing(this.facts());
-    this.link.classList.toggle('red', said === 'lit' || said === 'unread');
-    this.link.textContent = { checking: CHECKING_WORDS, unread: UNREAD_WORDS, lit: LIT_WORDS, quiet: 'Health' }[said];
-    if (said === 'unread') this.link.setAttribute('aria-label', 'Health: it could not be checked, so something may need attention');
-    else if (said === 'lit') this.link.setAttribute('aria-label', 'Health: something needs attention');
-    else this.link.removeAttribute('aria-label');
+    const red = said === 'lit' || said === 'unread';
+    if (this.link.classList.contains('red') !== red) this.link.classList.toggle('red', red);
+    const words = { checking: CHECKING_WORDS, unread: UNREAD_WORDS, lit: LIT_WORDS, quiet: 'Health' }[said];
+    if (this.link.textContent !== words) this.link.textContent = words;
+    const label = said === 'unread' ? 'Health: it could not be checked, so something may need attention'
+      : said === 'lit' ? 'Health: something needs attention' : null;
+    if (this.link.getAttribute('aria-label') !== label) {
+      if (label === null) this.link.removeAttribute('aria-label'); else this.link.setAttribute('aria-label', label);
+    }
   }
 }

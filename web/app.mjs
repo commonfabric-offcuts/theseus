@@ -1682,10 +1682,12 @@ function syncDossierHeads() {
 function stackMessages() { syncDossierHeads(); feedOf().arrange(); paintDossierSourceStatus(); paintSubmittedWriting(); }
 function paintStarredStatus() {
   const line = $('starred-status'), words = $('starred-status-words'), retry = $('starred-retry');
-  line.hidden = topicUnavailable || authorityReviewPending() || !views.starredPending;
-  line.classList.toggle('sr-only', !views.starredError);
-  words.textContent = views.starredError ? 'Could not finish loading starred dossiers. ' : 'Loading starred dossiers…';
-  retry.hidden = !views.starredError;
+  const hidden = Boolean(topicUnavailable || authorityReviewPending() || !views.starredPending), quiet = !views.starredError;
+  if (line.hidden !== hidden) line.hidden = hidden;
+  if (line.classList.contains('sr-only') !== quiet) line.classList.toggle('sr-only', quiet);
+  const said = views.starredError ? 'Could not finish loading starred dossiers. ' : 'Loading starred dossiers…';
+  if (words.textContent !== said) words.textContent = said;
+  if (retry.hidden !== quiet) retry.hidden = quiet;
   retry.onclick = () => { views.resetStars(); freshness?.request({ retry: true }); };
 }
 // The fallback is a real canonical dossier route, guarded by the same writing
