@@ -519,7 +519,8 @@ class Store(ActionPerformance, CurrentRule, PieceClock, HostedRecovery, Workspac
             self._check_instance(db)
             kind = self._actor(db, actor)["kind"]
             if view_name == "capabilities":
-                return {"instance_id": self.instance_id, "limits": dict(LIMITS), "runtime": runtime,
+                from .dossier_positions import FORMAT
+                return {"read_formats": {"dossier_positions": [FORMAT]}, "instance_id": self.instance_id, "limits": dict(LIMITS), "runtime": runtime,
                         "authority": self._authority.facts(fence.record), "runner": self._runner_facts(db),
                         "attention": {"after": self._addressed_after(db, actor)}, "actor_kind": kind}
             if view_name == "operation":

@@ -886,8 +886,9 @@ class Stacks:
                 others[root] = bool(db.execute(MEMBERS + " SELECT EXISTS(SELECT 1 FROM members WHERE id<>:root)",
                                                {"root": root, "actor": actor}).fetchone()[0])
             position["has_other_messages"] = others[root]
-        return {"instance_id": self.instance_id, "topic_id": topic["id"],
-                "items": [{"message_id": row["id"], "stack_position": found[row["id"]]} for row in rows]}
+        from .dossier_positions import pack_positions
+        return pack_positions({"instance_id": self.instance_id, "topic_id": topic["id"],
+                               "items": [{"message_id": row["id"], "stack_position": found[row["id"]]} for row in rows]}, args)
 
     def _view_stack_namer(self, db, actor, args):
         """Who names the dossier a message is in (item 479), for an agent about to mint its name: the dossier's first

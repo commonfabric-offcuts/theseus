@@ -752,7 +752,8 @@ class Conversation:
                 raise Refusal("VIEW_TOO_LARGE", "A preview cannot fit in the bounded response")
             items.pop(0 if backwards else -1)
             answer["next_cursor"] = items[0 if backwards else -1]["seq"]
-        return answer
+        from .dossier_positions import pack_positions
+        return pack_positions(answer, args, byte_limit=LIMITS["summary_utf8_bytes"])
 
     def _named_messages(self, db, actor, topic, ids):
         """The ids topic_messages was asked for, each once: one to 100 messages of this topic the actor can see, or a
