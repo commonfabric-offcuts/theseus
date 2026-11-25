@@ -5961,5 +5961,13 @@
         "web/app.mjs"
       ]
     }
+  },
+  "tests/ui_send_receipt_sequence_1261.test.mjs": {
+    "06b51e7edb441935247b84895d71c81c774c6dd3cc21a694ee57429e6f59d0cb": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
   }
 }
