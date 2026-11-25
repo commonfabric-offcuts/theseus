@@ -6,10 +6,11 @@ import {mkdir,mkdtemp,writeFile,readFile,rm,access} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import net from 'node:net';
 import {fixtureControl} from './fixture_control.mjs';
+import {unopenedDeleteOutcomes} from './fixtures/rail_native_outcomes.mjs';
 const engines=await import(process.env.AIM_PLAYWRIGHT_CORE),engine=process.env.AIM_ENGINE??'chromium';
 const selected=new RegExp(process.argv[3]??'');
 const evidence=process.argv[2];await mkdir(evidence,{recursive:true});
-const sourceFiles=['web/app.mjs','web/notebook-page.mjs','web/notebook-writing.mjs','web/notebook-sheet.mjs','web/notebook-delete-ui.mjs','web/in-place-navigation.mjs','web/rails.mjs','web/look.css','tests/fixtures/ui_http.py','tests/notebook_delete_1051_native.mjs'];
+const sourceFiles=['web/app.mjs','web/notebook-page.mjs','web/notebook-writing.mjs','web/notebook-sheet.mjs','web/notebook-delete-ui.mjs','web/in-place-navigation.mjs','web/rails.mjs','web/look.css','tests/fixtures/ui_http.py','tests/notebook_delete_1051_native.mjs','tests/fixtures/rail_native_outcomes.mjs'];
 const hashes=Object.fromEntries(await Promise.all(sourceFiles.map(async path=>[path,createHash('sha256').update(await readFile(path)).digest('hex')])));
 await writeFile(`${evidence}/source.json`,JSON.stringify({head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),hashes},null,2));
 for(const path of sourceFiles){const saved=`${evidence}/source/${path}`;await mkdir(saved.slice(0,saved.lastIndexOf('/')),{recursive:true});await writeFile(saved,await readFile(path));}
@@ -23,6 +24,7 @@ function retain(){const all=processes();for(let changed=true;changed;){changed=f
 try {
  const facts=await control({method:'ready'});origin=facts.origin;await writeFile(`${evidence}/fixture.json`,JSON.stringify({origin,pid:fixture.pid}));
  profile=await mkdtemp(`${evidence}/${engine}-profile-`);const persistent=await engines[engine].launchPersistentContext(profile,{headless:true,...(engine==='chromium'?{executablePath:process.env.AIM_CHROME}:{})});browser=persistent.browser();retain();assert.ok(owned.size);
+ results.push(...await unopenedDeleteOutcomes({browser,control,facts,evidence}));
  for(const width of [320,375,390,1280])for(const look of ['bookends','paper']){
   const key=`${width}-${look}`;if(!selected.test(key))continue;
   const seeded=await control({method:'agent_topic',operation_id:`delete1051-${engine}-${key}`,title:'Delete Notebook1051',body:'A topic without Notebook pages.',team:true});
