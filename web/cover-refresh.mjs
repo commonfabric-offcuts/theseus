@@ -8,7 +8,7 @@ import { stackCover } from './stack-order.mjs';
 import { timeNode } from './times.mjs';
 
 let runtime = null;
-const requests = new Map(), painters = new WeakMap();
+const requests = new Map(), painters = new WeakMap(), activityUpdates = new WeakMap();
 export const configureCoverRefresh = provider => { runtime = provider; };
 const authorityKey = value => JSON.stringify([value?.authority_id, value?.authority_epoch]);
 const storageKey = (binding, target) => `aim-next-${target.type === 'cover' ? 'cover' : 'message'}-refresh:${JSON.stringify([binding.instance_id, binding.actor, target.id])}`;
@@ -115,9 +115,15 @@ export function refreshLine(doc, target, context) {
   const request = refreshRequest(doc, target);
   if (!request) return null;
   if (!request.state().refresh?.request_id) return null;
+  let drawn = null;
   const line = doc.createElement('span'); line.className = 'refresh-request-line'; line.dataset.coverRefresh = request.key;
   const draw = () => {
     const { refresh } = request.state(), completed = refresh?.state === 'completed';
+    if (target.type === 'message') {
+      const state = JSON.stringify([refresh, context.nameOf(refresh?.by), context.nameOf(refresh?.recipient), context.nameOf(refresh?.completed_by)]);
+      if (state === drawn) return;
+      drawn = state;
+    }
     // A cover's revision owns its completion footer, including direct writes.
     // Keep the request's timed pending line, without a second completion claim.
     line.hidden = !refresh?.request_id || (target.type === 'cover' && completed);
@@ -135,13 +141,24 @@ const coverTarget = cover => ({ type: 'cover', first: !writtenCover(cover), id: 
   refresh: cover.refresh, refresh_revision: cover.refresh_revision });
 export const coverRequestLine = (doc, cover, context) => refreshLine(doc, coverTarget(cover), context);
 
-function activity(doc, target, context) {
-  const request = refreshRequest(doc, target);
+function activity(doc, target, context, existing = null) {
+  let request = refreshRequest(doc, target);
   if (!request) return null;
   const isCover = target.type === 'cover';
+  if (!isCover && existing?.dataset.coverRefresh === request.key && activityUpdates.has(existing)) {
+    activityUpdates.get(existing)(target, context, request);
+    return existing;
+  }
+  let drawn = null;
   const host = doc.createElement('span'); host.className = isCover ? 'cover-refresh' : 'message-update'; host.dataset.coverRefresh = request.key;
   const draw = () => {
     const { refresh, pending, busy, error } = request.state();
+    if (!isCover) {
+      const state = JSON.stringify([refresh, pending, busy, error, context.topicId,
+        refresh && [context.nameOf(refresh.recipient), context.nameOf(refresh.by), context.nameOf(refresh.completed_by)]]);
+      if (state === drawn) return;
+      drawn = state;
+    }
     const legacy = pending && Boolean(refresh.request_message_id), open = legacy ? '. Open the request' : '';
     const label = pending ? (isCover ? (target.first ? `Asked ${context.nameOf(refresh.recipient)} to write a cover${open}` : `Awaiting ${context.nameOf(refresh.recipient)}’s new cover${open}`)
       : `Asked ${context.nameOf(refresh.recipient)} to update this message${open}`)
@@ -162,6 +179,9 @@ function activity(doc, target, context) {
     host.replaceChildren(...(isCover || pending || busy ? [control] : []), status, ...(line ? [line] : []));
     if (focused && !host.hidden && control.isConnected) control.focus({ preventScroll: true });
   };
+  activityUpdates.set(host, (nextTarget, nextContext, nextRequest) => {
+    target = nextTarget; context = nextContext; request = nextRequest; draw();
+  });
   painters.set(host, draw); draw(); return host;
 }
 
@@ -194,9 +214,9 @@ export function updateMenuItem(doc, item, context) {
   const request = refreshRequest(doc, messageTarget(item));
   return request ? { label: 'Ask for update', glyph: 'refresh', act: () => request.send() } : null;
 }
-export function messageUpdateActivity(doc, item, context) {
+export function messageUpdateActivity(doc, item, context, existing = null) {
   if (!mayAskForUpdate(item, context.viewer) && !item.acts?.message_refresh?.request_id) return null;
-  return activity(doc, messageTarget(item), context);
+  return activity(doc, messageTarget(item), context, existing);
 }
 
 // Ordinary asks fold their source. Activity follows the message's visible row.
