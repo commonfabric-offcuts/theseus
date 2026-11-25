@@ -58,7 +58,7 @@ test('853 waits render Markdown while preserving source links, explicit answers 
   assert.equal(words.querySelector('a').href, 'https://example.test/date');
   assert.match(sheet.querySelector('.topic-state').href, /message=source/);
   assert.equal(sheet.querySelector('.cover-note').text, 'Waiting for your answer.');
-  assert.equal(waitWords({ text: 'Legacy wait', default: null }), 'Waiting for your answer.');
+  assert.equal(waitWords({ text: 'Legacy wait', default: null }), 'Waiting for an answer.');
   assert.equal(waitWords({ options: ['Friday', 'Saturday'], default: 'Friday', reason: 'Already booked' }), 'Options: Friday | Saturday · Default: Friday. · Already booked');
   assert.match(coverPills(f.doc, value, f.context).querySelector('.pill-waits').title, /Waiting for your answer\./);
   assert.equal(JSON.stringify(value), before);
@@ -97,7 +97,7 @@ test('853 CSS declares one sheet grid, a keyboard-reachable hover control and a 
 
 test('853 the no-options/no-default note replaces all redundant explanations with the named default', () => {
   for (const wait of [{ default: null }, { options: [], default: null }, { options: [], default: null, reason: 'No choices or default were supplied; waiting for your response.' }])
-    assert.equal(waitWords(wait), 'Waiting for your answer.');
+    assert.equal(waitWords(wait), 'Waiting for an answer.');
   assert.equal(waitWords({ options: ['Go', 'Wait'], default: null, reason: 'A choice is needed' }), 'Options: Go | Wait · No default promised · A choice is needed');
 });
 
