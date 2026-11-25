@@ -5,6 +5,9 @@ Return that same integer as `result.seq` from the shared publication result;
 `message.send` keeps it alongside `submission_id`. Topic opening and other
 existing publication callers carry the same additive result field. No schema,
 request shape, binding or protocol-version change is needed.
+This includes the early return for an agent answering a person's whisper:
+it carries its own inserted sequence without changing shared topic state or
+exposing its private message/receipt to another actor.
 
 This is the committed message sequence, not the submission.prepare sequence,
 commit cursor, topic version or a later source lookup. The original operation

@@ -477,7 +477,7 @@ class Conversation:
                 self._change(db, "actor", member, "whisper", topic_id, sequence)
             if not counts:
                 # An agent's whisper answers a person's whisper and changes nothing shared about the topic.
-                return {"message_id": message_id, "topic": {"id": topic_id, "version": topic["version"]},
+                return {"message_id": message_id, "seq": sequence, "topic": {"id": topic_id, "version": topic["version"]},
                         "delivery": {"queued": len(audience), "unavailable_subscribers": []}, "whisper": True, "reply_basis": basis}, [
                             {"kind": "message", "id": message_id, "version": 1}]
         else:
