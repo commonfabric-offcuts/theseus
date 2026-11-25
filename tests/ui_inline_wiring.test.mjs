@@ -232,8 +232,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   let changeSeq = 0;
   const changeHistory = { actor: [], topic: [], workspace: [] };
   const changes = {
-    add(scope, kind, id = scope === 'workspace' ? topic.workspace_id : topic.id) {
-      const item = { seq: ++changeSeq, resource_kind: kind, resource_id: id, version: changeSeq };
+    add(scope, kind, id = scope === 'workspace' ? topic.workspace_id : topic.id, version = null) {
+      const seq = ++changeSeq, item = { seq, resource_kind: kind, resource_id: id, version: version ?? seq };
       changeHistory[scope].push(item); return item.seq;
     },
     projection: () => ({ topics: [], counts: [] }),
@@ -4055,32 +4055,60 @@ test('an outcome that becomes unavailable stops showing its Notebook pages and t
   assert.equal(f.get('outcome-references').hidden, false, 'recovery lists them again');
 });
 
-test('a cached topic Notebook page keeps its read revision across commits without a bottom-feed card', async () => {
-  const f = fixture(), live = stream(); Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+test('a cached topic Notebook page keeps its read revision across commits without a bottom-feed card', async t => {
+  const clock = pageClock(), live = stream(); live.connected = true;
+  const f = fixture(undefined, { setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
+    Freshness: class extends Freshness { constructor(options) { super({ ...options, timers: clock, random: () => 0, yieldRead: async () => {} }); } } }); Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  f.bootstrap.transport = { read_admission: { version: 1, header: 'X-AIM-Read-Class',
+    foreground: { slots: 1, max_waiters: 8, queue_timeout_ms: 5000 }, background: { slots: 1, max_waiters: 2, queue_timeout_ms: 500 } } };
   f.useLive(live);
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
   const scope = { kind: 'topic', id: 't1' };
   const page = (revision, read_revision) => ({ id: 'n1', seq: 1, owner_scope: scope, revision, read_revision, title: 'Plan', body: 'Words',
     source_ref: { kind: 'memory', id: 'n1', revision } });
   let shown = page(3, 1);
+  const window = f.changes.window;
+  f.changes.window = input => {
+    const answer = window(input);
+    if (input.scope.kind === 'topic') answer.covered_versions.notebook = shown.revision;
+    return answer;
+  };
   const view = f.api.view;
   f.api.view = async (name, args) => name === 'memory_items' && args.owner_scope?.kind === 'topic'
-    ? (f.calls.push({ name, args }), { instance_id: 'fixture', items: [shown], next_cursor: null, relevant_versions: { notebook: 3 } }) : view(name, args);
+    ? (f.calls.push({ name, args }), { instance_id: 'fixture', items: [shown], next_cursor: null, relevant_versions: { notebook: shown.revision } }) : view(name, args);
   await f.initialize(); await drain();
+  const freshness = f.owners().freshness;
+  assert.ok(freshness instanceof Freshness, 'the real invalidation/drain owner is enabled');
+  assert.equal(freshness.enabled, true);
+  t.after(() => { freshness.dispose(); f.runObservation('if (typeof pageRefresh !== "undefined") pageRefresh?.dispose()'); });
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
-  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness });
   views.memoryPage({ instance_id: 'fixture', items: [shown], next_cursor: null, relevant_versions: { notebook: 3 } }, { initial: true });
+  const invalidations = [], refreshes = [];
+  const invalidate = freshness.invalidate.bind(freshness), refresh = views.refresh.bind(views);
+  freshness.invalidate = (key, version, force) => { invalidations.push({ key, version }); return invalidate(key, version, force); };
+  views.refresh = (key, version, ...owners) => { refreshes.push({ key, version }); return refresh(key, version, ...owners); };
   const state = () => [views.memory.get('n1').revision, views.memory.get('n1').read_revision];
   assert.deepEqual(state(), [3, 1]);
   assert.equal(f.get('memory-items').children.length, 0, 'the right rail owns the visible page list');
   const asked = () => f.calls.filter(call => call.name === 'memory_items' && call.args.owner_scope?.kind === 'topic').length;
   const before = asked();
   shown = page(3, 3);
-  f.changes.add('actor', 'memory_read', 'n1'); live.emit({ kind: 'commit', seq: 9 }); await drain();
+  f.changes.add('actor', 'memory_read', 'n1', 3); live.emit({ kind: 'commit', seq: 9 }); await drain();
   assert.equal(asked(), before + 1, 'a commit reads the topic Notebook\'s read state again');
   assert.deepEqual(state(), [3, 3], 'read, the cache records that revision');
+  assert.deepEqual(refreshes.filter(item => item.key === 'memory:n1'), [], 'private read state uses its separate read owner');
+  const revisionStart = f.calls.length; invalidations.length = refreshes.length = 0;
   shown = page(4, 3);
-  f.changes.add('actor', 'memory_read', 'n1'); live.emit({ kind: 'commit', seq: 10 }); await drain();
+  // Core writes publish owner-scoped memory, not the reader's private memory_read.
+  f.changes.add('topic', 'memory', 'n1', 4); live.emit({ kind: 'commit', seq: 10 }); await drain();
+  assert.deepEqual(invalidations.filter(item => item.key === 'memory:n1'), [{ key: 'memory:n1', version: 4 }]);
+  assert.deepEqual(refreshes.filter(item => item.key === 'memory:n1'), [{ key: 'memory:n1', version: 4 }], 'the actual TopicViews refresh reads this item through Freshness');
+  const exact = f.calls.slice(revisionStart).filter(call => call.name === 'memory_items' && call.args.cursor === 0 && call.args.limit === 1);
+  assert.equal(exact.length, 1, 'one canonical invalidation performs the exact loaded-item refresh');
+  assert.deepEqual(exact[0].args.owner_scope, scope);
+  assert.equal(freshness.dirty.has('memory:n1'), false, 'the successful real refresh settles its invalidation');
+  t.diagnostic(JSON.stringify({ canonical: { scope, resource_kind: 'memory', resource_id: 'n1', version: 4 }, invalidations, refreshes, exact: exact.map(call => call.args) }));
   assert.deepEqual(state(), [4, 3], 'revised again, the cache retains the read revision');
   assert.equal(f.get('memory-items').children.length, 0, 'commits do not recreate bottom-feed pages');
 });
