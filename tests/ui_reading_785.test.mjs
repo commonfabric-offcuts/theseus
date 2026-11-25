@@ -72,11 +72,11 @@ test('1247 full capture eviction arrival restore retires every detached hold ref
  const m=model(),gone=m.nodes.slice(1),anchor=m.nodes[0],before=anchor.getBoundingClientRect().top;
  for(const entry of m.nodes){m.context.views.messages.set(entry.dataset.id,{id:entry.dataset.id,seq:Number(entry.dataset.seq),topic_id:'isolated-topic',author_id:'outside'});m.context.messageEntries.set(entry.dataset.id,entry);}
  Object.assign(m.context,{windowEvictions:new Set(),coldArrivals:null,dropCardDocuments(){},dropCardImages(){},cardScroll:null,cardObserver:null,middleObserver:null,
-  halfShown:new Set(),atMiddle:new Set(),openedIds:new Set(),cardReplies:null,messageChanges:null,questionStates:null,visitNew:null,reader:null,messageEdit:null,forgetStackMessages(){},stackFeed:null});
+  halfShown:new Set(),atMiddle:new Set(),seenEntries:new Map(),openedIds:new Set(),cardReplies:null,messageChanges:null,questionStates:null,visitNew:null,reader:null,messageEdit:null,forgetStackMessages(){},stackFeed:null});
  Object.assign(m.context.views,{windowRoots:new Set(),windowHints:new Map()});
  Object.assign(m.context.registry,{cards:new Map(),current:null,sessions:new Map()});
  for(const entry of gone)entry.remove=()=>{entry.isConnected=false;m.nodes.splice(m.nodes.indexOf(entry),1);};
- vm.runInContext(source.slice(source.indexOf('function queueWindowEvictions'),source.indexOf('async function readWindowGap')),m.context);
+ vm.runInContext(source.slice(source.indexOf('function observeReadEntry('),source.indexOf('function revokeMedia()')) + source.slice(source.indexOf('function queueWindowEvictions'),source.indexOf('async function readWindowGap')),m.context);
  m.api.keepListAnchor(()=>{
   m.arrive(80);
   for(const entry of gone)m.context.views.messages.delete(entry.dataset.id);

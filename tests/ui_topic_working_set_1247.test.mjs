@@ -180,7 +180,11 @@ test('1247 retirement prunes visit decoration without marking a stored message r
 });
 
 const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
-const appFunctions = (start, end, env, ports) => new Function(...Object.keys(env), app.slice(app.indexOf(start), app.indexOf(end)) + '\nreturn ' + ports)(...Object.values(env));
+const readTracking = app.slice(app.indexOf('function observeReadEntry('), app.indexOf('function revokeMedia()'));
+const appFunctions = (start, end, env, ports) => {
+  env.seenEntries ??= new Map();
+  return new Function(...Object.keys(env), readTracking + app.slice(app.indexOf(start), app.indexOf(end)) + '\nreturn ' + ports)(...Object.values(env));
+};
 test('1247 actual app retirement releases DOM, observers, stack/body owners but preserves original writing and operations', () => {
   const gone = { dataset: { id: 'm1', seq: '1' }, isConnected: true, remove() { this.isConnected = false; } };
   const kept = { dataset: { id: 'm2', seq: '2' }, isConnected: true };

@@ -11,7 +11,7 @@ import { seenRanges } from '../web/card-reading.mjs';
 
 const app = await readFile(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const source = app.slice(app.indexOf('async function loadToUnread()'), app.indexOf('// Where the oldest unread message is, read again'));
-const reading = app.slice(app.indexOf('function noteRead()'), app.indexOf('// A card counts as on screen'));
+const reading = app.slice(app.indexOf('function readingAllowed()'), app.indexOf('// A card counts as on screen'));
 function fixture({ renewed = false } = {}) {
   let revision = 1, current = true, visible = true, serial = 0, transient = false;
   const doc = { visibilityState: 'visible', hasFocus: () => true, addEventListener() {} }, main = { inert: false };
@@ -25,14 +25,15 @@ function fixture({ renewed = false } = {}) {
     } } });
   marks.learn('old', 1, { topicId: 'beds', seq: 1 });
   const card = { isConnected: true, focus: () => { focus.push('old'); doc.activeElement = card; } };
-  const entry = { dataset: { id: 'old', seq: '1' } }, later = { dataset: { id: 'later', seq: '2' } };
+  const entry = { dataset: { id: 'old', seq: '1' }, isConnected: true }, later = { dataset: { id: 'later', seq: '2' }, isConnected: true };
   const bindings = { shell: { drawer: { isOpen: () => false } }, views: { line: { id: 'old' }, oldestUnread: { id: 'old' },
-    messages: new Map([['old', { id: 'old', seq: 1, stack_position: { root_id: 'root' } }], ['later', { id: 'later', seq: 2 }]]), runOf: () => 'run', sighted() {} },
+    messages: new Map([['old', { id: 'old', seq: 1, topic_id: 'beds', author_id: 'outside', stack_position: { root_id: 'root' } }], ['later', { id: 'later', seq: 2, topic_id: 'beds', author_id: 'outside' }]]), runOf: () => 'run', sighted() {} },
     loadUntil: async wanted => { transient = true; actions.noteRead(); if (wanted()?.id === 'root' && renewed) { revision = 3; marks.learn('old', 3); } return entry; },
     entries: () => [entry, later], $: id => id === 'main' ? main : {}, reveal: (e, options) => { transient = false; reveals.push(options); return e; }, opened: () => card,
     topic: { id: 'beds' }, topicUnavailable: false, listAccessEpoch: 0, retired: false, releaseTopArrivals() {}, anchorHold: null, authorityReviewPending: () => false, review: { open: false }, laidOut: true,
     readThrough: { seen: (topic, from, through) => { readReports.push([from, through]); return Promise.resolve(null); } },
-    halfShown: new Set([1, 2]), atMiddle: new Set(), seenRanges, bootstrap: { actor: 'fixture-person' },
+    halfShown: new Set([1, 2]), atMiddle: new Set(), seenEntries: new Map([[1, entry], [2, later]]), readingStopped: false,
+    messageEntries: new Map([['old', entry], ['later', later]]), newAbove: new Set(), seenRanges, bootstrap: { actor: 'fixture-person' },
     revealSelection() {}, marks, registry: { generation: 0, get disposed() { return !current; } }, document: doc,
     onScreen: node => visible && (node === card || node === (transient ? later : entry)) };
   const actions = new Function(...Object.keys(bindings), reading + source + '\nreturn { landOnUnread, loadToUnread, noteRead };')(...Object.values(bindings));
