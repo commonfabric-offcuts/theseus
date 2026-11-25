@@ -607,14 +607,22 @@ function noteRead() {
     return;
   }
   if (!laidOut) return;
-  const shown = new Set();
+  const shown = new Set(), arrivals = [];
   for (const entry of entries($('messages'))) {
     const seq = Number(entry.dataset.seq);
-    if ((halfShown.has(seq) || atMiddle.has(seq)) && onScreen(entry)) shown.add(seq);
+    if ((halfShown.has(seq) || atMiddle.has(seq)) && onScreen(entry)) {
+      shown.add(seq);
+      const id = entry.dataset.id, item = views.messages.get(id);
+      if (!retired && entry.isConnected && messageEntries.get(id) === entry &&
+          item?.topic_id === topic.id && item.seq === seq && item.author_id !== bootstrap.actor) arrivals.push(id);
+    }
   }
   if (!shown.size) return;
   for (const [from, through] of seenRanges([...views.messages.values()], seq => shown.has(seq), id => views.runOf(id), bootstrap.actor))
     views.sighted(from, through, readThrough.seen(topic.id, from, through));
+  let changed = false;
+  for (const id of arrivals) changed = newAbove.delete(id) || changed;
+  if (changed) paintNewAbove();
 }
 // A card counts as on screen when at least half of it, or of the viewport,
 // shows it. The second holds exactly when the card crosses the viewport's
@@ -628,18 +636,10 @@ function onScreen(node) {
   return shown > 0 && (shown >= box.height / 2 || box.top <= innerHeight / 2 && box.bottom >= innerHeight / 2);
 }
 const cardsSeen = (shown, test) => entries => {
-  let changed = false;
-  const current = !retired && readingAllowed() && laidOut && !registry.current?.source;
   for (const entry of entries) {
     const seq = Number(entry.target.dataset.seq);
-    if (test(entry)) {
-      shown.add(seq);
-      const id = entry.target.dataset.id;
-      if (current && entry.target.isConnected && messageEntries.get(id) === entry.target &&
-          views.messages.get(id)?.topic_id === topic?.id) changed = newAbove.delete(id) || changed;
-    } else shown.delete(seq);
+    if (test(entry)) shown.add(seq); else shown.delete(seq);
   }
-  if (changed) paintNewAbove();
   noteRead();
 };
 function revokeMedia() { for (const url of mediaURLs) URL.revokeObjectURL(url); mediaURLs.clear(); }

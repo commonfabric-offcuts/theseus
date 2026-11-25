@@ -110,3 +110,5 @@ Focused checks execute the actual painter with card geometry that throws on
 passive use; native action/traffic timing and geometry remain separate proof.
 
 1242 follow-up: offer retirement shares the actual read owner admission checks: focused visible document, active read owner, available authority/topic, visible feed, non-inert main and no review/unread landing. Observer retirement additionally waits for feed layout and no Reader source. Shown sets still update when reading is refused; no extra card geometry is added.
+
+1242 accepted-visibility repair: cardsSeen only updates observer sets and invokes noteRead. The existing feed-reading pass retires offered IDs only after its current onScreen measurement accepts the current connected message entry. It reuses that existing measurement and read-range construction; a queued true observer event cannot clear a now-offscreen offer. This is local reading-signal retirement, not proof that Core recorded a read receipt.
