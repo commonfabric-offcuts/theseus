@@ -575,6 +575,8 @@ class Conversation:
                 "acts": self._source_acts(db, actor, row),
                 **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
         self._removal_fields(db, actor, [result])
+        from .release_cards import enrich
+        enrich(db, [result])
         return result
 
     def _source_acts(self, db, actor, row):
@@ -731,6 +733,8 @@ class Conversation:
         self._withdrawal_fields(db, items)
         self._removal_fields(db, actor, items)
         self._question_fields(db, actor, items)
+        from .release_cards import enrich
+        enrich(db, items)
         reading_fields(db, actor, unread_groups(db, actor, topic["id"]), items)
         # The reader's own private note and saved, unsent reply on each message (docs/topic-reading.md, item 127).
         writing_fields(db, actor, items)
