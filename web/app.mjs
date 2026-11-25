@@ -179,6 +179,9 @@ const feedMessages = () => dossierHeads?.messages(views.messages) ?? views.messa
 const pressHold = new PressHold(document);
 const guide = new InteractionGuide(document);
 const halfShown = new Set(), atMiddle = new Set();
+// Only observer-selected current entries, not every retained card.
+const seenEntries = new Map();
+let readingStopped = false;
 // Whether what is drawn above the topic page's messages after they paint has
 // had its first fill, so no card the page counts as seen moves (noteRead).
 let laidOut = false;
@@ -711,7 +714,7 @@ function changed(editor) {
 // between runs. Only another actor's message can settle a delivery, so the
 // person's own are never reported.
 function readingAllowed() {
-  return !unreadLandingBusy && !$('main').inert && readThrough && topic && !topicUnavailable &&
+  return !readingStopped && !retired && !registry?.disposed && !unreadLandingBusy && !$('main').inert && readThrough && topic && !topicUnavailable &&
     !$('messages').hidden && !authorityReviewPending() && !review.open &&
     document.visibilityState === 'visible' && document.hasFocus();
 }
@@ -726,13 +729,13 @@ function noteRead() {
   }
   if (!laidOut) return;
   const shown = new Set(), arrivals = [];
-  for (const entry of entries($('messages'))) {
-    const seq = Number(entry.dataset.seq);
+  for (const entry of seenEntries.values()) {
+    const seq = Number(entry.dataset.seq), id = entry.dataset.id, item = views.messages.get(id);
+    if (!entry.isConnected || messageEntries.get(id) !== entry) { forgetReadEntry(entry); continue; }
+    if (item?.topic_id !== topic.id || item.seq !== seq) continue;
     if ((halfShown.has(seq) || atMiddle.has(seq)) && onScreen(entry)) {
       shown.add(seq);
-      const id = entry.dataset.id, item = views.messages.get(id);
-      if (!retired && entry.isConnected && messageEntries.get(id) === entry &&
-          item?.topic_id === topic.id && item.seq === seq && item.author_id !== bootstrap.actor) arrivals.push(id);
+      if (item.author_id !== bootstrap.actor) arrivals.push(id);
     }
   }
   if (!shown.size) return;
@@ -754,12 +757,30 @@ function onScreen(node) {
   return shown > 0 && (shown >= box.height / 2 || box.top <= innerHeight / 2 && box.bottom >= innerHeight / 2);
 }
 const cardsSeen = (shown, test) => entries => {
+  if (readingStopped || retired) return;
   for (const entry of entries) {
-    const seq = Number(entry.target.dataset.seq);
+    const target = entry.target, id = target.dataset.id, seq = Number(target.dataset.seq);
+    if (!target.isConnected || messageEntries.get(id) !== target) continue;
     if (test(entry)) shown.add(seq); else shown.delete(seq);
+    if (halfShown.has(seq) || atMiddle.has(seq)) seenEntries.set(seq, target);
+    else if (seenEntries.get(seq) === target) seenEntries.delete(seq);
   }
   noteRead();
 };
+function observeReadEntry(entry) {
+  if (readingStopped) return;
+  cardObserver?.observe(entry); middleObserver?.observe(entry);
+}
+function forgetReadEntry(entry) {
+  const seq = Number(entry.dataset.seq);
+  if (seenEntries.get(seq) === entry) { seenEntries.delete(seq); halfShown.delete(seq); atMiddle.delete(seq); }
+  cardObserver?.unobserve(entry); middleObserver?.unobserve(entry);
+}
+function stopReadTracking() {
+  readingStopped = true;
+  cardObserver?.disconnect(); middleObserver?.disconnect();
+  seenEntries.clear(); halfShown.clear(); atMiddle.clear();
+}
 function revokeMedia() { for (const url of mediaURLs) URL.revokeObjectURL(url); mediaURLs.clear(); }
 async function present(presentation) {
   if (presentation.surface === 'card') { cardReplies?.surface(presentation)?.show(presentation); cardReplies?.paint(); return; }
@@ -1518,7 +1539,7 @@ function paintViews(kind, reactionId = null) {
   // Newest first, so where each new card goes is at or after where the one before it went.
   const renderedMessages = kind === 'messages' ? feedMessages() : null;
   if (kind === 'messages') for (const [id, entry] of messageEntries) if (!renderedMessages.has(id)) {
-    dropCardDocuments(entry); dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
+    dropCardDocuments(entry); dropCardImages(entry); forgetReadEntry(entry); entry.remove(); messageEntries.delete(id);
   }
   let following = $('messages').firstElementChild;
   const messages = kind === 'messages' ? feedMessages() : null;
@@ -1588,7 +1609,7 @@ function paintViews(kind, reactionId = null) {
       while (following && following !== $('new-message-sheet') && !(Number(following.dataset.seq) < item.seq)) following = following.nextElementSibling;
       $('messages').insertBefore(entry, following);
       messageEntries.set(item.id, entry);
-      cardObserver?.observe(entry); middleObserver?.observe(entry);
+      observeReadEntry(entry);
     }
     paintCardDocuments(cardIn(messageEntries.get(item.id)), item);
     paintReplyContext(cardIn(messageEntries.get(item.id)), item, messages);
@@ -1666,7 +1687,7 @@ function releaseWindowReferences() {
       before: Math.max(coldArrivals?.before ?? 0, seq + 1), after: Math.min(coldArrivals?.after ?? seq - 1, seq - 1) };
     if (entry) {
       dropCardDocuments(entry); dropCardImages(entry); cardScroll?.forget(id, cardIn(entry));
-      cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
+      forgetReadEntry(entry); entry.remove(); messageEntries.delete(id);
     }
     halfShown.delete(seq); atMiddle.delete(seq); openedIds.delete(id);
     cardReplies?.retire(id); cardReplies?.closed.delete(id); cardReplies?.queue.delete(id);
@@ -1814,7 +1835,7 @@ function syncDossierHeads() {
   const messages = feedMessages();
   for (const [id, entry] of messageEntries) if (!messages.has(id)) {
     if (views.windowOptions) { windowEvictions.add(id); continue; }
-    dropCardDocuments(entry); dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry);
+    dropCardDocuments(entry); dropCardImages(entry); forgetReadEntry(entry);
     entry.remove(); messageEntries.delete(id);
   }
   if (views.windowOptions) releaseWindowReferences();
@@ -5265,7 +5286,7 @@ window.addEventListener('pageshow', event => { if (event.persisted) shell.leave(
 const stopDays = watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
 // A run ends as a page unloads, or as a move in place ends it: its live feed,
 // its watchers and its timers stop with it.
-window.addEventListener('pagehide', () => { anchorWatch?.stop(); live?.stop(); cardObserver?.disconnect(); middleObserver?.disconnect(); unheard(); stackFeed?.dispose(); stopDays(); });
+window.addEventListener('pagehide', () => { anchorWatch?.stop(); live?.stop(); stopReadTracking(); unheard(); stackFeed?.dispose(); stopDays(); });
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
 // ? opens the short guide to the pointer and keys, on every page (interaction-guide.mjs).
