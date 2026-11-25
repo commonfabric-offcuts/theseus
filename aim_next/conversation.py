@@ -509,7 +509,7 @@ class Conversation:
             self._question_changed(db, actor, parent, version)
         for member in dict.fromkeys(waited + ([actor] if covered else [])):
             self._change(db, "actor", member, "waiting", topic_id, version)
-        result = {"message_id": message_id, "topic": {"id": topic_id, "version": version},
+        result = {"message_id": message_id, "seq": sequence, "topic": {"id": topic_id, "version": version},
                   "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}
         if basis is not None:
             result["reply_basis"] = basis
