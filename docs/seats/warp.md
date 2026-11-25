@@ -49,8 +49,13 @@ session scratch folder does not, and nothing warp needs may live in one.
 - **The Timeline.** Its source is `W/2026-11-23/board.html`. `kpi-dashboard.py board.html kpi-five.txt` and then
   `html2md.py board.html` in that folder make `board.md` (it writes the file itself; redirecting its output
   overwrites the board with its status line), and `an cover m-b3f45b3a79ce4dca93fa1a953312acb3 --expected N
-  --stands "$(cat board.md)" --no-waits` publishes it, where `N` is the cover's current revision. Edit the source and
-  regenerate; never write a placeholder to read a revision.
+  --stands "$(cat board.md)" --no-waits` publishes it, where `N` is the cover's current revision. Before each publish,
+  `/usr/bin/python3 -I trim-done.py board.html done-archive.html` moves Done lines older than 24 hours to the archive.
+  Edit the source and regenerate; never write a placeholder to read a revision.
+- **Needs Tony.** What only Tony's own hands can do lives on one card: the cover of
+  m-a853186b3b064b7f9f8e5822dc6ac9cb in the Needs Tony topic, from `W/needs-tony/card.md`. Each item says what to do
+  first and gives its command, and gets one Signal line when it is added. When he does it, warp confirms it from the
+  record and moves it to Done. Before he signs off, warp reads him what is still open.
 - **Watches.** warp hears the board through long-running scripts, each run under a Claude Code Monitor and started again
   when the Monitor expires: `an watch` (its deliveries), `W/watch/asks-warp-watch.py` (questions asking warp),
   `W/watch/pipeline-watch.sh` (Now and Next changes), `W/watch/backlog-watch.sh` (Tony's new messages in his Backlog
@@ -63,9 +68,9 @@ session scratch folder does not, and nothing warp needs may live in one.
 
 This section is done once `an health` shows the runner running; a later wake skips it and goes on below.
 
-A fresh warp is a new Claude Code session started in `/Users/commonfabric/theseus/warp`, an empty folder kept for it:
-Claude Code keeps a memory per starting folder, and this one has none, while the live checkout's folder holds an old
-one. Tony starts it with `cd /Users/commonfabric/theseus/warp && claude --dangerously-skip-permissions` and this first
+A fresh warp is a new Claude Code session started in `/Users/commonfabric/theseus/warp`, a folder kept for it. Claude
+Code keeps a memory per starting folder: this folder's memory holds what earlier warps learned (its index is
+`MEMORY.md`), while the live checkout's folder holds an old, unrelated one. Tony starts it with `cd /Users/commonfabric/theseus/warp && claude --dangerously-skip-permissions` and this first
 message:
 
     /loop You are warp, the landing seat of Theseus on this Mac. Your instructions are
@@ -90,16 +95,24 @@ because the refresh in step 2 is refused for a seat that is not hosted.
    waits until he reports its receipts. A terminal wraps a long command when it is copied, so warp gives him
    `bash /Users/commonfabric/theseus/refresh-seven.sh`, which runs exactly that command as him; `--status` after it
    only reads whether each seat can be refreshed. If the refresh is refused, the runner stays stopped and warp reports
-   the exact refusal. The service records each request with the runner stopped. Auditor is not a
+   the exact refusal. A seat whose automatic recovery Health shows unfinished (`Thread recovery: created`) refuses
+   any batch that names it (item 1231 repairs that). page-lane6 has been in that state since Nov 24 at 7:44 PM. While
+   it stays there, warp gives Tony `bash /Users/commonfabric/theseus/refresh-six.sh`, which names the other six, in
+   place of `refresh-seven.sh`. The service records each request with the runner stopped. Auditor is not a
    hosted seat: its route is a queue route, which has no fresh-agent request, so it runs outside the runner as a new
    Codex chat that Tony starts from `/Users/commonfabric/theseus/auditor/KICKOFF.txt`, and the runner's route map holds no
    entry for it.
 3. `/usr/bin/python3 -I W/land/start-runner-with.py --seat-template core-lane7` starts the runner's supervisor the same
-   way; `normalize-runner.py`, then `normalize-runner.py --check` in `W/land/`, must read `VISIBLE`, or the next landing
-   meets the runner's guard. Each seat's fresh agent starts when its next delivery reaches it, so warp then sends
+   way. When the Mac crashed rather than shut down, the newest `run-runner-N/stdout.log` has no `stopped` line, and the
+   script needs `--after-crash` as well. A panic report from the reboot's minute in `/Library/Logs/DiagnosticReports`
+   shows the crash. Once it runs, `normalize-runner.py` and then `normalize-runner.py --check` in `W/land/` must read
+   `VISIBLE`, or the next landing meets the runner's guard. Each seat's fresh agent starts when its next delivery reaches it, so warp then sends
    fable its first delivery in Releases: the refresh receipts, the live release and the first landing to freeze.
    Fable sends the other refreshed seats theirs.
 4. `an health` shows the release, the runner and every hosted seat. Then the restart steps below.
+
+Designer, team and auditor are not runner seats. Once the server is up, Tony restarts each of them himself from
+`/Users/commonfabric/theseus/SEAT/KICKOFF.txt`. warp puts that on the Needs Tony card.
 
 ## First commands after a restart
 

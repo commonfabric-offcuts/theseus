@@ -1684,6 +1684,17 @@ function topicWindowOptions() {
     if (entry.contains(active)) pins.add(id);
     if (ranges.some(range => range.intersectsNode(entry))) pins.add(id);
   }
+  // Covers are siblings of canonical message entries. Protect the current
+  // displayed head, letting the existing planner reserve its dossier root.
+  // Recompute each time: reading a cover never pins all historical members.
+  for (const section of $('messages').querySelectorAll(':scope > .reply-stack')) {
+    const id = section.dataset.stack, cover = section.querySelector(':scope > .dossier-cover');
+    if (!cover?.isConnected || !messageEntries.has(id) || !cover.getClientRects().length) continue;
+    const box = cover.getBoundingClientRect();
+    const shown = box.height > 0 && box.width > 0 && box.bottom > 0 && box.top < innerHeight;
+    if (shown || cover.contains(active) || ranges.some(range => range.intersectsNode(cover))) pins.add(id);
+    if (shown) visible.push(id);
+  }
   for (const source of [reader?.source, registry?.current?.source]) {
     if (source?.source_ref?.kind === 'message') {
       pins.add(source.source_ref.id);
