@@ -1,6 +1,7 @@
 import { stackMenuItems, STARRED_FOLD_REASON } from './stack-menu-items.mjs';
 import { archiveReadConfirmed } from './archive-new.mjs';
 import { unstarDossier } from './dossier-unstar.mjs';
+import { openSplitSources } from './dossier-splits.mjs';
 // What a person does to reply stacks on a topic page or a Conversation
 // (docs/reply-stacks.md), and the keys and menu items that do it: star a
 // message, fold a message to one line and unfold it, rename a stack, move it,
@@ -836,13 +837,40 @@ export class StackFeed {
     this.focusOn(shows.select, { above: [...this.list.querySelectorAll('.stack-join-line')].find(line => line.dataset.join === item.id) });
     this.say(`Joined to the stack ${way === 'up' ? 'above' : 'below'}, for everyone here`);
   }
-  split(shownItem) {
-    const item = this.messages().get(shownItem.id) ?? shownItem, before = this.actsOf(item.id, item).joined?.into ?? null;
+  split(shownItem, { anchorId = null } = {}) {
+    const item = this.messages().get(shownItem.id) ?? shownItem;
+    // Discovery can read a newer revision than the loaded copy. Keep that
+    // exact admitted fact; the existing command/retry owner still fences it.
+    item.acts = laterActs(item.acts, shownItem.acts);
+    const before = this.actsOf(item.id, item).joined?.into ?? null;
     if (!before) return;
     this.act('stack.join', item, { into: null });
-    this.remember(() => { this.act('stack.join', item, { into: before }); this.arrange(); this.focusOn(item.id); });
-    this.arrange(); this.focusOn(item.id);
+    const focus = () => this.focusOn(this.entryFor(item.id) ? item.id : anchorId ?? item.id);
+    this.remember(() => { this.act('stack.join', item, { into: before }); this.arrange(); focus(); });
+    this.arrange(); focus();
     this.say('Split back out into its own stack, for everyone here');
+  }
+  splitSources(item, show) {
+    const found = this.entryFor(item.id) && stackOf(this.list, this.entryFor(item.id));
+    if (!found || !this.readNamed) return;
+    const rootId = dossierOf(found.stack), current = () => {
+      const entry = this.entryFor(item.id), now = entry && stackOf(this.list, entry);
+      return !this.gone && Boolean(now) && dossierOf(now.stack) === rootId;
+    };
+    return openSplitSources({ instanceId: this.instanceId, topicId: item.topic_id, rootId, read: this.readNamed,
+      current, show, labelOf: source => source.acts?.name?.text ?? messagePreview(source), say: words => this.status(words),
+      split: source => {
+        if (!current()) return;
+        const known = this.messages().get(source.id), acts = known && this.actsOf(source.id, known);
+        if (acts && ((acts.join_revision ?? -1) > source.acts.join_revision ||
+            acts.join_revision === source.acts.join_revision && acts.joined?.into !== source.acts.joined.into)) {
+          this.status('This join changed. Open its menu again.'); return;
+        }
+        if (this.pending.get(source.id)?.some(mark => 'joined' in mark) || [...this.doubts.values()].some(act => act.kind === 'stack.join' && act.item.id === source.id)) {
+          this.paintNotice(); return;
+        }
+        this.split(source, { anchorId: item.id });
+      } });
   }
   // → and ← on a message: a step of its stack's fold. False at either end
   // lets the pane navigation take the same key to the adjacent siderail.
@@ -1250,6 +1278,7 @@ export class StackFeed {
     return stackMenuItems({ starred: dossierStarred || Boolean(this.actsOf(item.id, item).starred), folded: this.actsOf(item.id, item).folded,
       head: found?.head, hasReplies: Boolean(stack?.replies.length), position: stack && positionOf(stack), below: stack && positionOf(stack)?.below,
       found: Boolean(found), reader, phone, open: level === 'open', joined: stack?.joins.has(item.id), placed: stack?.placed != null,
+      splitSources: Boolean(found && this.readNamed),
       undo: this.undos.length > 0, foldable: stack && foldStep({ level }, 'fold'), openable: stack && foldStep({ level }, 'open'),
       cover: found?.head && firstCoverMenuItem(this.list.ownerDocument, stack) }, (key, value) => {
       if (key === 'star') return dossierStarred ? this.unstarDossier(item, stack) : this.star(item);
@@ -1258,6 +1287,7 @@ export class StackFeed {
       if (key === 'fold') return this.setFold(item, value, { focus: !reader });
       if (key === 'level') { setLevel(this.state, stack, value, { save: true }); this.arrange(); this.focusOn(stack.id); return; }
       if (key === 'split') return this.split(item);
+      if (key === 'split-sources') return this.splitSources(item, more);
       if (key === 'move-up' || key === 'move-down') return this.move(entry, value);
       if (key === 'fold-stack' || key === 'open-stack') return this.fold(entry, value);
       if (key === 'join-up' || key === 'join-down') return this.join(entry, value);
