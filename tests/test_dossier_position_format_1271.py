@@ -81,6 +81,47 @@ class PositionFormatCase(CoverCase):
             self.assertEqual(list(compact["positions"]), [root])
             self.assertEqual(compact["items"][0]["stack_position_ref"], root)
 
+    def test_items_only_cover_keeps_real_current_linked_rows_in_both_views_and_reply_only_reads(self):
+        root = self.post("A report with linked work and no manual cover")
+        reply = self.post("A reply whose root can be outside the read", reply_to=root)
+        self.committed(self.command("pipeline.configure", {"enabled": True},
+                                   target={"workspace_id": "w1"}, expected={"pipeline_revision": 0}))
+        numbers = []
+        for title, source in (("First linked improvement", root),
+                              ("Second linked improvement", reply),
+                              ("Third linked improvement", root)):
+            result = self.committed(self.command("pipeline.item_add", {
+                "title": title, "section": "now", "sources": [{"message_id": source}]},
+                target={"workspace_id": "w1"}))
+            numbers.append(result["number"])
+        self.assertEqual(self.sql("SELECT count(*) FROM message_acts WHERE kind='cover'"), [(0,)])
+        self.assertEqual(self.sql("SELECT number,message_id FROM pipeline_item_sources ORDER BY number"),
+                         list(zip(numbers, (root, reply, root))))
+        for phase in ("filed", "edited"):
+            if phase == "edited":
+                self.committed(self.command("pipeline.item_edit", {"title": "Current first improvement"},
+                                           target={"workspace_id": "w1", "number": numbers[0]},
+                                           expected={"item_revision": 1}))
+            actual = self.read("dossier_cover", {"message_id": reply})["cover"]
+            self.assertIsNone(actual["stands"])
+            self.assertIsNone(actual["payload"])
+            self.assertIsNone(actual["by"])
+            self.assertEqual([row["number"] for row in actual["items"]], numbers)
+            self.assertEqual([row["sources"] for row in actual["items"]], [[root], [reply], [root]])
+            self.assertEqual(actual["items"][0]["title"],
+                             "Current first improvement" if phase == "edited" else "First linked improvement")
+            for name in ("topic_messages", "stack_positions"):
+                for selected in ([root, reply], [reply]):
+                    with self.subTest(phase=phase, view=name, reply_only=selected == [reply]):
+                        legacy, compact = self.paired(name, {"topic_id": "t1", "message_ids": selected})
+                        self.assertEqual(set(compact["positions"]), {root})
+                        self.assertEqual(compact["positions"][root]["cover"], actual)
+                        self.assertEqual(len(compact["items"]), len(selected))
+                        self.assertTrue(all(row["stack_position_ref"] == root for row in compact["items"]))
+                        self.assertTrue(all(row["stack_position"]["cover"] == actual for row in legacy["items"]))
+                        print("ITEMS1271 " + json.dumps({"phase": phase, "view": name,
+                              "reply_only": selected == [reply], "legacy": legacy, "compact": compact}))
+
     def test_mixed_root_views_measure_lossless_utf8_bytes(self):
         roots = [self.post("Root %d" % n) for n in range(3)]
         replies = [self.post("Reply", reply_to=root) for root in roots]
