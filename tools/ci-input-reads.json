@@ -5977,5 +5977,13 @@
         "web/app.mjs"
       ]
     }
+  },
+  "tests/ui_send_room_1275.test.mjs": {
+    "9aabc603da98cb5c8e5cce1ecef6d28dfda28cc2c0606e563e4413df36e4e735": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
   }
 }
