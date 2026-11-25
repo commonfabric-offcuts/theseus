@@ -16,10 +16,15 @@ export function keepPendingSendPlace(host, paint, { current = () => true,
   restore = null,
   scroll = delta => host.ownerDocument.defaultView.scrollBy({ top: delta, behavior: 'instant' }) } = {}) {
   const doc = host.ownerDocument, active = doc.activeElement;
+  const selectionOutside = node => {
+    const selected = doc.getSelection?.();
+    return selected?.isCollapsed === false &&
+      !(node?.contains(selected.anchorNode) && node?.contains(selected.focusNode));
+  };
   const card = active?.closest?.('[data-pending-send]');
   // A browser reparent can blur a connected descendant to BODY. The captured
   // owner, rather than post-move focus, decides whether the hold still applies.
-  let held = card && host.contains(card) && current() ? card : null;
+  let held = card && host.contains(card) && current() && !selectionOutside(card) ? card : null;
   let before = held ? top(held) : null;
   // An outside button may keep focus while a visible submitted card moves.
   // Active writing/selection elsewhere keeps the existing list hold instead.
@@ -35,13 +40,18 @@ export function keepPendingSendPlace(host, paint, { current = () => true,
   const after = held?.isConnected ? held : result?.pendingReplacement;
   const focused = doc.activeElement;
   const lost = !focused || focused === doc.body;
-  if (held && after?.isConnected && current() && (lost || focused === active || after === focused || after.contains(focused))) {
+  if (held && after?.isConnected && current() && !selectionOutside(after) && (lost || focused === active || after === focused || after.contains(focused))) {
     if (lost && card === held) {
       const same = active?.isConnected && after.contains(active) ? active : after;
       same.focus({ preventScroll: true });
     }
     const delta = top(after) - before;
-    if (Number.isFinite(delta) && delta !== 0) { if (restore) restore(after, before); else scroll(delta); }
+    // The restore owner also settles temporary room. An inner list hold can
+    // make the measured delta zero while leaving that room installed.
+    if (Number.isFinite(delta)) {
+      if (restore) restore(after, before);
+      else if (delta !== 0) scroll(delta);
+    }
   }
   return result;
 }

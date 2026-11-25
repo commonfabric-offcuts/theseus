@@ -95,12 +95,18 @@ function revisionLine(doc, cover, context) {
   return line;
 }
 
-export function coverSheet(doc, cover, context) {
+const sheetRows = new WeakMap();
+export function coverSheet(doc, cover, context, previous = null) {
   cover = currentQuestionCover(cover);
   const ctx = { ...context, owner: cover.owner };
   const sheet = element(doc, 'div', 'dossier-cover');
   sheet.setAttribute('role', 'note'); sheet.setAttribute('aria-label', 'Dossier cover');
-  const line = className => { const node = element(doc, 'div', `cover-line ${className}`); sheet.append(node); return node; };
+  const rows = new Map(), scope = JSON.stringify([context.viewer, context.topicId, context.rootId]);
+  const remember = (node, key) => { rows.set(node, JSON.stringify(key)); return node; };
+  const line = (className, value) => {
+    const node = remember(element(doc, 'div', `cover-line ${className}`), [className, value]);
+    sheet.append(node); return node;
+  };
   if (cover.stands) {
     const words = element(doc, 'span', 'cover-words cover-stands');
     const nodes = literalHTMLNodes(cover.stands, doc);
@@ -118,11 +124,11 @@ export function coverSheet(doc, cover, context) {
       }
     }
     else words.append(...nodes);
-    line('cover-heading').append(words);
+    line('cover-heading', cover.stands).append(words);
   }
   const payload = cover.payload;
   if (payload) {
-    const row = line('cover-payload'), words = element(doc, 'span', 'cover-words');
+    const row = line('cover-payload', [payload, cover.owner]), words = element(doc, 'span', 'cover-words');
     words.append(element(doc, 'span', 'cover-label', PAYLOAD_LABELS[payload.kind] ?? 'Payload'), ' ', payload.text);
     const link = payload.link ? writtenLink(payload.link) : null;
     if (link) {
@@ -136,9 +142,9 @@ export function coverSheet(doc, cover, context) {
     const done = payload.done;
     if (done?.how === 'word' && done.message_id && Number.isSafeInteger(done.seq)) row.append(cite(doc, ctx.topicId, done.message_id, done.seq, 'The word that made it done'));
   }
-  for (const item of cover.items ?? []) line('cover-item').append(itemRow(doc, item));
+  for (const item of cover.items ?? []) line('cover-item', item).append(itemRow(doc, item));
   for (const wait of cover.waiting ?? []) {
-    const row = line('cover-wait');
+    const row = line('cover-wait', [wait, cover.owner]);
     const words = element(doc, 'span', 'cover-words');
     words.append(...inlineNodes(wait.text, { doc }));
     row.append(waitsLabel(doc, wait.actor_id ?? cover.owner, wait, ctx), ' ', words, element(doc, 'span', 'cover-note', waitWords(wait)));
@@ -148,13 +154,34 @@ export function coverSheet(doc, cover, context) {
   if (refresh) {
     // The final content row owns the corner; no heading or extra row is needed.
     refresh.style.gridRow = String(Math.max(1, sheet.children.length));
-    sheet.append(refresh);
+    sheet.append(remember(refresh, ['control', coverKey(cover, context)]));
   }
   const request = coverRequestLine(doc, cover, ctx);
-  if (request) sheet.append(request);
+  if (request) sheet.append(remember(request, ['request', coverKey(cover, context)]));
   const revised = revisionLine(doc, cover, ctx);
-  if (revised) sheet.append(revised);
+  if (revised) sheet.append(remember(revised, ['revision', cover.by, cover.at_ms]));
   sheet.dataset.done = String(Boolean(payload?.done) && !(cover.waiting ?? []).length);
+  const kept = sheetRows.get(previous);
+  if (kept?.scope === scope) {
+    // A revision is not removal. Keep the reading sheet and unchanged rows,
+    // including their text ranges, selection, focus and live control state.
+    const available = new Map();
+    for (const [node, key] of kept.rows) {
+      if (!available.has(key)) available.set(key, []);
+      available.get(key).push(node);
+    }
+    const desired = new Map([...rows].map(([node, key]) => [available.get(key)?.shift() ?? node, key]));
+    for (const node of [...previous.children]) if (!desired.has(node)) node.remove();
+    let index = 0;
+    for (const node of desired.keys()) {
+      const next = previous.children[index++] ?? null;
+      if (node !== next) previous.insertBefore(node, next);
+    }
+    previous.dataset.done = sheet.dataset.done;
+    sheetRows.set(previous, { scope, rows: desired });
+    return previous;
+  }
+  sheetRows.set(sheet, { scope, rows });
   return sheet;
 }
 
