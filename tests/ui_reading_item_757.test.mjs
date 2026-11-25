@@ -14,7 +14,8 @@ const of=(e,cls)=>[...e.descendants()].filter(n=>n.classList.contains(cls));
 const text=e=>e?.text??null;
 const href=e=>e?.href??e?.getAttribute('href')??null;
 const rows=e=>of(e,'cover-item').map(e=>({title:text(e.querySelector('a')),state:text(e.querySelector('.cover-item-state')),href:href(e.querySelector('a'))}));
-const snapshot=e=>({rows:rows(e),order:e.children.map(n=>n.classList.contains('cover-heading')?'cover-stands':n.className.split(' ').find(n=>/^cover-(stands|payload|item|wait)$/.test(n))),
+// Read the real group hierarchy while retaining every original757 oracle.
+const snapshot=e=>({rows:rows(e),order:e.children.flatMap(n=>n.classList.contains('cover-items')?n.querySelectorAll('.cover-item').map(()=>'cover-item'):[n.classList.contains('cover-heading')?'cover-stands':n.className.split(' ').find(n=>/^cover-(stands|payload|item|wait)$/.test(n))]),
   stands:text(e.querySelector('.cover-stands')),payload:text(e.querySelector('.cover-payload')?.querySelector('.cover-words')),
   cite:text(e.querySelector('.cover-src')),citeHref:href(e.querySelector('.cover-src')),acceptance:e.querySelector('.pill-payload')?.dataset.state,
   waits:of(e,'cover-wait').map(w=>({text:text(w.querySelector('.cover-words')),default:text(w.querySelector('.cover-note'))}))});
