@@ -1581,7 +1581,5 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 @media(max-width:760px){.notebook-title-edit{min-width:44px;min-height:44px;line-height:44px}}
 
 /* Submitted writing stays in the topic while its authoritative message is pending. */
-.pending-send{background:var(--panel);border:1px solid var(--line);border-radius:.5rem;padding:.75rem 1rem;margin:.5rem 0;overflow-wrap:anywhere}
-.pending-send-state,.pending-send-images{color:var(--muted);font-size:.8rem;margin:.2rem 0}
-.pending-send-words{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;margin:.4rem 0}
-.pending-send button{font-size:.8rem}
+.pending-send-state{font-size:.8rem;font-weight:400;opacity:.7;margin-inline-start:.6em}
+.pending-send-check{display:block;font-size:.8rem;margin:.3rem 0}

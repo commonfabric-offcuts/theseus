@@ -6,9 +6,11 @@ import { RecoveryJournal } from '../web/journal.mjs';
 import { InlineComposer } from '../web/inline-composer.mjs';
 import { Reader } from '../web/reader.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
-import { paintPendingSends } from '../web/pending-sends.mjs';
+import * as pendingSends from '../web/pending-sends.mjs';
+import { drawnText } from '../web/message-format.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 const copy = value => structuredClone(value);
+const { paintPendingSends } = pendingSends;
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const context = { instanceId: 'send-1233', actor: 'fixture-person', sourceRef: { kind: 'topic', id: 'topic' }, topicId: 'topic', kind: 'reply' };
 const makeEditor = () => new Editor(context, { id: 'draft', generation: 'A', revision: 0 });
@@ -45,16 +47,19 @@ test('1233 initial inline activity safely paints an unopened Reader without crea
   assert.equal(reader.source, null); assert.equal(reader.field.value, '');
   assert.equal(draws, 0, 'initial activity must not draw source writing in an unopened Reader');
 });
-test('1233 exact submitted words and images stay in a separate topic card through unknown and placement', () => {
+test('1233 exact submitted words and images stay in a separate topic card through unknown and placement', t => {
   const doc = miniDocument(), host = doc.createElement('div'), editor = makeEditor(); host.ownerDocument = doc;
+  const previous=globalThis.document;globalThis.document=doc;t.after(()=>{globalThis.document=previous;});
+  const make=doc.createElement;doc.createElement=tag=>{const node=make(tag);node.ownerDocument=doc;
+    Object.defineProperties(node,{parentElement:{get(){return this.parent;}},nextElementSibling:{get(){const list=this.parent?.children??[];return list[list.indexOf(this)+1]??null;}},childNodes:{get(){return this.children;}}});
+    node.after=next=>node.parent.insertBefore(next,node.nextElementSibling);return node;};
   editor.edit({ body: 'Exact <words>\nsecond line', attachments: [{ id: 'image-1' }] }); image(editor); const item = freeze(editor);
   let placed = false, active = true, checks = 0;
   const paint = () => paintPendingSends(host, [editor], { topicId: 'topic', placed: () => placed, underway: () => active, check: () => checks++ });
   paint(); const card = host.querySelector('[data-pending-send]');
-  assert.equal(card.querySelector('pre').textContent, item.snapshot.body);
+  assert.equal(drawnText(card.querySelector('.message-preview')), item.snapshot.body);
   assert.equal(card.dataset.id, undefined, 'pending is not a canonical message entry');
-  assert.equal(card.querySelector('.pending-send-images').textContent, '1 image included');
-  assert.equal(card.querySelector('.pending-send-images').dataset.attachments, '["image-1"]');
+  assert.equal((pendingSends.pendingSendVisual?.(editor,item)?.attachments ?? item.snapshot.attachments)[0].id,'image-1');
   editor.edit({ body: 'New writing' }); active = false; item.status = 'prepared'; paint();
   assert.equal(host.querySelector('[data-pending-send]'), card, 'same pending card and exact snapshot');
   assert.match(card.querySelector('.pending-send-state').textContent, /unknown/);

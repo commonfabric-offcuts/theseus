@@ -4,9 +4,28 @@ import { paintAuthor } from './marks.mjs';
 import { paintReplyLine } from './replies.mjs';
 import { paintCardWords, cardWordOptions } from './message-card-content.mjs';
 import { paintCardImages, dropCardImages } from './card-images.mjs';
+import { samePin } from './upload-state.mjs';
 
 const retained = new WeakMap(), adopted = new WeakSet();
 const cardsOf = host => { if (!retained.has(host)) retained.set(host, new Map()); return retained.get(host); };
+
+// Existing list holds protect reading/writing elsewhere. When focus is on
+// this local card, hold that one card through its canonical stack placement.
+export function keepPendingSendPlace(host, paint, { current = () => true,
+  top = node => node.getBoundingClientRect().top,
+  restore = null,
+  scroll = delta => host.ownerDocument.defaultView.scrollBy({ top: delta, behavior: 'instant' }) } = {}) {
+  const active = host.ownerDocument.activeElement, card = active?.closest?.('[data-pending-send]');
+  const held = card && host.contains(card) && current() ? card : null;
+  const before = held ? top(held) : null;
+  const result = paint();
+  const after = held?.isConnected ? held : result?.pendingReplacement;
+  if (held && after?.isConnected && current() && (host.ownerDocument.activeElement === after || after.contains(host.ownerDocument.activeElement))) {
+    const delta = top(after) - before;
+    if (Number.isFinite(delta) && delta !== 0) { if (restore) restore(after, before); else scroll(delta); }
+  }
+  return result;
+}
 
 export function pendingSendVisual(editor, item, { authorKind = 'human', parent = null } = {}) {
   const snapshot = item.snapshot;
@@ -26,6 +45,7 @@ export function pendingSendVisual(editor, item, { authorKind = 'human', parent =
 }
 
 export function clearPendingSends(host) {
+  if (!host) return;
   for (const card of cardsOf(host).values()) { dropCardImages(card); card.remove(); }
   cardsOf(host).clear();
 }
@@ -48,7 +68,6 @@ export function paintPendingSends(host, editors, { topicId, placed = () => false
       card.dataset.pendingSend = id;
       const heading = doc.createElement('span'); heading.className = 'message-author'; card.append(heading);
       const retry = doc.createElement('button'); retry.type = 'button'; retry.className = 'pending-send-check'; retry.textContent = 'Check confirmation';
-      retry.onclick = event => { event?.stopPropagation(); check(editor, item); };
       card.append(retry); cards.set(id, card);
     }
     const message = visual(editor, item);
@@ -75,6 +94,7 @@ export function paintPendingSends(host, editors, { topicId, placed = () => false
     card.dataset.sendState = item.status;
     if (item.restoredWriting) restored(editor, item, card);
     const retry = card.querySelector('.pending-send-check'); retry.hidden = active;
+    retry.onclick = event => { event?.stopPropagation(); check(editor, item); };
     // Frozen reply_to owns placement, not the editor's possibly different source.
     const offered = parent(message.reply_to ? { kind: 'message', id: message.reply_to } : null, item);
     const where = offered && host.contains(offered) ? afterParent.get(offered) ?? offered : null;
@@ -88,13 +108,15 @@ export function paintPendingSends(host, editors, { topicId, placed = () => false
 }
 
 // The canonical painter calls this only after its authorized page is admitted.
-export function adoptPendingSend(host, editors, message, { topicId, current = () => true } = {}) {
+export function adoptPendingSend(host, editors, message, { topicId, authority = null, current = () => true } = {}) {
   if (!host || !current() || message?.topic_id !== topicId) return null;
   const cards = cardsOf(host);
   for (const editor of editors) for (const item of editor.submissions ?? []) {
     const receipt = item.receipt, result = receipt?.result;
     if (!item.presentPending || item.detached || item.topicId !== topicId || item.status !== 'confirmed' ||
         receipt?.status !== 'committed' || receipt.recorded !== true || receipt.kind !== 'message.send' ||
+        receipt.instance_id !== editor.context.instanceId || receipt.operation_id !== item.sendOperationId ||
+        authority && !samePin(item.authority, authority) ||
         result?.message_id !== message.id || message.author_id !== editor.context.actor ||
         Number.isSafeInteger(result.seq) && result.seq !== message.seq) continue;
     const card = cards.get(item.id);
@@ -107,4 +129,19 @@ export function adoptPendingSend(host, editors, message, { topicId, current = ()
     return { card, refocus, active, item, editor };
   }
   return null;
+}
+
+// A Live page can beat the send receipt. Once the exact receipt arrives,
+// retain the already-bound canonical card at the local card's position.
+export function reconcilePlacedSend(host, editors, message, canonical, options) {
+  if (!canonical || !host.contains(canonical) || canonical.dataset.id !== message?.id) return null;
+  const adopted = adoptPendingSend(host, editors, message, options);
+  if (!adopted || canonical === adopted.card) return null;
+  const { card, refocus, active } = adopted, parent = card.parentElement;
+  parent.insertBefore(canonical, card); dropCardImages(card); card.remove();
+  if (refocus) {
+    const sameLink = active?.tagName === 'A' ? [...canonical.querySelectorAll('a')].find(link => link.href === active.href) : null;
+    (sameLink ?? canonical).focus({ preventScroll: true });
+  }
+  return { pendingReplacement: canonical };
 }

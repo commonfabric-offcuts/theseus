@@ -78,7 +78,7 @@ export function paintCardImages(card, item, read) {
 // to the canonical message's byte owner. Changed files use ordinary repaint.
 export function adoptCardImages(card, item, read) {
   const images = cardImages(item), fields = ['id', 'name', 'content_type', 'size_bytes', 'sha256', 'inline'];
-  for (const host of card.querySelectorAll(':scope > .card-images > .card-image')) {
+  for (const host of card.querySelector(':scope > .card-images')?.children ?? []) {
     const old = host.cardAttachment, attachment = images.find(each => fields.every(key => each[key] === old?.[key]));
     if (!attachment) continue;
     const key = `${item.id}:${attachment.id}`, image = host.querySelector(':scope > img.image-thumb');
