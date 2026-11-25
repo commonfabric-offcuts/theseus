@@ -57,7 +57,7 @@ export function paintPendingSends(host, editors, { topicId, placed = () => false
   readImage = async () => null, displayRules = [], end = null } = {}) {
   if (!host) return;
   if (!current()) { clearPendingSends(host); return; }
-  const doc = host.ownerDocument, kept = new Set(), cards = cardsOf(host), afterParent = new Map();
+  const doc = host.ownerDocument, kept = new Set(), cards = cardsOf(host), afterParent = new Map(), roots = [];
   for (const editor of editors) for (const item of editor.submissions ?? []) {
     if (!item.presentPending || item.detached || item.topicId !== topicId || adopted.has(item)) continue;
     if (item.status === 'confirmed' && placed(item.receipt?.result?.message_id)) continue;
@@ -98,13 +98,22 @@ export function paintPendingSends(host, editors, { topicId, placed = () => false
     // Frozen reply_to owns placement, not the editor's possibly different source.
     const offered = parent(message.reply_to ? { kind: 'message', id: message.reply_to } : null, item);
     const where = offered && host.contains(offered) ? afterParent.get(offered) ?? offered : null;
-    const container = where?.parentElement ?? host;
-    const before = where?.nextElementSibling ?? (where ? null : end?.parentElement === host ? end : null);
-    if (card.parentElement !== container || where && card.previousElementSibling !== where || !where && before && card.nextElementSibling !== before)
-      container.insertBefore(card, before === card ? card.nextElementSibling : before);
-    if (offered && where) afterParent.set(offered, card);
+    if (where) {
+      if (card.parentElement !== where.parentElement || card.previousElementSibling !== where)
+        where.parentElement.insertBefore(card, where.nextElementSibling);
+      afterParent.set(offered, card);
+    } else roots.push(card);
   }
   for (const [id, card] of cards) if (!kept.has(id)) { dropCardImages(card); card.remove(); cards.delete(id); }
+  // Place the ordered root group against one shared cursor. Checking each
+  // root against the composer independently would detach A then B on every
+  // unchanged A,B,composer repaint, even though the final order looked right.
+  let before = end?.parentElement === host ? end : null;
+  for (let index = roots.length - 1; index >= 0; index--) {
+    const card = roots[index];
+    if (card.parentElement !== host || card.nextElementSibling !== before) host.insertBefore(card, before);
+    before = card;
+  }
 }
 
 // The canonical painter calls this only after its authorized page is admitted.

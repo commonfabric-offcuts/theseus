@@ -67,6 +67,26 @@ test('1249 frozen reply_to places the card under its parent; root writing stays 
   f.item.snapshot.reply_to=null;f.paint({end});assert.equal(card.nextElementSibling,end);
 });
 
+for (const separateEditor of [false,true]) test(`1249 two root submissions repaint without moves or lost focused children (${separateEditor?'two editors':'one editor'})`,t=>{
+  const f=fixture(t),end=f.doc.createElement('dialog');f.host.append(end);
+  const second={...structuredClone(f.item),id:'submission-B',sendOperationId:'send-B',snapshot:{body:'**Frozen B**',attachments:[]}};
+  const next={...f.editor,key:'editor-B',draft:{body:'later C'},submissions:[second]};
+  const editors=separateEditor?[f.editor,next]:[f.editor];if(!separateEditor)f.editor.submissions.push(second);
+  const before=structuredClone({second,draft:f.editor.draft,nextDraft:next.draft});
+  const paint=()=>pending.paintPendingSends(f.host,editors,{topicId:'t',underway:()=>false,end});
+  paint();const a=f.card(),b=f.host.querySelectorAll('[data-pending-send]')[1],link=a.querySelector('a'),check=a.querySelector('button');
+  assert.deepEqual(f.host.children,[a,b,end]);
+  const moves=[],insert=f.host.insertBefore.bind(f.host);f.host.insertBefore=(node,where)=>{moves.push({node,where});return insert(node,where);};
+  for(const focused of [link,check]){
+    focused.focus();paint();
+    assert.equal(moves.length,0,'an already-correct root group must not be removed and reinserted');
+    assert.deepEqual(f.host.children,[a,b,end]);assert.equal(f.doc.activeElement,focused);
+    assert.equal(a.querySelector('a'),link);assert.equal(a.querySelector('button'),check);
+  }
+  assert.deepEqual({second,draft:f.editor.draft,nextDraft:next.draft},before);
+  assert.equal(b.querySelector('strong').text,'Frozen B');
+});
+
 test('1249 receipt alone keeps the local card; matching canonical admission adopts the same node once',t=>{
   const f=fixture(t);f.paint();const card=f.card(),words=card.querySelector('.message-preview'),link=card.querySelector('a');link.focus();
   const message=confirm(f);f.paint();assert.equal(f.card(),card,'a committed receipt alone is not placement');

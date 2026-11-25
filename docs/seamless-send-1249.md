@@ -5,6 +5,8 @@ messageEntries. It has no speculative message id, sequence, unread state or
 reactions. It uses ordinary card author/word/reply/image renderers, with an
 honest quiet pending mark. Topic writing rests before the bottom composer;
 reply writing rests immediately under its actual reply parent.
+Multiple root submissions share an ordered end cursor. An unchanged group
+is left in place, preserving its existing focused links and controls.
 
 Only a validated committed send plus the matching authorized canonical page
 permits adoption. The canonical painter binds that existing outer card to
