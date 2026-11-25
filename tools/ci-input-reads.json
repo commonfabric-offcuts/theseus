@@ -5953,5 +5953,13 @@
         "web/outline-rail.mjs"
       ]
     }
+  },
+  "tests/ui_recorded_refresh_1246.test.mjs": {
+    "d86d5b45b44bcc9209b1876a6bf7898ff87b257e01c7e16a452e95fc13b19eda": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
   }
 }

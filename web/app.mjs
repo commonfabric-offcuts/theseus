@@ -31,6 +31,7 @@ import { readableUploads, uploadWork, refusedCopyAtDraft, refusedAtDraft } from 
 import { typingField } from './writing-input.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { OutcomeChanges, outcomeReads } from './outcome-refresh.mjs';
+import { recordedActionRefresh } from './recorded-refresh.mjs';
 import { DossierHeads } from './stack-order.mjs';
 import { TopicViews, followEdits } from './topic-views.mjs';
 import { visitNewFor, paintVisitNew } from './visit-new.mjs';
@@ -3970,7 +3971,7 @@ async function initialize() {
   // After any recorded answer to a mark, this page shows what Core now holds,
   // with or without the live stream.
   marks = new Marks({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current, cancelOpen: () => registry.cancelOpen(),
-    recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
+    recorded: receipt => { attention?.refresh(); if (commitReload) run(() => commitReload(receipt?.status !== 'committed')); } });
   marks.listen(paintMarks);
   const reactionPage = shell.page, reactionRegistry = registry;
   reactions = new Reactions({ api, instanceId: bootstrap.instance_id, authority: () => reactionRegistry.runtime.current,
@@ -4176,10 +4177,14 @@ async function initialize() {
   // pages' read state is read again too, so a page read since, here or
   // elsewhere, loses its light; and an outcome's page in the Reader is read
   // where it stands, so the Reader offers a revision made since.
-  commitReload = followCommits(async () => {
-    const sections = await outcomeScope.load(), destination = await loadConversation(), marked = await loadMarks(), unread = await loadUnread(), read = await loadReadState(), shown = await loadShownPage();
-    await wakeLights.load(); participantsPanel?.paint();
-    return sections !== false && destination !== false && marked !== false && unread !== false && read !== false && shown !== false;
+  commitReload = recordedActionRefresh({ follow: followCommits, bootstrap, workspaceId: topic.workspace_id, topicId: topic.id,
+    read: async (name, args) => checkedView(await registry.cleanup.read(options => api.view(name, args, options)), bootstrap.instance_id),
+    binding: () => ({ ...bootstrap, authority: registry.runtime.current }),
+    current: () => !retired && shell.page === thisRun && !registry.disposed && !authorityReviewPending(),
+    shown: () => registry.current?.source?.source_ref?.kind === 'memory',
+    owners: { sections: dirty => outcomeScope.load(dirty), conversation: loadConversation, marks: loadMarks,
+      unread: loadUnread, read: loadReadState, shown: loadShownPage, wakes: () => wakeLights.load(),
+      participants: () => { participantsPanel?.paint(); return true; } },
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('updates-retry').onclick = () => run(async () => {
