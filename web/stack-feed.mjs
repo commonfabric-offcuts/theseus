@@ -239,13 +239,13 @@ export class StackFeed {
   // A message's acts as the page shows them: what Core holds, with each act
   // not yet answered over it. known: the message when the page has not loaded it.
   actsOf(id, known = null) {
-    let acts = (this.messages().get(id) ?? known)?.acts ?? {};
+    let acts = ((this.arrangeMessages ?? this.messages()).get(id) ?? known)?.acts ?? {};
     for (const { stack_position, ...shown } of this.pending.get(id) ?? []) acts = { ...acts, ...shown };
     return acts;
   }
   // The loaded messages as the stacks draw them, each with its acts as shown.
   shownMessages() {
-    const messages = this.messages();
+    const messages = this.arrangeMessages ?? this.messages();
     return { has: id => messages.has(id), get: id => {
       const item = messages.get(id);
       if (!item) return item;
@@ -299,7 +299,17 @@ export class StackFeed {
     }), ...listed];
   }
   arrange() {
+    const before = this.arrangeMessages;
+    this.arrangeMessages = this.messages();
+    try { return this.paintArrangement(); }
+    finally { this.arrangeMessages = before; }
+  }
+  // Only the synchronous pass shares this map. Nested passes take their own,
+  // and deferred gestures use the ordinary current provider after it returns.
+  paintArrangement() {
+    const messages = this.arrangeMessages ?? this.messages();
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, coordinationHost: this.filterHost, doc: this.doc, on: {
+      arrange: () => this.arrange(),
       navigate: () => this.navigate(), more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), renameFinished: stack => { this.arrange(); this.focusOn(stack.id); }, cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
       coordinationCount: (count, news) => this.paintCoordination(count, news),
       star: stack => this.starDossier(stack), firstStarred: stack => this.firstStarred(stack),
@@ -335,7 +345,7 @@ export class StackFeed {
       landedBelow: (id, mark) => this.landedBelow(id, mark),
     } }));
     for (const entry of entries(this.list)) {
-      const card = cardIn(entry), item = this.messages().get(card.dataset.id);
+      const card = cardIn(entry), item = messages.get(card.dataset.id);
       if (item) { this.paintStar(card.querySelector(':scope > .message-author'), item); this.paintFoldedThumb(card, item); }
     }
     this.redrawn();
@@ -630,7 +640,7 @@ export class StackFeed {
   // The header toggle belongs to the actual first message; reply stars still
   // retain the dossier above More, but do not fill this control (646).
   firstStarred(stack) {
-    const root = dossierOf(stack), item = this.messages().get(root) ?? { acts: { starred: Boolean(positionOf(stack)?.starred?.includes(root)) } };
+    const root = dossierOf(stack), item = (this.arrangeMessages ?? this.messages()).get(root) ?? { acts: { starred: Boolean(positionOf(stack)?.starred?.includes(root)) } };
     return Boolean(this.actsOf(root, item).starred);
   }
   async starDossier(stack) {

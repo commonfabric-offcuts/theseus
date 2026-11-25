@@ -986,7 +986,7 @@ function paintStack(section, stack, byId, context) {
 export function arrangeStacks(list, messages, options = {}) {
   const { keep = () => false, unread = () => false, quiet = () => false, viewer = null, nameOf = id => id, colorOf = () => null, on = null, home = null, coordinationHost = null, doc = list.ownerDocument } = options;
   const state = stackState(list);
-  Object.assign(state, { viewer, colorOf, again: () => arrangeStacks(list, messages, options) });
+  Object.assign(state, { viewer, colorOf, again: on?.arrange ?? (() => arrangeStacks(list, messages, options)) });
   if (on) state.on = on;
   const active = list.contains(doc.activeElement) ? doc.activeElement : null;
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
