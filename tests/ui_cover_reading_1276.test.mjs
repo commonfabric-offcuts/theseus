@@ -9,9 +9,11 @@ import { withReaderArchive } from './fixtures/reader_archive.mjs';
 import { arrangeStacks, stackState, drawn } from '../web/reply-stacks.mjs';
 import { coverSheet } from '../web/dossier-cover.mjs';
 import { configureCoverAnswers } from '../web/cover-answers.mjs';
+import { keepPendingSendPlace } from '../web/pending-sends.mjs';
 import { QuestionStates, configureQuestionStates } from '../web/question-state.mjs';
 const source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const anchorSource = source.slice(source.indexOf('let roomy = null, anchorDepth'), source.indexOf('// The New line, just below the oldest message'));
+const restoreSource = source.slice(source.indexOf('function restorePendingSendPlace('), source.indexOf('\nfunction pendingSendTarget('));
 const query = Element.prototype.querySelectorAll;
 Element.prototype.querySelectorAll = function(selector) {
   if (selector === '*') return [...this.descendants()];
@@ -35,7 +37,7 @@ function fixture(placement = 'visible', stands = 'Initial cover words') {
   const listen = (kind, f) => { if (!events.has(kind)) events.set(kind, new Set()); events.get(kind).add(f); };
   const unlisten = (kind, f) => events.get(kind)?.delete(f);
   doc.addEventListener = listen; doc.removeEventListener = unlisten;
-  const win = { scrollY: 300, addEventListener: (k,f) => listen('window:' + k,f), removeEventListener: (k,f) => unlisten('window:' + k,f),
+  const win = { scrollY: 300, innerHeight: 800, addEventListener: (k,f) => listen('window:' + k,f), removeEventListener: (k,f) => unlisten('window:' + k,f),
     scrollBy: ({top}) => { win.scrollY += top; scrolls.push(top); } };
   const create = doc.createElement;
   doc.createElement = tag => {
@@ -75,15 +77,15 @@ function fixture(placement = 'visible', stands = 'Initial cover words') {
     for(const [id,card] of cards)card.y=id==='prefix'?50:id==='target'?(placement==='above'?220:1900)+(height-80):430+(Number(id.slice(1))-1)*180+shift;
   };
   draw();
-  doc.documentElement={scrollHeight:5000};doc.body={};doc.caretPositionFromPoint=()=>null;
+  doc.documentElement={scrollHeight:5000};doc.body={};doc.defaultView=win;doc.caretPositionFromPoint=()=>null;
   doc.querySelectorAll = selector => selector.startsWith('#messages') ? [...list.descendants()].filter(n=>n.dataset.id||n.classList.contains('dossier-cover')||n.classList.contains('stack-earlier')||n.dataset.line==='older') : list.querySelectorAll(selector);
   const Observer=class{observe(){}disconnect(){}takeRecords(){return[]}};
   const context=vm.createContext({window:win,document:doc,innerWidth:600,innerHeight:800,Node:{DOCUMENT_POSITION_FOLLOWING:4,TEXT_NODE:3},
-    windowReadSerial:0,inline:null,registry:{},retired:null,topicUnavailable:false,authorityReviewPending:()=>false,
+    windowReadSerial:0,listAccessEpoch:0,keepPendingSendPlace,inline:null,registry:{},retired:null,topicUnavailable:false,authorityReviewPending:()=>false,
     entries,drawn,typingField:()=>false,views:{messages},bootstrap:{actor:'reader'},messageEntries:cards,topic:{id:'isolated-1276'},stackState,
     cardIn:n=>n,opened:n=>n,reveal(){},button:()=>doc.createElement('button'),$:id=>({main,messages:list,'new-message-sheet':home})[id],
     ResizeObserver:Observer,MutationObserver:Observer,requestAnimationFrame:f=>{frames.set(++frame,f);return frame;},cancelAnimationFrame:id=>frames.delete(id)});
-  vm.runInContext(anchorSource+';globalThis.api={captureListAnchor,restoreListAnchor,keepListAnchor,watchListAnchor,state:()=>({anchorActing,anchorHold})};',context);
+  vm.runInContext(restoreSource+'\n'+anchorSource+';globalThis.api={captureListAnchor,restoreListAnchor,keepListAnchor,watchListAnchor,state:()=>({anchorActing,anchorHold})};',context);
   const revise=(patch={},newHeight=height)=>{cover={...cover,...patch,revision:cover.revision+1,at_ms:cover.at_ms+1000};height=newHeight;
     messages.get(targetId).acts={cover,cover_revision:cover.revision};
     for(const item of messages.values())if(item.stack_position.root_id===targetId)item.stack_position={...item.stack_position,cover,cover_revision:cover.revision,at:{messages:103,acts:cover.revision}};draw();};
