@@ -6041,5 +6041,25 @@
         "web/app.mjs"
       ]
     }
+  },
+  "tests/fixtures/scale_1250.py": {
+    "f7fd4251751adf0b6356d8f081635dbe5f325e75123542147e0a07d174e02ebd": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "cd24f38cb3e80d781035cc8438cdced7b7913af8f8b12ada90b7f20b7a0f02db": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "6ca6a63fb78885eee8fd2a864caf2e2c77d9cd5aa9a78472be4c4048997dc718": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
+  "tests/test_scale_1250.py": {
+    "53a41334a5a14347cc6c14e486b1f5fb5bf2528dc69de747597efef2f621db46": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
   }
 }
