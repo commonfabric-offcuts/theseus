@@ -1942,9 +1942,9 @@ function drawFeed(on, ...parts) {
 }
 // Messages this visit opened in the Reader: each reads as read at once.
 const openedIds = new Set();
-function openedHere(id) { clearVisitNew(id); if (openedIds.has(id)) return; openedIds.add(id); paintCardReading(); }
+function openedHere(id) { clearVisitNew(id); if (openedIds.has(id)) return; openedIds.add(id); paintCardReading(id, feedMessages()); queueReadingPaint(id); }
 const newOnPage = item => !cardRead(item) || Boolean(visitNew?.has(item.id));
-let visitPaintQueued = false;
+let visitPaintQueued = null;
 function captureArchiveReading(root, through) {
   const epoch = listAccessEpoch, topicId = topic?.id, instanceId = bootstrap.instance_id;
   const authority = { authority_id: registry.runtime.current.authority_id, authority_epoch: registry.runtime.current.authority_epoch };
@@ -1953,31 +1953,50 @@ function captureArchiveReading(root, through) {
       epoch === listAccessEpoch && topic?.id === topicId && bootstrap.instance_id === instanceId &&
       registry.runtime.current.authority_id === authority.authority_id && registry.runtime.current.authority_epoch === authority.authority_epoch,
     changed: () => {
-      keepListAnchor(() => { stackMessages(); paintCardReading(); paintMessageUpdates(); });
+      paintReadChanges([...feedMessages().values()].filter(item => (item.stack_position?.root_id ?? item.id) === root && item.seq <= through).map(item => item.id));
       attention?.refresh();
       if (commitReload) run(commitReload);
     } });
 }
-function clearVisitNew(id) {
-  if (!visitNew?.clear(id) || visitPaintQueued) return;
-  visitPaintQueued = true;
-  // Finish the native click before replacing the header it is acting on.
-  queueMicrotask(() => {
-    visitPaintQueued = false;
-    if (!retired && !registry?.disposed && !topicUnavailable) keepListAnchor(() => { stackMessages(); paintMessageUpdates(); });
+// The batch owns its page/epoch, not whichever page is current when its
+// microtask runs. Keep every affected id, including distinct coalesced clears.
+function queueReadingPaint(id) {
+  let batch = visitPaintQueued;
+  if (!batch || batch.views !== views || batch.epoch !== listAccessEpoch) {
+    batch = { views, epoch: listAccessEpoch, ids: new Set() }; visitPaintQueued = batch;
+    queueMicrotask(() => {
+      if (visitPaintQueued === batch) visitPaintQueued = null;
+      if (retired || registry?.disposed || topicUnavailable || views !== batch.views || listAccessEpoch !== batch.epoch) return;
+      paintReadChanges([...batch.ids]);
+    });
+  }
+  batch.ids.add(id);
+}
+function paintReadChanges(ids) {
+  const messages = feedMessages();
+  ids = [...new Set(ids)].filter(id => messages?.has(id));
+  if (!ids.length) return;
+  if (visitPaintQueued?.views === views && visitPaintQueued.epoch === listAccessEpoch) for (const id of ids) visitPaintQueued.ids.delete(id);
+  keepListAnchor(() => {
+    for (const id of ids) paintCardReading(id, messages);
+    feedOf().updateReading(ids);
+    paintMessageUpdates(ids);
   });
+}
+function clearVisitNew(id) {
+  if (visitNew?.clear(id)) queueReadingPaint(id);
 }
 const cardRead = item => readNow(item, { viewer: bootstrap.actor, marked: marks?.state(item.id)?.marked === true, opened: openedIds.has(item.id) });
 // Each loaded card's read look, agent talk, reply arrow and the dots on the
 // reader's own message while it waits for a reply, as they now stand.
-function paintCardReading(id = null) {
+function paintCardReading(id = null, messages = views?.messages) {
   if (!views) return;
   const { kindOf } = whisperPeople();
-  if (id === null) learnAnswered(views.messages, bootstrap.actor, kindOf);
-  else if (views.messages.has(id)) learnAnswered(new Map([[id, views.messages.get(id)]]), bootstrap.actor, kindOf);
+  if (id === null) learnAnswered(messages, bootstrap.actor, kindOf);
+  else if (messages.has(id)) learnAnswered(new Map([[id, messages.get(id)]]), bootstrap.actor, kindOf);
   const selected = id === null ? entries($('messages')) : [messageEntries.get(id)].filter(Boolean);
   for (const entry of selected) {
-    const card = cardIn(entry), item = views.messages.get(card.dataset.id);
+    const card = cardIn(entry), item = messages.get(card.dataset.id);
     if (!item) continue;
     const quiet = agentTalk(item, bootstrap.actor, bootstrap.actor_kind, kindOf);
     entry.dataset.talk = quiet ? 'agents' : '';
@@ -1997,7 +2016,7 @@ function paintThumbMessage(id, pendingOnly = true) {
   const entry = messageEntries.get(id), item = feedMessages().get(id);
   const paint = () => {
     if (item && entry) {
-      if (!pendingOnly) { paintCardReading(id); stackFeed?.paintReactionReading(cardIn(entry)); }
+      if (!pendingOnly) { paintCardReading(id, feedMessages()); stackFeed?.paintReactionReading(cardIn(entry)); }
       stackFeed?.paintFoldedThumb(cardIn(entry), item);
     }
     menu?.paintMessage(id, entry);
@@ -2133,7 +2152,7 @@ async function readDossierNew(stack, mark) {
   }
   if (!same()) return;
   const keepSelection = document.activeElement === card;
-  openedHere(item.id); stackMessages();
+  openedHere(item.id); paintReadChanges([item.id]);
   // Re-acquire after the receipt redraw, without stealing a later focus.
   if (keepSelection) select();
   attention?.refresh();
@@ -2205,9 +2224,11 @@ function paintHeader(current) {
 // Messages sent before times were kept have none. Beside the time, the marks of
 // what the message carries: an image, the person's private note, a reply they
 // saved and have not sent (carriesOf, item 127).
-function paintMessageUpdates() {
-  for (const [id, entry] of messageEntries) {
-    const item = views.messages.get(id), card = cardIn(entry), author = card && messageUpdateHost(card, entry);
+function paintMessageUpdates(ids = null) {
+  const messages = ids === null ? views.messages : feedMessages();
+  const selected = ids === null ? messageEntries : [...new Set(ids)].map(id => [id, messageEntries.get(id)]).filter(([, entry]) => entry);
+  for (const [id, entry] of selected) {
+    const item = messages.get(id), card = cardIn(entry), author = card && messageUpdateHost(card, entry);
     if (item && author) {
       const update = messageUpdateActivity(document, item, updateContext(item.topic_id), entry.querySelector('.message-update'));
       for (const old of entry.querySelectorAll('.message-update')) if (old !== update) old.remove();
@@ -2274,18 +2295,27 @@ function whisperPeople() {
 }
 // What the page knows of the person's marks: the topic's line, each loaded
 // card's pill and the Reader's button.
+// Per drawn entry, presentation only. A replacement card has its own stamp;
+// current mark authority is still read from Marks for every action.
+const paintedMarkStates = new WeakMap();
 function paintMarks() {
   if (!marks || !topic) return;
   const count = marks.marked(topic.id).length;
   $('topic-marks-words').textContent = marksWords(count);
   $('topic-marks').hidden = !count || topicUnavailable;
+  const affected = [], messages = feedMessages();
   keepListAnchor(() => {
     for (const entry of entries($('messages'))) {
-      const card = cardIn(entry), item = views.messages.get(card.dataset.id);
-      if (item) { paintCardAuthor(card.querySelector('.message-author'), item); paintFold(entry, marks.state(item.id)?.marked === true); }
+      const card = cardIn(entry), item = messages.get(card.dataset.id);
+      if (!item) continue;
+      const state = marks.state(item.id), key = JSON.stringify([state?.marked === true, state?.mark_revision ?? null, revisionOf(item)]);
+      if (paintedMarkStates.get(entry) === key) continue;
+      paintedMarkStates.set(entry, key);
+      paintCardAuthor(card.querySelector('.message-author'), item); paintFold(entry, state?.marked === true);
+      paintCardReading(item.id, messages); affected.push(item.id);
     }
-    paintCardReading();
   });
+  for (const id of affected) queueReadingPaint(id);
   paintReaderMark();
 }
 // "Start a topic from this": one title line right in the Reader, filled from the

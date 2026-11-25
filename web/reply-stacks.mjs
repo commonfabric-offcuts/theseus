@@ -66,6 +66,7 @@ const coverTools = new WeakMap();
 // Canonical fold/place facts return with their records; this makes no act.
 export function forgetStackMessages(list, retained) {
   const state = states.get(list); if (!state) return;
+  readingFrames.delete(list);
   for (const name of ['kept', 'unreadKept', 'peeked', 'earlier', 'whole', 'waiting', 'filled', 'apart', 'sourceRoots', 'writing', 'folded', 'starred', 'coordination', 'coordinationHere', 'below', 'earlierRows', 'contextRows']) {
     const set = state[name]; if (set) for (const id of set) if (!retained.has(id)) set.delete(id);
   }
@@ -791,7 +792,7 @@ function paintFolded(entry, item, folded, { nameOf, doc }) {
 // Item 645: consecutive drawn folded rows share one visible sender name.
 // Keep each row's attribution in the accessibility tree. Work from the drawn
 // structure, with no layout reads and no grouping across a dossier or a line.
-export function paintFoldedNames(list, messages, state = stackState(list)) {
+export function paintFoldedNames(list, messages, state = stackState(list), roots = list.children) {
   const visit = nodes => {
     let previous = null;
     for (const entry of nodes) {
@@ -812,7 +813,7 @@ export function paintFoldedNames(list, messages, state = stackState(list)) {
       previous = folded ? item.author_id : null;
     }
   };
-  visit(list.children);
+  visit(roots);
 }
 
 // One of an open dossier's earlier messages, shown as one row set into its
@@ -1030,6 +1031,100 @@ function paintStack(section, stack, byId, context) {
 // never moved while it is up over the page, and goes to its place when next
 // drawn after it is put back. While the list is hidden it rests after it, at
 // the page's end.
+// A read changes presentation, never Core position/structure. Snapshot those
+// facts as bytes: shared message objects may be mutated in place later. Body,
+// names and covers are presentation, not grouping/order inputs. Keep position's
+// observation clock: changing which position wins can change the effective key.
+const readingFrames = new WeakMap();
+function readingProjection(item) {
+  const { unread, reactions, replied, awaiting_reply, body, acts, stack_position, ...other } = item;
+  const structural = value => {
+    if (!value) return value;
+    const { name, name_revision, cover, cover_revision, cover_read_seq, cover_refresh, cover_refresh_revision, ...facts } = value;
+    return facts;
+  };
+  return JSON.stringify([other, structural(acts), structural(stack_position)]);
+}
+function readingMode(state) {
+  return JSON.stringify([state.viewer, state.showCoordination, state.moreOpen,
+    state.shelved, state.renaming]);
+}
+function rememberReadingFrame(list, messages, byId, state, options) {
+  readingFrames.set(list, { entries: new Map(byId), options, only: state.only, mode: readingMode(state),
+    shapes: new Map([...new Set([...byId.keys(), ...state.stacks.flatMap(stack => [stack.dossier,
+      ...(stack.sourceStack ? [stack.sourceStack.head.id, ...stack.sourceStack.replies.map(item => item.id)] : [])])])]
+      .filter(id => messages.get(id)).map(id => [id, readingProjection(messages.get(id))])),
+    levels: new Map(state.stacks.map(stack => [stack.id, levelOf(state, stack.id)])) });
+}
+
+// Repaint existing affected folders without gathering, sorting or reconciling
+// the outer list. False asks the caller to use the ordinary arrangement owner.
+// Preflight every affected folder before making any presentation change.
+export function repaintStackReading(list, ids, messages) {
+  const state = states.get(list), frame = readingFrames.get(list);
+  if (!state || !frame || frame.only !== state.only || frame.mode !== readingMode(state)) return false;
+  const index = drawnIndexes.get(state), affected = new Set();
+  for (const id of ids) {
+    const found = index.get(id);
+    if (found) affected.add(found.stack);
+    else if (messages.has(id)) return false;
+  }
+  const ready = [];
+  for (const stack of affected) {
+    const section = state.sections.get(stack.id);
+    if (!section?.isConnected || section.parentElement !== list || frame.levels.get(stack.id) !== levelOf(state, stack.id)) return false;
+    const members = [stack.head, ...stack.replies].map(item => messages.get(item.id));
+    const source = stack.sourceStack, references = [...new Set([stack.dossier,
+      ...(source ? [source.head.id, ...source.replies.map(item => item.id)] : [])])];
+    if (members.some(item => !item || frame.shapes.get(item.id) !== readingProjection(item)) ||
+        references.some(id => frame.shapes.has(id) && (!messages.get(id) || frame.shapes.get(id) !== readingProjection(messages.get(id))))) return false;
+    const byId = new Map();
+    for (const item of members) {
+      const entry = frame.entries.get(item.id);
+      if (!entry?.isConnected || entry.closest('.reply-stack') !== section ||
+          (cardIn(entry).getAttribute('data-card-reply') != null) !== state.writing.has(item.id)) return false;
+      byId.set(item.id, entry);
+    }
+    ready.push({ before: stack, stack: { ...stack, head: members[0], replies: members.slice(1),
+      ...(source ? { sourceStack: { ...source, head: messages.get(source.head.id), replies: source.replies.map(item => messages.get(item.id)) } } : {}) }, section, byId });
+  }
+  const { keep = () => false, unread = () => false, nameOf = id => id, colorOf = () => null, doc = list.ownerDocument } = frame.options;
+  const active = list.contains(doc.activeElement) ? doc.activeElement : null, moved = [];
+  for (const { before, stack, section, byId } of ready) {
+    state.stacks[state.stacks.indexOf(before)] = stack;
+    for (const item of [stack.head, ...stack.replies]) {
+      index.set(item.id, { stack, item });
+      state.earlierRows.delete(item.id); state.contextRows.delete(item.id);
+      if (!state.writing.has(item.id) && rowFolded(item, { peeked: each => state.peeked.has(each.id) })) state.folded.add(item.id);
+      else state.folded.delete(item.id);
+    }
+    paintStack(section, stack, byId, { state, keep, unread, nameOf, colorOf, doc, moved });
+    const heads = stack.replies.length && !state.only;
+    for (const [id, entry] of byId) {
+      const item = messages.get(id);
+      if (!heads || id !== stack.id) unhead(entry);
+      paintFolded(entry, item, state.folded.has(id), { nameOf, doc });
+      paintEarlier(entry, item, state.earlierRows.has(id), { nameOf, doc });
+      paintFoldHeader(entry, doc);
+    }
+    paintFoldedNames(list, messages, state, [section]);
+  }
+  if (!ready.length) return true;
+  const coordinationNews = state.stacks.some(stack => state.coordination.has(stack.id) && [stack.head, ...stack.replies].some(unread));
+  state.on?.coordinationCount?.(state.coordination.size, coordinationNews);
+  if (ready.some(({ stack }) => state.below.has(stack.id))) state.on?.archived?.(state.stacks
+    .filter(stack => state.below.has(stack.id) && (state.showCoordination || !state.coordination.has(stack.id)))
+    .map(stack => ({ stack, section: state.sections.get(stack.id) })));
+  for (const [box, position] of state.scrolled) {
+    if (!list.contains(box)) { state.scrolled.delete(box); continue; }
+    if (!moved.some(node => node.contains(box))) continue;
+    box.scrollLeft = position.left; box.scrollTop = position.top; state.scrolled.delete(box);
+  }
+  if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
+  state.on?.arranged?.();
+  return true;
+}
+
 export function arrangeStacks(list, messages, options = {}) {
   const { keep = () => false, unread = () => false, quiet = () => false, viewer = null, nameOf = id => id, colorOf = () => null, on = null, home = null, coordinationHost = null, doc = list.ownerDocument } = options;
   const state = stackState(list);
@@ -1175,4 +1270,5 @@ export function arrangeStacks(list, messages, options = {}) {
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
   state.on?.arranged?.();
   paintFoldedNames(list, messages, state);
+  rememberReadingFrame(list, messages, byId, state, options);
 }
