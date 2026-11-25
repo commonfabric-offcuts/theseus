@@ -96,9 +96,12 @@ No preview, browser, full suite or CI was run for this rebuild.
 
 New above shows the number of genuine retained arrival offers. Passive paints
 prune stale entry/message/topic identities without measuring offered cards or
-pretending to know their current viewport positions. A connected offer may
-remain after scrolling; it retires when its actual activation reaches it, or
-its source/entry ceases to be current. The count is not an unread total.
+pretending to know their current viewport positions. The existing visibility
+observer retires a current arrival when its accepted read signal fires, so
+manually reading arrivals clears their offers too. One changed observer batch
+repaints the count once, with no new card measurements. Activation also retires
+the arrival it reaches; stale source/entry identities are pruned. The count is
+not an unread total.
 Activation retains reveal, top-arrival release, scroll/focus and reached-identity
 fences. Hidden, retired, inaccessible or authority-held views cannot activate
 an old offer. The separate arrival/writing hold owners remain unchanged.

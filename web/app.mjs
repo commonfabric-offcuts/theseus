@@ -626,10 +626,18 @@ function onScreen(node) {
   return shown > 0 && (shown >= box.height / 2 || box.top <= innerHeight / 2 && box.bottom >= innerHeight / 2);
 }
 const cardsSeen = (shown, test) => entries => {
+  let changed = false;
+  const current = !retired && !topicUnavailable && !authorityReviewPending() && document.visibilityState === 'visible';
   for (const entry of entries) {
     const seq = Number(entry.target.dataset.seq);
-    if (test(entry)) shown.add(seq); else shown.delete(seq);
+    if (test(entry)) {
+      shown.add(seq);
+      const id = entry.target.dataset.id;
+      if (current && entry.target.isConnected && messageEntries.get(id) === entry.target &&
+          views.messages.get(id)?.topic_id === topic?.id) changed = newAbove.delete(id) || changed;
+    } else shown.delete(seq);
   }
+  if (changed) paintNewAbove();
   noteRead();
 };
 function revokeMedia() { for (const url of mediaURLs) URL.revokeObjectURL(url); mediaURLs.clear(); }
