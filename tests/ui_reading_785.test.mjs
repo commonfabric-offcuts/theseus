@@ -85,7 +85,7 @@ test('item 785 exact generated expressions compile and execute with escaped iden
  const e={dataset:{id:'real"\\\n'},isConnected:true,getClientRects:()=>[1],getBoundingClientRect:()=>({top:40,bottom:160,left:20,right:420,width:400,height:120})};
  const ctx=vm.createContext({window:{},document:{querySelectorAll:()=>[e],querySelector:()=>e,caretPositionFromPoint:()=>null},innerWidth:600,scrollY:0,requestAnimationFrame:f=>f()});
  const before=vm.runInContext(capture785,ctx);const after=vm.runInContext(read785,ctx);held785(before,after);assert.equal(before.id,e.dataset.id);assert.equal(vm.runInContext(rect785('escaped"\\\n'),ctx).top,40);await vm.runInContext(frames785,ctx);
- const pill={getBoundingClientRect:()=>({top:12,bottom:48,left:160,right:280,width:120,height:36}),hidden:false,style:{left:'20px'},textContent:'New above ↑',contains:()=>true};
+ const pill={getBoundingClientRect:()=>({top:12,bottom:48,left:160,right:280,width:120,height:36}),hidden:false,style:{left:'20px'},textContent:'New above · 1 ↑',contains:()=>true};
  ctx.document.querySelector=s=>s==='.new-above'?pill:e;ctx.document.elementFromPoint=()=>pill;ctx.getComputedStyle=()=>({backgroundColor:'rgb(4, 5, 6)',opacity:'1',boxShadow:'0px 4px 16px rgba(0, 0, 0, 0.18)',transform:'matrix(1,0,0,1,-60,0)'});ctx.CSS={supports:()=>true};ctx.matchMedia=()=>({matches:false});solid785(vm.runInContext(pill785,ctx));
  // Instrument corruption uses the very same assertion called by native cases.
  for(const change of [{top:48},{id:'wrong real anchor'},{offset:3},{words:'wrong writing'}])assert.throws(()=>held785(before,{...after,...change}),{name:'AssertionError'});
@@ -146,7 +146,7 @@ test('item 785 event label survives a separately named mutant phase',()=>{
 });
 
 function pillContext785(colour) {
- const pill={hidden:false,style:{left:'160px'},textContent:'New above ↑',contains:()=>true,getBoundingClientRect:()=>({top:12,bottom:48,left:160,right:280,width:120,height:36})};
+ const pill={hidden:false,style:{left:'160px'},textContent:'New above · 1 ↑',contains:()=>true,getBoundingClientRect:()=>({top:12,bottom:48,left:160,right:280,width:120,height:36})};
  return vm.createContext({document:{querySelector:()=>pill,elementFromPoint:()=>pill},getComputedStyle:()=>({backgroundColor:colour,opacity:'1',boxShadow:'0 4px 16px rgba(0,0,0,.18)',transform:'none'}),CSS:{supports:()=>true},matchMedia:()=>({matches:false}),innerWidth:600});
 }
 test('item 785 exact generated pill expression reads rgba alpha and solid/transparent/translucent surfaces',()=>{

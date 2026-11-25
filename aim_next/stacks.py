@@ -910,10 +910,10 @@ class Stacks:
         return {"root_id": root, "name_revision": 0}
 
     def _fold_answered(self, db, actor, message_id):
-        """A person who replies to a message (its reply_to names it) or gives it a thumbs-up has dealt with it: it
-        folds for them, as their own message.fold would, in the same transaction as the reply or the thumb, so
+        """A person who replies to a message (its reply_to names it) has dealt with it: it
+        folds for them, as their own message.fold would, in the same transaction as the reply, so
         every page, device and the CLI agree (item 377). Their fold only. A starred message never folds this way,
-        one already folded stays, an agent's reply or thumb folds nothing, and a message read only because it was
+        one already folded stays, an agent's reply folds nothing, and a message read only because it was
         sent to them by name (no topic they read) has no acts. Returns what it affected."""
         if self._actor(db, actor)["kind"] != "human":
             return []
