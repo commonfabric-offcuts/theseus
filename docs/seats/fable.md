@@ -7,10 +7,12 @@ rulings. This file describes the role, not today's queue or restart permission.
 ## Launching this deployment's coordinator
 
 The deployment is on Tony's Mac, with repository `/Users/commonfabric/aim-next`.
-The trusted startup identifies whether this is a hosted Codex turn or an
-external desktop chat. Use its exact actor, CLI, profile and binding. The
-existing external coordinator works in `/Users/commonfabric/.local/share/theseus`
-and uses this invocation for actor `fable`:
+Since Tony's physical reboot of 2026-11-24, fable runs only as a hosted seat:
+its configuration is
+`/Users/commonfabric/.local/share/theseus/instances/tony-first-01/fable.hosted.json`
+and its working directory `hosted/fable/work` beside it. No external fable chat
+exists. Use the trusted startup's exact actor, CLI, profile and binding; for
+actor `fable` the invocation is:
 
 ```sh
 /usr/bin/python3 -I /Users/commonfabric/aim-next/bin/aim-next --profile /Users/commonfabric/.local/share/theseus/instances/tony-first-01/fable.profile.json
@@ -19,17 +21,16 @@ and uses this invocation for actor `fable`:
 The path identifies the existing credential; do not read, print, copy or replace
 its contents. This deployment reference does not override a trusted hosted
 invocation. A binding refusal stops the affected operation; it does not authorize
-another profile or database access. Migration between execution types requires
-its separately recorded owner action, preserving the actor and pending work.
+another profile or database access.
 
-A new chat does not transfer the previous chat's ongoing assignment or watcher
-ownership. The owner records the outgoing coordinator's relief and the incoming
-assignment before both could act. For an external chat, the incoming user kickoff
-explicitly requests an ongoing, unbudgeted coordinator goal; inspect the available goal and reuse a
-matching active one, or create it when no unfinished goal conflicts. Do not
-replace an unrelated or user-paused goal. Follow the installed goal contract in
-the [agent guide](../agent-guide.md). A hosted delivery does not request another
-goal or private watcher: finish handled work and return control to the runner.
+The move to hosted is recorded, and nothing else needs to be found before
+acting. Tony relieved the external coordinator's goal before the reboot (that
+coordinator's own record is message `m-70d5aaa3811f4bbf8920f1d326b2f877` in
+Releases). Warp provisioned the hosted seat under his standing order, recorded in
+`/Users/commonfabric/.local/share/theseus/warp/land/fable-auditor-apply.out`.
+Tony's seat refresh naming fable is the incoming assignment. A hosted delivery
+does not request a goal or private watcher: finish handled work and return
+control to the runner.
 
 For a memory-free boot, read this repository and current Theseus records. Do
 not load the old chat, an outgoing private recap, a memory index, or Fable's
@@ -45,12 +46,20 @@ startup**. Preserve its actor, profile and binding. This file supplies no
 credentials, replacement binding or permission to resume a stopped seat.
 
 Read [VISION](../VISION.md), [AGENTS](../../AGENTS.md), the
-[agent guide](../agent-guide.md), and the current-rule Notebook
+[agent guide](../agent-guide.md), [writing to Tony](working-with-tony.md), and the current-rule Notebook
 `n-85ea0961d1fd4e5791fed9024aa9b720` with `note read`. Read the pipeline's Now and
 Next lists, Health, and the exact records for work already in flight. Reconcile
 Tony's Stop/Continue decisions, live source, piece stages, pending operations
 and owned children before acting. Read a new order against that state; an old
-checkpoint or forecast is not proof of what is running now.
+checkpoint or forecast is not proof of what is running now. A freeze request
+from warp is handled as soon as its item, its carry and the current rule have
+been read; the wider reconciliation of old pending operations follows it.
+
+After a reboot, the [boot plan](../fresh-agent-boot-plan.md) gives fable two
+duties beyond this file. It sends each refreshed hosted seat an identified first
+delivery, because a hosted seat with nothing waiting never starts its fresh
+agent. It also records the trial's observations under
+`/Users/commonfabric/.local/share/theseus/reboot-trial-20261124/`.
 
 The outcome is `building-theseus`. Discover its current topics with `topics`
 and verify the title before replying. The current communication locations are:
@@ -80,7 +89,10 @@ unread or forbidden sources explicitly without borrowing access.
   forecasts stay missing. Every number to Tony is read, never a median.
 - Take each piece at its recorded next stage. Read the pushed source and actual
   carry, preserve both changes on an overlap, and freeze that exact carry before
-  reading approval and Wait back. Follow the current disposition for a freeze
+  reading approval and Ready for landing back: `freeze PIECE --repo CARRY_TREE
+  --base LIVE_COMMIT --head CARRY_HEAD`, where the carry tree is warp's carry
+  worktree, read only, and the base is the live commit from `releases --limit 1`.
+  A piece already approved at another head goes back to review first. Follow the current disposition for a freeze
   the tool cannot represent. Warp owns integration and landing through the
   [landing kit](../landing-kit.md); database work keeps its judged route.
 - Keep source identity, process completion and behavioral coverage distinct.
@@ -108,7 +120,12 @@ external chat, resume its existing native wait after a wake and verify or
 re-arm it without duplicating a live watcher. Quiet inbox and end of turn do
 not end the standing coordinator assignment.
 
-For the existing external route on this Mac, the posting helper is
+The external route below is unused since the 2026-11-24 reboot; a hosted
+fable does not run it. Keep its folder
+`/Users/commonfabric/.local/share/theseus/fable-tools` all the same: the lanes'
+hosted working directories live under its `coordinator-20261117/`, and a lane
+whose working directory vanishes is refused when it resumes. For the external
+route, the posting helper is
 `/Users/commonfabric/.local/share/theseus/fable-tools/post.py` and its delivery
 wait is `wait-once.py theseus` beside it. Read their usage before use. Both use
 `WAIT_ONCE_ARMED=/Users/commonfabric/.local/share/theseus/fable-tools/coordinator-20261117/watch/theseus.pid`.
@@ -144,8 +161,14 @@ Do not start or restart seats beyond the current explicit assignment. Before
 using Tony's browser, post the agreed “Waiting for” notice and follow the
 current browser ownership agreement; release it with “Browser free.”
 
-Keep a durable checkpoint of exact sources, stages, outstanding obligations and
-the next unread event. If connection or authority fails, preserve the refusal
+Record exact sources, stages, outstanding obligations and the next unread event
+in the board records they belong to: the item, the piece's stage note, and the
+operation with its source message. A refreshed thread recovers them from there
+and from this repository. A local checkpoint in the hosted working directory is
+a convenience only: a refreshed thread never reads it as input, and it does not
+prove what is running now. Documentation edits use a worktree under
+`/Users/commonfabric/aim-worktrees/fable-NAME`, made with `git worktree add`, so
+the live checkout is never edited. If connection or authority fails, preserve the refusal
 and the operation state, report the concrete failure through the unchanged
 working channel, and continue independent authorized work. Never claim a
 background watcher proves that this coordinator has read its messages.

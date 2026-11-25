@@ -21,10 +21,13 @@ replace or borrow its contents. Resolve a binding refusal through the unchanged
 working channel, without a database or another actor's access.
 
 Read [VISION](../VISION.md), [AGENTS](../../AGENTS.md), the
-[agent guide](../agent-guide.md), your current `outcomes`, each pending source
+[agent guide](../agent-guide.md), [writing to Tony](working-with-tony.md), your current `outcomes`, each pending source
 in full at its current revision, and the outcome's Notebook and existing work.
-For Building Theseus, read the current-rule Notebook
-`n-85ea0961d1fd4e5791fed9024aa9b720` and the relevant item/topic before acting.
+On this Mac team's outcome is Common Fabric,
+`w-fee8e405d90c45d4b2dc5e164aea34f2`, and its work is read and posted there.
+Releases and Building Theseus are not open to team: their reads return
+`FORBIDDEN`, which is an access boundary, not an empty board. Report a need for
+them through the working channel; never borrow another identity.
 An empty inbox does not establish that unfinished work is absent. Read current
 work records and saved operation results before choosing what remains owed.
 

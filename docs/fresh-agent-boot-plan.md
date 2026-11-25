@@ -453,8 +453,11 @@ waiting follows the trusted runner instructions, not an inherited watch/goal loo
    stay unknown rather than being replaced by self-reports.
 8. **Ship with the fresh team and measure forecasts.** Fresh Fable and Warp
    carry a real eligible piece through normal freeze/landing/publication, with
-   supported attribution to new contexts. The earlier 1215 freeze-only hold can
-   provide the first causal act, if its real failures and readiness permit. Then
+   supported attribution to new contexts. Item 1225 (PR 515, docs only) is the
+   first landing: Tony asked, just before the reboot, for the seat-file gaps the
+   outgoing seats found to be fixed before designer, team and auditor start.
+   The earlier 1215 freeze-only hold follows it, if its real failures and
+   readiness permit, and keeps its original Build and forecast. Then
    evaluate the predeclared forecast cohort below. Do not treat a preapproved
    piece, unchanged lander or correct-looking recovery post as the whole proof.
 
