@@ -96,6 +96,7 @@ try {
         row.readClass=new Headers(init?.headers).get('X-AIM-Read-Class');
         row.owner=init?.signal?probe.signalOwners.get(init.signal):undefined;
         row.publish=probe.publishing;
+        row.signalAborted=init?.signal?.aborted===true;
         init?.signal?.addEventListener('abort',()=>{row.signalAborted=true;row.abortAt=performance.now();},{once:true});
         probe.reads.push(row); probe.pending++; probe.last=performance.now();
       }
