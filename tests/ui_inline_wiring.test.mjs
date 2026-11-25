@@ -8808,7 +8808,7 @@ for (const canonicalFirst of [false,true]) for (const focused of [false,true,'bu
   } finally {proto.insertBefore=insert;}
 });
 
-for (const change of ['unchanged','writing','navigation','access','authority','retired']) test(`1254 actual app Reader handoff keeps locally before close and fences ${change}`,async()=>{
+for (const change of ['unchanged','writing','navigation','access','authority','retired','canonical']) test(`1254 actual app Reader handoff keeps locally before close and fences ${change}`,async()=>{
   const f=fixture();await f.initialize();await drain();Object.assign(f.bootstrap.authority,{authority_id:'a',authority_epoch:'e'});
   const editor=f.editor,session=f.registry.sessionFor(editor);f.registry.sessionFor=()=>({...session,underWay:()=>true});Object.assign(editor.context,{instanceId:f.bootstrap.instance_id,actor:f.bootstrap.actor});
   const item={id:'reader-local1254',sendOperationId:'reader-send1254',presentPending:true,topicId:'t1',authority:structuredClone(f.bootstrap.authority),status:'preparing',snapshot:{body:'Exact A',attachments:[]}};
@@ -8824,7 +8824,13 @@ for (const change of ['unchanged','writing','navigation','access','authority','r
   if(change==='access')f.runObservation('++listAccessEpoch');
   if(change==='authority')f.registry.runtime.current={authority_id:'changed',authority_epoch:'e'};
   if(change==='retired')f.runObservation('retired = true');
-  kept.resolve();assert.equal(await task,change==='unchanged');assert.equal(closed,change==='unchanged'?1:0);
-  if(change==='unchanged'){assert.equal(f.registry.current,null);assert.equal(f.document.activeElement,card);}
+  let confirmed=null;
+  if(change==='canonical'){
+    item.status='confirmed';item.receipt={instance_id:editor.context.instanceId,operation_id:item.sendOperationId,kind:'message.send',status:'committed',recorded:true,result:{message_id:'reader-canonical1254',seq:1}};
+    f.views.messages.set('reader-canonical1254',{id:'reader-canonical1254',topic_id:'t1',seq:1,author_id:editor.context.actor,author_kind:'human',body:item.snapshot.body,attachments:[]});f.views.newest=1;f.paintViews('messages');await drain();confirmed=entryIn(f,'reader-canonical1254');assert.ok(confirmed);assert.equal(f.get('messages').querySelector('[data-pending-send]'),null);
+  }
+  const success=change==='unchanged'||change==='canonical';
+  kept.resolve();assert.equal(await task,success);assert.equal(closed,success?1:0);
+  if(success){assert.equal(f.registry.current,null);assert.equal(f.document.activeElement,confirmed??card,'a canonical arrival during local keep retains the intended focus target');}
   else {assert.equal(f.registry.current,p);if(change==='writing')assert.equal(editor.draft.body,'Later B');}
 });

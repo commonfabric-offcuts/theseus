@@ -461,7 +461,8 @@ function pendingSendTarget(ref) {
   return section?.isConnected ? section.querySelector(':scope > .stack-replies') : null;
 }
 function focusPendingSend(item) {
-  const card = pendingSendCard(item.id);
+  const canonical = item.status === 'confirmed' && messageEntries.get(item.receipt?.result?.message_id);
+  const card = pendingSendCard(item.id) ?? (canonical ? cardIn(canonical) : null);
   if (card) { card.tabIndex = -1; card.scrollIntoView({ block: 'nearest', behavior: 'instant' }); card.focus({ preventScroll: true }); }
 }
 async function handoffReaderSend(p, editor, item, current, owns) {
