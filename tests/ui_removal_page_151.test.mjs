@@ -39,7 +39,7 @@ function section(start, end) {
   return app.slice(first, last);
 }
 const learnedCode = section('function learnMessageRemoval(', '// Who may edit which message here');
-const headCode = section('function refreshDossierHeads(', 'function stackMessages(');
+const headCode = section('function observeReadEntry(', 'function revokeMedia()') + section('function refreshDossierHeads(', 'function stackMessages(');
 const authorCode = section('function paintCardAuthor(', '// Who the composers may whisper to');
 const readerCode = section('function readerMessageMenuItems(p)', '// A message\'s withdrawal is permanent');
 const sharedCode = section('function sharedMessageMenuItems(', '// A feed action that needs the full source');
@@ -111,7 +111,7 @@ function cardEnvironment(t, { views, heads = null, entries = new Map(), registry
     cardIn, clearVisitNew() {}, paintFoldWords, paintAwaiting() {}, paintReactions() {},
     questionOf, questionPill, paintAuthor, displayActor: id => id, marks: null, wasEdited, carriesOf, paintWithdrawal, paintRemoval,
     here: null, stackFeed: null, messageUpdateHost, messageUpdateActivity: () => null, updateContext: () => ({}),
-    visitNew: null, paintVisitNew() {}, cardObserver: null, middleObserver: null,
+    visitNew: null, paintVisitNew() {}, cardObserver: null, middleObserver: null, seenEntries: new Map(), halfShown: new Set(), atMiddle: new Set(),
     menu: { paint() { counts.menu++; } },
     reader: { paintOrigin() { counts.origin++; }, hideUnavailableSource() { counts.hidden++; } },
     revokeMedia() {}, paintReaderMark() {}, paintReaderThumb$() {},

@@ -28,7 +28,7 @@ function fixture() {
   list.getBoundingClientRect = () => { columnReads++; return { left: 40 }; };
   const records = new Map(), entries = new Map(), flags = { authority: false, geometry: false, unavailable: false, unfocused: false };
   const writing = { text: 'Exact draft', selection: [2, 5] }; doc.activeElement = writing;
-  const ports = { document: doc, innerHeight: 800, retired: false, topicUnavailable: false,
+  const ports = { document: doc, innerHeight: 800, retired: false, readingStopped: false, seenEntries: new Map(), cardObserver: null, middleObserver: null, topicUnavailable: false,
     authorityReviewPending: () => flags.authority, topic: { id: 'topic' }, bootstrap: { actor: 'viewer' },
     views: { messages: records, runOf: () => 0, sighted() {} }, seenRanges, halfShown, atMiddle, unreadLandingBusy: false, readThrough: { seen: (...args) => { reports.push(args); return Promise.resolve(null); } }, registry: {}, laidOut: true, review: { open: false }, messageEntries: entries, anchorHold: null,
     button: (text, activate) => { const control = doc.createElement('button'); control.textContent = text; control.style = {}; control.activate = activate; return control; },
@@ -156,7 +156,7 @@ test('1242 observer and actual read owner share refusal eligibility', () => {
     if (fault === 'hidden-feed') f.list.hidden = true;
     if (fault === 'landing') f.api.landing(true);
     if (fault === 'no-read-owner') f.api.reading(null);
-    const notePorts = { unreadLandingBusy: fault === 'landing', $: id => ({main:f.main,messages:f.list})[id],
+    const notePorts = { retired: false, readingStopped: false, unreadLandingBusy: fault === 'landing', $: id => ({main:f.main,messages:f.list})[id],
       readThrough: fault === 'no-read-owner' ? null : {}, topic: {id:'topic'}, topicUnavailable: false,
       authorityReviewPending: () => false, review: {open:fault === 'review'}, document:f.doc,
       registry:{}, laidOut:false };
