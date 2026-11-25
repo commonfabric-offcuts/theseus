@@ -71,3 +71,14 @@ completion-wait and clipping-oracle defects. Both historical runs remain0/8.
 Base harness/fixture/declaration conflicts were retained unchanged; the imported
 786 native module is not wired into those base runners. No current test, native
 result or visual acceptance is claimed; see REPORT.md and the external packet.
+
+## Stable card activity (1243)
+
+Ask for update stays on its existing card activity and message menu surfaces.
+Repeated cached author and folded-row paints retain one activity node per
+message. Its request-state rendering changes only when the displayed state or
+labels change; unchanged paints preserve descendants and focus. Card movement
+to its folded/head row reuses that node. Duplicate historical nodes retire.
+The existing exact request journal, revision/authority fences and monotonic
+pending/completed state remain the sole action/recovery owner. No request is
+sent by painting, and no new Core command or menu-only relocation is added.
