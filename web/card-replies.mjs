@@ -1,3 +1,4 @@
+import { timingCall } from './action-timing.mjs';
 import { InlineComposer } from './inline-composer.mjs';
 import { revealCardReply } from './compose-bar.mjs';
 import { holdsWriting } from './editor.mjs';
@@ -60,13 +61,13 @@ export class CardReplies {
       this.open(id, card, { focus: false }).catch(error => this.say(error)).finally(() => { --this.loading; this.drain(); });
     }
   }
-  async open(id, card, { focus = true } = {}) {
+  async open(id, card, { focus = true, timing = null } = {}) {
     if (!card?.isConnected || this.disposed || this.registry.disposed) return null;
     let row = this.rows.get(id);
     if (!row) {
       let load = this.loads.get(id);
       if (!load) {
-        load = this.registry.initializeCard({ kind: 'message', id }, this.topic()).then(async p => {
+        load = this.registry.initializeCard({ kind: 'message', id }, this.topic(), timing).then(async p => {
           if (!p || !card.isConnected || this.disposed || this.registry.disposed || this.loads.get(id) !== load) {
             if (p && this.registry.cards.get(id) === p && this.registry.current !== p) this.registry.cards.delete(id);
             return null;
@@ -120,7 +121,8 @@ export class CardReplies {
         }).finally(() => { if (this.loads.get(id) === load) this.loads.delete(id); });
         this.loads.set(id, load);
       }
-      row = await load;
+      const waited = timingCall(timing, 'span', 'session_queue');
+      try { row = await load; } finally { waited?.(); }
     }
     if (!row || this.disposed || this.registry.disposed) return null;
     if (focus) {
@@ -136,6 +138,7 @@ export class CardReplies {
     row.p.hidden = false; row.ui.root.hidden = Boolean(this.registry.current); this.paint();
     if (focus && !this.registry.current) {
       row.ui.bar.expand(); row.ui.field.focus({ preventScroll: true }); revealCardReply(row.ui.field);
+      if (timing && row.ui.field.ownerDocument.activeElement === row.ui.field) timingCall(timing, 'endpoint', 'reply_focused');
     }
     this.changed(); return row.p;
   }
