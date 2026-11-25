@@ -953,7 +953,12 @@ function paintStack(section, stack, byId, context) {
   // Drawn again only when what it says changes; never duplicated as card pills.
   const cover = state.apart.has(stack.id) ? null : stackCover(stack, { alone: true }), coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id, rootId: dossierOf(stack) };
   const key = coverKey(cover, coverContext);
-  if (key !== p.coverKey) { p.cover?.remove(); p.cover = cover ? coverSheet(doc, cover, coverContext) : null; p.coverKey = key; }
+  if (key !== p.coverKey) {
+    const previous = p.cover;
+    p.cover = cover ? coverSheet(doc, cover, coverContext, previous) : null;
+    if (previous !== p.cover) previous?.remove();
+    p.coverKey = key;
+  }
   // The cover precedes every message; adjacent message faces overlap as usual.
   let previousFace = whole ? head : null;
   for (const entry of desired) {

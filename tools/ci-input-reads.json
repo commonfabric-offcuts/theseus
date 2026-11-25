@@ -5962,16 +5962,24 @@
       ]
     }
   },
-  "tests/ui_send_receipt_sequence_1261.test.mjs": {
-    "06b51e7edb441935247b84895d71c81c774c6dd3cc21a694ee57429e6f59d0cb": {
+  "tests/ui_visible_reads_1263.test.mjs": {
+    "d86d5b45b44bcc9209b1876a6bf7898ff87b257e01c7e16a452e95fc13b19eda": {
       "scope": "repository",
       "inputs": [
         "web/app.mjs"
       ]
     }
   },
-  "tests/ui_visible_reads_1263.test.mjs": {
+  "tests/ui_cover_reading_1276.test.mjs": {
     "d86d5b45b44bcc9209b1876a6bf7898ff87b257e01c7e16a452e95fc13b19eda": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
+  },
+  "tests/ui_send_receipt_sequence_1261.test.mjs": {
+    "06b51e7edb441935247b84895d71c81c774c6dd3cc21a694ee57429e6f59d0cb": {
       "scope": "repository",
       "inputs": [
         "web/app.mjs"
