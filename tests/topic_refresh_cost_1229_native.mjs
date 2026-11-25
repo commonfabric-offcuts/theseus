@@ -4,6 +4,7 @@ import {spawn, execFileSync} from 'node:child_process';
 import {mkdir, readFile, writeFile, access} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import net from 'node:net';
+import http from 'node:http';
 import {fixtureControl} from './fixture_control.mjs';
 
 const {chromium} = await import(process.env.AIM_PLAYWRIGHT_CORE);
@@ -77,9 +78,24 @@ try {
         row = {name:request.name,args:request.args,start:performance.now(),commitSeen:probe.seq};
         probe.reads.push(row); probe.pending++; probe.last=performance.now();
       }
-      try { const response=await original.apply(this,arguments); if(row)row.status=response.status; return response; }
-      catch(error) { if(row)row.failure=String(error); throw error; }
-      finally { if(row){row.end=performance.now();probe.pending--;probe.last=performance.now();} }
+      let finished=false;
+      const finish=()=>{if(row&&!finished){finished=true;row.end=performance.now();probe.pending--;probe.last=performance.now();}};
+      try {
+        const response=await original.apply(this,arguments);
+        if(row){
+          row.status=response.status;row.headers=performance.now();
+          for(const name of ['json','text','arrayBuffer','blob','formData']){
+            const consume=response[name].bind(response);
+            response[name]=async(...args)=>{
+              row.bodyStarted=performance.now();row.bodyReader=name;
+              try{return await consume(...args);}
+              catch(error){row.bodyFailure=String(error);throw error;}
+              finally{row.bodyEnded=performance.now();finish();}
+            };
+          }
+        }
+        return response;
+      }catch(error){if(row)row.failure=String(error);finish();throw error;}
     };
     const Socket = window.WebSocket;
     window.WebSocket = class extends Socket {
@@ -88,6 +104,27 @@ try {
       }); }
     };
   });
+  // A real HTTP200/partial JSON boundary proves the counter cannot declare
+  // drain at headers. This page has no application, data or extra authority.
+  let releaseBody,probePage;
+  const bodyServer=http.createServer((request,response)=>{
+    if(request.url!=='/api/view'){response.end('<!doctype html><title>Owned body boundary</title>');return;}
+    response.writeHead(200,{'Content-Type':'application/json'});response.write('{"probe":');
+    releaseBody=()=>response.end('true}');
+  });
+  await new Promise(resolve=>bodyServer.listen(0,'127.0.0.1',resolve));
+  try{
+    probePage=await context.newPage();await probePage.goto(`http://127.0.0.1:${bodyServer.address().port}/`);
+    await probePage.evaluate(()=>{window.bodyProbePromise=fetch('/api/view',{method:'POST',body:JSON.stringify({name:'owned_body_probe',args:{}})})
+      .then(response=>{render1229.clientHeaders=response.status===200;return response.json();});});
+    await probePage.waitForFunction(()=>render1229.clientHeaders&&render1229.reads[0]?.bodyStarted!==undefined);
+    await probePage.waitForTimeout(900);
+    report.delayedBody={held:await probePage.evaluate(()=>({pending:render1229.pending,read:render1229.reads[0],wouldDrain:render1229.pending===0&&performance.now()-render1229.last>=750}))};
+    check('body pending beyond quiet window',report.delayedBody.held.pending===1&&!report.delayedBody.held.wouldDrain,report.delayedBody.held);
+    releaseBody();await probePage.evaluate(()=>window.bodyProbePromise);
+    report.delayedBody.released=await probePage.evaluate(()=>({pending:render1229.pending,read:render1229.reads[0]}));
+    check('body settlement observed',report.delayedBody.released.pending===0&&report.delayedBody.released.read.bodyEnded!==undefined,report.delayedBody.released);
+  }finally{releaseBody?.();await probePage?.close();await new Promise(resolve=>bodyServer.close(resolve));}
   page = await context.newPage();
   const responseJobs=[];
   page.on('response',response=>{
@@ -120,7 +157,7 @@ try {
       const element=record.target.nodeType===Node.ELEMENT_NODE?record.target:record.target.parentElement;
       const notice=element?.closest('.notice');
       if(notice&&!notice.hidden&&notice.textContent.trim())p.warnings.push({time:performance.now(),text:notice.textContent});
-    }});
+    }p.last=performance.now();});
     p.warningObserver.observe(document.documentElement,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['hidden']});
   });
   const cdp = await context.newCDPSession(page);
@@ -179,6 +216,7 @@ try {
       const forbidden=new Set(['topic','topic_unread','marks','wakes','topic_tools','memory_items','pipeline','pipeline_row','health_light','workspace_links','conversation']);
       check(operation+' unrelated resources unread',observed.reads.every(read=>!forbidden.has(read.name)),observed.reads.map(read=>read.name));
       check(operation+' successful reads',observed.reads.every(read=>read.status>=200&&read.status<300&&!read.failure),observed.reads);
+      if(!addressed)check(operation+' no unrelated attention read',observed.reads.every(read=>read.name!=='attention'),observed.reads.map(read=>read.name));
       if(addressed){
         const attention=await control({method:'agent_view',actor:facts.actor,name:'attention',args:{}});
         sample.attentionTruth=attention;
@@ -221,7 +259,7 @@ try {
         const parent=openPhase.posts.at(-1).receipt.result.message_id;
         const card=page.locator(`.message-card[data-id="${parent}"]`);
         await card.locator(':scope > .message-preview').click();
-        field=page.locator(`[id="reply-${parent}-composer"] textarea`);
+        field=page.locator(`[id="reply-${parent}-writing-body"]`);
         send=page.locator(`[id="reply-${parent}-send"]`);
       }else{
         field=page.locator('#inline-writing-body');await field.click();
