@@ -10,7 +10,7 @@ import {chromium} from '/Users/commonfabric/Library/Caches/deno/npm/registry.npm
 const code=dirname(fileURLToPath(import.meta.url)), name=process.argv[2];
 const evidence=process.env.FLEX_DIAGNOSTIC_EVIDENCE, out=`${evidence}/${name}`;
 const repo=process.env.FLEX_PRODUCT_REPO, head=process.env.FLEX_PRODUCT_HEAD;
-await mkdir(out);
+await mkdir(out,{mode:0o700});
 const save=(n,v)=>writeFile(`${out}/${n}`,JSON.stringify(v,null,2));
 const hash=x=>createHash('sha256').update(x).digest('hex');
 assert.equal(execFileSync('git',['-C',repo,'rev-parse','HEAD'],{encoding:'utf8'}).trim(),head);

@@ -20,7 +20,7 @@ def snapshot(label):
     for folder in [REPO/'web', REPO/'aim_next']:
         paths += [p for p in folder.rglob('*') if p.is_file() and p.suffix in ['.py','.mjs','.html','.css','.js']]
     paths += [LOCK, REPO/'bin/aim-next-server']
-    if (EVIDENCE/'baseline').exists(): paths += list((EVIDENCE/'baseline').iterdir())
+    if (EVIDENCE/'baseline-v2').exists(): paths += list((EVIDENCE/'baseline-v2').iterdir())
     result = {}
     for path in paths:
         if not path.is_file(): continue

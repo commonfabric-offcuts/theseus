@@ -17,7 +17,7 @@ from aim_next import Store, initialize
 from aim_next.server import create_server
 from aim_next.authority import prepare_authority, publish_initial
 
-OUT = Path(sys.argv[1]); BASE = Path(os.environ['FLEX_DIAGNOSTIC_EVIDENCE']) / 'baseline'
+OUT = Path(sys.argv[1]); BASE = Path(os.environ['FLEX_DIAGNOSTIC_EVIDENCE']) / 'baseline-v2'
 DB = OUT / 'data.sqlite3'; INSTANCE = 'isolated-dossier1279'
 READER = 'fixture-reader'; SENDER = 'fixture-sender'
 server = None; thread = None; serial = 0; binding = None; dataset = None
@@ -81,7 +81,7 @@ def seed():
 def ready():
     global binding, server, thread, dataset
     if not BASE.exists():
-        BASE.mkdir()
+        BASE.mkdir(mode=0o700)
         dataset = seed()
         shutil.copy2(DB, BASE/'data.sqlite3')
         (BASE/'dataset.json').write_text(json.dumps(dataset,indent=2))
@@ -123,8 +123,9 @@ try:
                 case = next(c for c in dataset['cases'] if c['label']==req['label'])
                 answer=store().view(READER,'source',{'source_ref':{'kind':'message','id':case['root']}})
             elif method == 'stop':
-                server.shutdown();server.server_close();thread.join(timeout=20)
-                answer={'thread_alive':thread.is_alive(),'closed':True,'ended_ms':int(time.time()*1000)}
+                if server:
+                    server.shutdown();server.server_close();thread.join(timeout=20)
+                answer={'thread_alive':thread.is_alive() if thread else False,'closed':True,'ended_ms':int(time.time()*1000)}
                 saved('fixture-terminal.json',answer)
             else: raise ValueError(method)
             print(json.dumps({'id':req['id'],'answer':answer}),flush=True)
