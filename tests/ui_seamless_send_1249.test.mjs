@@ -189,3 +189,12 @@ test('1254 a visible pending card keeps its place with focus on an outside butto
   pending.keepPendingSendPlace(f.host,()=>{y=-1200;},{top:()=>y,scroll:delta=>scrolls.push(delta)});
   assert.equal(f.doc.activeElement,button);assert.deepEqual(scrolls,[-1240]);
 });
+
+test('1254 two registered editors keep first-handed submission order when the older editor sends later',t=>{
+  const f=fixture(t),end=f.doc.createElement('dialog');f.host.append(end);f.item.presentPending=false;
+  const second={...structuredClone(f.item),id:'first-handed-B',presentPending:true},b={...f.editor,key:'editor-B',submissions:[second]};
+  const paint=()=>pending.paintPendingSends(f.host,[f.editor,b],{topicId:'t',underway:()=>true,end});
+  paint();const first=f.card();f.item.presentPending=true;paint();
+  assert.deepEqual(f.host.querySelectorAll('[data-pending-send]').map(card=>card.dataset.pendingSend),['first-handed-B',f.item.id]);
+  assert.equal(f.host.children[0],first);first.querySelector('a').focus();paint();assert.equal(f.doc.activeElement,first.querySelector('a'));
+});

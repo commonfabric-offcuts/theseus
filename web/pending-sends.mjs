@@ -124,7 +124,10 @@ export function paintPendingSends(host, editors, { topicId, placed = () => false
   for (const [id, card] of cards) if (!kept.has(id)) { dropCardImages(card); card.remove(); cards.delete(id); }
   // One reverse cursor per dossier/root group avoids detaching A then B on
   // every unchanged repaint. The root cursor remains before the composer.
+  const order = new Map([...cards.values()].map((card, index) => [card, index]));
   for (const [container, group] of groups) {
+    // Editors register independently of when their person presses Send.
+    group.sort((a, b) => order.get(a) - order.get(b));
     let before = container === host && end?.parentElement === host ? end : null;
     for (let index = group.length - 1; index >= 0; index--) {
       const card = group[index];
