@@ -592,11 +592,13 @@ function changed(editor) {
 // away) ends one range and starts the next, and a range never spans a gap
 // between runs. Only another actor's message can settle a delivery, so the
 // person's own are never reported.
+function readingAllowed() {
+  return !unreadLandingBusy && !$('main').inert && readThrough && topic && !topicUnavailable &&
+    !$('messages').hidden && !authorityReviewPending() && !review.open &&
+    document.visibilityState === 'visible' && document.hasFocus();
+}
 function noteRead() {
-  if (unreadLandingBusy) return;
-  if ($('main').inert) return;
-  if (!readThrough || !topic || topicUnavailable || $('messages').hidden || authorityReviewPending() || review.open) return;
-  if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  if (!readingAllowed()) return;
   const source = registry.current?.source;
   if (source) {
     if (registry.current.sourceUnavailable || source.source_ref.kind !== 'message' || source.topic_id !== topic.id) return;
@@ -627,7 +629,7 @@ function onScreen(node) {
 }
 const cardsSeen = (shown, test) => entries => {
   let changed = false;
-  const current = !retired && !topicUnavailable && !authorityReviewPending() && document.visibilityState === 'visible';
+  const current = !retired && readingAllowed() && laidOut && !registry.current?.source;
   for (const entry of entries) {
     const seq = Number(entry.target.dataset.seq);
     if (test(entry)) {

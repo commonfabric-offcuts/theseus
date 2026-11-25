@@ -12,24 +12,29 @@ const observerStart = source.indexOf('const cardsSeen =');
 const observerEnd = source.indexOf('function revokeMedia()', observerStart);
 assert.ok(observerStart >= 0 && observerEnd > observerStart, 'actual visibility callback boundaries');
 const observerCode = source.slice(observerStart, observerEnd);
+const eligibilityStart = source.indexOf('function readingAllowed()');
+const readStart = source.indexOf('function noteRead()');
+const readEnd = source.indexOf('// A card counts as on screen', readStart);
+const eligibilityCode = eligibilityStart < 0 ? '' : source.slice(eligibilityStart, readStart);
+const readCode = source.slice(readStart, readEnd);
 
 function fixture() {
   const doc = miniDocument(), list = doc.createElement('div'), main = doc.createElement('main');
-  list.root = true; list.style = {}; list.hidden = false; doc.visibilityState = 'visible';
+  list.root = true; list.style = {}; list.hidden = false; doc.visibilityState = 'visible'; doc.hasFocus = () => !flags.unfocused;
   let columnReads = 0, geometryReads = 0, released = 0, remembered = 0, scrolls = 0, noteReads = 0;
   list.getBoundingClientRect = () => { columnReads++; return { left: 40 }; };
-  const records = new Map(), entries = new Map(), flags = { authority: false, geometry: false, unavailable: false };
+  const records = new Map(), entries = new Map(), flags = { authority: false, geometry: false, unavailable: false, unfocused: false };
   const writing = { text: 'Exact draft', selection: [2, 5] }; doc.activeElement = writing;
   const ports = { document: doc, innerHeight: 800, retired: false, topicUnavailable: false,
     authorityReviewPending: () => flags.authority, topic: { id: 'topic' }, bootstrap: { actor: 'viewer' },
-    views: { messages: records }, messageEntries: entries, anchorHold: null,
+    views: { messages: records }, unreadLandingBusy: false, readThrough: {}, registry: {}, laidOut: true, review: { open: false }, messageEntries: entries, anchorHold: null,
     button: (text, activate) => { const control = doc.createElement('button'); control.textContent = text; control.style = {}; control.activate = activate; return control; },
     releaseTopArrivals: () => { released++; }, reveal() {}, opened: entry => entry,
     rememberListAnchor: () => { remembered++; }, noteRead: () => { noteReads++; },
     $: id => ({ messages: list, main })[id], entries: () => list.children,
     stackState: () => ({ waiting: new Set() }), drawn: (_, id) => entries.get(id)?.drawn !== false };
-  const api = new Function(...Object.keys(ports), 'const newAbove = new Set(); let newAboveButton = null;\n' + code + observerCode +
-    '\nreturn { paintNewAbove, cardsSeen, offers: newAbove, pill: () => newAboveButton, unavailable: value => { topicUnavailable = value; }, retire: () => { retired = true; } };')(...Object.values(ports));
+  const api = new Function(...Object.keys(ports), 'const newAbove = new Set(); let newAboveButton = null;\n' + code + eligibilityCode + observerCode +
+    '\nreturn { paintNewAbove, cardsSeen, offers: newAbove, pill: () => newAboveButton, unavailable: value => { topicUnavailable = value; }, retire: () => { retired = true; }, review: value => { review.open = value; }, reading: value => { readThrough = value; }, layout: value => { laidOut = value; }, landing: value => { unreadLandingBusy = value; }, reader: value => { registry.current = value; } };')(...Object.values(ports));
   const add = (id, extra = {}) => {
     const entry = doc.createElement('article'); entry.dataset.id = id; entry.dataset.seq = String(records.size + 1); entry.drawn = true; entry.top = -100;
     entry.contains = node => node === entry;
@@ -132,5 +137,38 @@ test('1242 stale, hidden and unavailable observer events retain current offers',
     if (fault === 'disconnected') current.remove();
     f.api.cardsSeen(new Set(), e => e.isIntersecting && e.intersectionRatio >= 0.5)([{ target, isIntersecting: true, intersectionRatio: 0.5 }]);
     assert.equal(f.api.offers.has('current'), true, fault); assert.equal(f.counts().geometryReads, 0);
+  }
+});
+
+// Use the real noteRead guard, with its post-guard work returning at the
+// existing unloaded-layout fence; no fake counter stands in for eligibility.
+test('1242 observer and actual read owner share refusal eligibility', () => {
+  for (const fault of ['unfocused', 'inert', 'review', 'hidden-feed', 'landing', 'no-read-owner']) {
+    const f = fixture(), arrival = f.add('guarded'); f.api.paintNewAbove();
+    if (fault === 'unfocused') f.flags.unfocused = true;
+    if (fault === 'inert') f.main.inert = true;
+    if (fault === 'review') f.api.review(true);
+    if (fault === 'hidden-feed') f.list.hidden = true;
+    if (fault === 'landing') f.api.landing(true);
+    if (fault === 'no-read-owner') f.api.reading(null);
+    const notePorts = { unreadLandingBusy: fault === 'landing', $: id => ({main:f.main,messages:f.list})[id],
+      readThrough: fault === 'no-read-owner' ? null : {}, topic: {id:'topic'}, topicUnavailable: false,
+      authorityReviewPending: () => false, review: {open:fault === 'review'}, document:f.doc,
+      registry:{}, laidOut:false };
+    const read = new Function(...Object.keys(notePorts), eligibilityCode + readCode + ';return noteRead;')(...Object.values(notePorts));
+    assert.doesNotThrow(read, 'actual read owner refuses this context before reading');
+    const shown = new Set();
+    f.api.cardsSeen(shown, e => e.isIntersecting)([{target:arrival,isIntersecting:true}]);
+    assert.equal(shown.has(Number(arrival.dataset.seq)),true,'visibility state still updates');
+    assert.equal(f.api.offers.has('guarded'), true, fault);
+  }
+});
+
+test('1242 observer cannot count a feed read before layout or while Reader owns reading', () => {
+  for (const fault of ['layout','Reader']) {
+    const f=fixture(),arrival=f.add('guarded');f.api.paintNewAbove();
+    if(fault==='layout')f.api.layout(false);else f.api.reader({source:{source_ref:{kind:'message',id:'reader'}}});
+    f.api.cardsSeen(new Set(),e=>e.isIntersecting)([{target:arrival,isIntersecting:true}]);
+    assert.equal(f.api.offers.has('guarded'),true,fault);
   }
 });

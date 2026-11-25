@@ -108,3 +108,5 @@ an old offer. The separate arrival/writing hold owners remain unchanged.
 The existing single message-column position read is not a per-card scan.
 Focused checks execute the actual painter with card geometry that throws on
 passive use; native action/traffic timing and geometry remain separate proof.
+
+1242 follow-up: offer retirement shares the actual read owner admission checks: focused visible document, active read owner, available authority/topic, visible feed, non-inert main and no review/unread landing. Observer retirement additionally waits for feed layout and no Reader source. Shown sets still update when reading is refused; no extra card geometry is added.
