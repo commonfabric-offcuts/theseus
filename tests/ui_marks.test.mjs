@@ -348,9 +348,28 @@ test('the Reader button names the state and is pressed while marked', () => {
 test('a card\'s Unread pill keeps the name\'s last character with it, and leaves with the mark', t => {
   const previous = globalThis.document;
   class Node {
-    constructor(tag) { Object.assign(this, { tag, children: [], dataset: {}, attributes: {} }); }
-    append(...nodes) { this.children.push(...nodes.map(node => typeof node === 'string' ? { nodeType: 3, data: node } : node)); }
-    replaceChildren() { this.children = []; }
+    constructor(tag) { Object.assign(this, { tag, children: [], dataset: {}, attributes: {}, parentElement: null }); }
+    // Element class membership and child ownership used by the real painter.
+    // Keep the shape/text oracle below independent of these DOM ports.
+    get classList() { return { contains: name => (this.className ?? '').split(/\s+/).includes(name) }; }
+    append(...nodes) {
+      for (const value of nodes) {
+        const node = typeof value === 'string' ? { nodeType: 3, data: value } : value;
+        node.remove?.(); node.parentElement = this; this.children.push(node);
+      }
+    }
+    remove() {
+      if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(child => child !== this);
+      this.parentElement = null;
+    }
+    insertBefore(node, before) {
+      if (node === before) return node;
+      node.remove();
+      const at = before === null ? this.children.length : this.children.indexOf(before);
+      assert.ok(at >= 0, 'insertBefore reference belongs to this parent');
+      this.children.splice(at, 0, node); node.parentElement = this; return node;
+    }
+    replaceChildren(...nodes) { for (const child of this.children) child.parentElement = null; this.children = []; this.append(...nodes); }
     setAttribute(k, v) { this.attributes[k] = v; }
   }
   globalThis.document = { createElement: tag => new Node(tag) };
