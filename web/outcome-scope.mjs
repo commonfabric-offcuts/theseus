@@ -113,9 +113,10 @@ export class OutcomeScope {
     this.paintHome(this.count);
   }
 
-  // Reads every section; settles false when any could not be read.
-  async load() {
-    const loaded = await Promise.all(this.sections.map(section => section.load?.()));
+  // With no selection, read every section. A scoped refresh keeps each
+  // selected section's own read/authority checks and result.
+  async load(names = null) {
+    const loaded = await Promise.all(this.sections.filter(section => !names || names.has(section.name)).map(section => section.load?.()));
     return loaded.every(read => read !== false);
   }
 }
