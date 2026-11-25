@@ -118,7 +118,7 @@ async function reopenNote(change = () => {}) {
   let saved=0;const session={unsettledSave:()=>null,persist:async()=>{saved++;}};
   change({note,reply,remote,session});
   const state={instance_id:'fixture',source_ref:ref,destination:{topic_id:'t1'},source_available:true,destination_available:true,draft:null,note:remote,submissions:{instance_id:'fixture',items:[],next_cursor:null}};
-  const owner=Object.assign(Object.create(EditorRegistry.prototype),{generation:0,bootstrap:{instance_id:'fixture',actor:'reader'},cards:new Map(),
+  const owner=Object.assign(Object.create(EditorRegistry.prototype),{generation:0,bootstrap:{instance_id:'fixture',actor:'reader'},runtime:{current:{authority_id:'fixture',authority_epoch:'epoch',continuity:'initial'}},cards:new Map(),
     cleanup:{foreground:()=>({read:fn=>fn({}),release(){}})},api:{view:async name=>name==='source'?{instance_id:'fixture',source_ref:ref,body:'Source.'}:state},
     activity(){},keepBeforeStep:async()=>{},setPending(){},register:async c=>c.kind==='note'?note:reply,sessionFor:()=>session,changed(){},present:async()=>{}});
   const p=await owner.open(ref,{topicId:'t1',mode:'note'});
