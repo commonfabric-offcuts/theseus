@@ -26,8 +26,8 @@ export function assertSheet757(actual, cover) {
 export function snapshot757(selector, sheet = true) {
   return `(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;
     const row=x=>({title:x.querySelector('a')?.textContent,state:x.querySelector('.cover-item-state')?.textContent,href:x.querySelector('a')?.getAttribute('href')});
-    return {drawn:Boolean(e.getClientRects().length),rows:[...e.querySelectorAll(${JSON.stringify(sheet ? ':scope > .cover-item' : ':scope > .cover-item')})].map(row),
-      order:[...e.children].map(c=>c.classList.contains('cover-heading')?'cover-stands':[...c.classList].find(n=>/^cover-(stands|payload|item|wait)$/.test(n))).filter(Boolean),
+    return {drawn:Boolean(e.getClientRects().length),rows:[...e.querySelectorAll(':scope > .cover-item, :scope > .cover-items > .cover-linked-items > .cover-section-body > .cover-item')].map(row),
+      order:[...e.children].flatMap(c=>c.classList.contains('cover-items')?[...c.querySelectorAll('.cover-item')].map(()=>'cover-item'):[c.classList.contains('cover-heading')?'cover-stands':[...c.classList].find(n=>/^cover-(stands|payload|item|wait)$/.test(n))]).filter(Boolean),
       stands:e.querySelector('.cover-stands')?.textContent??null,payload:e.querySelector('.cover-payload .cover-words')?.textContent??null,
       cite:e.querySelector('.cover-payload .cover-src')?.textContent??null,citeHref:e.querySelector('.cover-payload .cover-src')?.getAttribute('href')??null,
       acceptance:e.querySelector('.pill-payload')?.dataset.state??null,

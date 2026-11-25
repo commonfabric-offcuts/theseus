@@ -25,8 +25,16 @@ export async function readingItem757Checks({ check, until, control, view, facts,
     const at = await p.evaluate(snapshot757(selector));
     return at && JSON.stringify(at.rows) === JSON.stringify(rows757(cover));
   }, 'current loaded cover has the actual item identities and states');
-  const inspectSheet = async (p, selector, cover) => {
+  const showItems = async (p, selector, input) => {
+    const summary = selector + ' .cover-linked-items > summary';
+    if (await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(summary)}) && !document.querySelector(${JSON.stringify(summary)}).parentElement.open)`)) {
+      await centre(p, summary); await press(p, input, summary);
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(summary)})?.parentElement.open`), 'native press opens the linked item group');
+    }
+  };
+  const inspectSheet = async (p, selector, cover, input = 'laptop') => {
     await readyRows(p, selector, cover);
+    await showItems(p, selector, input);
     const at = await p.evaluate(snapshot757(selector));
     assert.equal(at.drawn,true,'the asserted sheet is actually drawn');
     assertSheet757(at, cover);
@@ -106,17 +114,18 @@ export async function readingItem757Checks({ check, until, control, view, facts,
       const p=await openAt(key,device,theme,f);
       let primary;
       try {
-        const before=await inspectSheet(p,sheet(f),cover);
+        const before=await inspectSheet(p,sheet(f),cover,input);
         await noWrong(p,f);
         const toggle=`#messages .reply-stack[data-stack="${f.root}"] > .stack-toggle`;
         const was=await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state`);
         await centre(p,sheet(f)); await picture(p,key,'dossier-'+was,{snapshot:before});
         await centre(p,toggle); await press(p,input,toggle);
         await until(()=>p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state!==${JSON.stringify(was)}`),'native dossier toggle changes state');
-        await inspectSheet(p,sheet(f),cover);
+        await inspectSheet(p,sheet(f),cover,input);
         const next=await p.evaluate(`document.querySelector(${JSON.stringify(toggle)}).dataset.state`);
         await centre(p,sheet(f)); await picture(p,key,'dossier-'+next);
         await readyRows(p,singleton(f),seeded.readback.covers.lone.cover);
+        await showItems(p,singleton(f),input);
         const lone=await p.evaluate(snapshot757(singleton(f),false));
         assert.equal(lone.drawn,true,'singleton rows are actually drawn');
         assertRows757(lone.rows,seeded.readback.covers.lone.cover);
@@ -130,11 +139,12 @@ export async function readingItem757Checks({ check, until, control, view, facts,
         await picture(p,key,'reader-collapsed');
         await press(p,input,'#reader-cover > summary');
         await until(()=>p.evaluate(`document.querySelector('#reader-cover').open`),'native press expands Reader cover');
-        await inspectSheet(p,'#reader-cover > .dossier-cover',cover);
+        await inspectSheet(p,'#reader-cover > .dossier-cover',cover,input);
         await picture(p,key,'reader-expanded');
         await closeReader(p,input);
         // Select by its exact route, independent of where manual rows put it.
         const exact=sheet(f)+` .cover-item a[href="${route757(cover.items[1])}"]`;
+        await showItems(p,sheet(f),input);
         const documentBeforeNavigation=await p.evaluate('performance.timeOrigin');
         await centre(p,exact); await press(p,input,exact);
         await until(()=>p.evaluate(`document.body&&performance.timeOrigin!==${JSON.stringify(documentBeforeNavigation)}&&document.body.dataset.ready==='true'&&location.search===${JSON.stringify(route757(cover.items[1]))}`),'native item link opens the existing exact route');
@@ -191,20 +201,20 @@ export async function readingItem757Checks({ check, until, control, view, facts,
     let primary;
     try{
       const origin=await p.evaluate('performance.timeOrigin');
-      await inspectSheet(p,sheet(f),seeded.readback.covers.root.cover);
+      await inspectSheet(p,sheet(f),seeded.readback.covers.root.cover,'phone');
       const joined=await call('join-private',f);f=joined.fixture;
       assert.equal(joined.readback.covers.joined.root_id,f.root);
       assert.deepEqual(joined.readback.covers.root.cover.items[0].sources,[f.root,f.joined]);
       assert.ok(joined.private_owner_cover.cover.items.some(r=>r.workspace_id===f.private_workspace),'actual destination owner sees private row');
       assert.ok(!JSON.stringify(joined.readback).includes(f.private_workspace),'Core gives source-only reader no destination identity');
-      await inspectSheet(p,sheet(f),joined.readback.covers.root.cover);
+      await inspectSheet(p,sheet(f),joined.readback.covers.root.cover,'phone');
       assert.equal(await p.evaluate(`document.querySelector('#messages').textContent.includes('Secret destination title 757')`),false,'private destination title is not drawn');
       assert.equal(await p.evaluate(`!!document.querySelector('#messages a[href*="'+${JSON.stringify(f.private_workspace)}+'"]')`),false,'private destination route is not drawn');
       await noWrong(p,f);
       await centre(p,sheet(f));await picture(p,key,'dossier-joined-redacted',{readback:joined.readback});
       await opening(p,'phone',f,key);
       await press(p,'phone','#reader-cover > summary');
-      await inspectSheet(p,'#reader-cover > .dossier-cover',joined.readback.covers.root.cover);
+      await inspectSheet(p,'#reader-cover > .dossier-cover',joined.readback.covers.root.cover,'phone');
       const manual = joined.readback.covers.root;
       for (const action of ['grant-private', 'revoke-private']) {
         const changed = await call(action, f); f = changed.fixture;
@@ -214,7 +224,7 @@ export async function readingItem757Checks({ check, until, control, view, facts,
           'actual committed destination membership controls row visibility');
         assert.equal(changed.readback.covers.root.cover_revision, manual.cover_revision);
         for (const key of ['stands','payload','waiting','by','at_ms']) assert.deepEqual(cover[key], manual.cover[key]);
-        await inspectSheet(p,'#reader-cover > .dossier-cover',cover);
+        await inspectSheet(p,'#reader-cover > .dossier-cover',cover,'phone');
         assert.equal(await p.evaluate(`document.querySelector('#reader-cover').textContent.includes('Secret destination title 757')`), admitted,
           'loaded Reader gains and redacts destination words after actual access changes');
         await confirmReader(p,f);
@@ -222,7 +232,7 @@ export async function readingItem757Checks({ check, until, control, view, facts,
       }
       const split=await call('split',f);f=split.fixture;
       assert.equal(split.readback.covers.joined.root_id,f.joined);
-      await inspectSheet(p,'#reader-cover > .dossier-cover',split.readback.covers.root.cover);
+      await inspectSheet(p,'#reader-cover > .dossier-cover',split.readback.covers.root.cover,'phone');
       assert.equal(await p.evaluate('window.item757Sources.at(-1)?.source?.id'),f.root,'split refresh never changes Reader message identity');
       await confirmReader(p,f);
       await picture(p,key,'reader-split',{readback:split.readback});

@@ -17,7 +17,7 @@ import { linkNode, writtenLink } from './links.mjs';
 import { timeNode } from './times.mjs';
 import { inlineNodes, parseBlocks } from './message-format.mjs';
 import { literalHTMLNodes } from './interactive-html.mjs';
-import { coverSectionNodes } from './cover-sections.mjs';
+import { coverSectionNodes, coverDisclosure } from './cover-sections.mjs';
 
 const element = (doc, tag, className, text) => {
   const node = doc.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node;
@@ -100,12 +100,53 @@ function revisionLine(doc, cover, context) {
 }
 
 const sheetRows = new WeakMap();
+function linkedItems(doc, items, context, previous) {
+  if (!items?.length) return null;
+  const group = previous ?? (() => {
+    const label = element(doc, 'span', 'cover-items-count');
+    const disclosure = coverDisclosure(label, { doc, ...context, sectionId: JSON.stringify(['linked-items']), initiallyOpen: false });
+    disclosure.section.classList.add('cover-linked-items');
+    const row = element(doc, 'div', 'cover-line cover-items'); row.append(disclosure.section);
+    return { ...disclosure, row, label, rows: new Map() };
+  })();
+  const states = new Map(), occurrences = new Map(), desired = new Map();
+  for (const item of items) {
+    const state = String(item.state ?? '').split(' · ')[0].trim().toLowerCase() || 'unknown';
+    states.set(state, (states.get(state) ?? 0) + 1);
+    const identity = JSON.stringify([item.workspace_id, item.number]);
+    const occurrence = occurrences.get(identity) ?? 0; occurrences.set(identity, occurrence + 1);
+    const key = JSON.stringify([identity, occurrence]);
+    const record = group.rows.get(key) ?? { node: element(doc, 'div', 'cover-line cover-item'), item: null };
+    if (!record.item) record.node.append(itemRow(doc, item));
+    else {
+      if (record.item.title !== item.title) record.node.querySelector('a').textContent = item.title;
+      if (record.item.state !== item.state) record.node.querySelector('.cover-item-state').textContent = item.state;
+    }
+    desired.set(key, { node: record.node, item: { title: item.title, state: item.state } });
+  }
+  let removedFocus = false;
+  for (const [key, record] of group.rows) if (!desired.has(key)) {
+    removedFocus ||= Boolean(record.node.contains?.(doc.activeElement)); record.node.remove();
+  }
+  let index = 0;
+  for (const { node } of desired.values()) {
+    const next = group.body.children[index++] ?? null;
+    if (node !== next) group.body.insertBefore(node, next);
+  }
+  group.rows = desired;
+  const words = `${items.length} ${items.length === 1 ? 'item' : 'items'}: ${[...states].map(([state, count]) => `${count} ${state}`).join(', ')}`;
+  if (group.label.textContent !== words) group.label.textContent = words;
+  if (removedFocus) group.summary.focus({ preventScroll: true });
+  return group;
+}
 export function coverSheet(doc, cover, context, previous = null) {
   cover = currentQuestionCover(cover);
-  const ctx = { ...context, owner: cover.owner };
+  const ctx = { ...context, rootId: cover.root_id ?? context.rootId, owner: cover.owner };
   const sheet = element(doc, 'div', 'dossier-cover');
   sheet.setAttribute('role', 'note'); sheet.setAttribute('aria-label', 'Dossier cover');
-  const rows = new Map(), scope = JSON.stringify([context.viewer, context.topicId, context.rootId]);
+  const rows = new Map(), scope = JSON.stringify([ctx.viewer, ctx.topicId, ctx.rootId]);
+  const kept = sheetRows.get(previous), sameScope = kept?.scope === scope;
+  const preferred = new Map();
   const remember = (node, key) => { rows.set(node, JSON.stringify(key)); return node; };
   const line = (className, value) => {
     const node = remember(element(doc, 'div', `cover-line ${className}`), [className, value]);
@@ -146,7 +187,12 @@ export function coverSheet(doc, cover, context, previous = null) {
     const done = payload.done;
     if (done?.how === 'word' && done.message_id && Number.isSafeInteger(done.seq)) row.append(cite(doc, ctx.topicId, done.message_id, done.seq, 'The word that made it done'));
   }
-  for (const item of cover.items ?? []) line('cover-item', item).append(itemRow(doc, item));
+  const items = linkedItems(doc, cover.items, { ...ctx, rootId: cover.root_id ?? ctx.rootId }, sameScope ? kept.items : null);
+  if (items) {
+    const placeholder = line('cover-items', cover.items);
+    if (sameScope && items === kept.items) preferred.set(placeholder, items.row);
+    else { placeholder.append(items.section); items.row = placeholder; }
+  }
   for (const wait of cover.waiting ?? []) {
     const row = line('cover-wait', [wait, cover.owner]);
     const words = element(doc, 'span', 'cover-words');
@@ -165,8 +211,7 @@ export function coverSheet(doc, cover, context, previous = null) {
   const revised = revisionLine(doc, cover, ctx);
   if (revised) sheet.append(remember(revised, ['revision', cover.by, cover.at_ms]));
   sheet.dataset.done = String(Boolean(payload?.done) && !(cover.waiting ?? []).length);
-  const kept = sheetRows.get(previous);
-  if (kept?.scope === scope) {
+  if (sameScope) {
     // A revision is not removal. Keep the reading sheet and unchanged rows,
     // including their text ranges, selection, focus and live control state.
     const available = new Map();
@@ -174,7 +219,7 @@ export function coverSheet(doc, cover, context, previous = null) {
       if (!available.has(key)) available.set(key, []);
       available.get(key).push(node);
     }
-    const desired = new Map([...rows].map(([node, key]) => [available.get(key)?.shift() ?? node, key]));
+    const desired = new Map([...rows].map(([node, key]) => [preferred.get(node) ?? available.get(key)?.shift() ?? node, key]));
     for (const node of [...previous.children]) if (!desired.has(node)) node.remove();
     let index = 0;
     for (const node of desired.keys()) {
@@ -182,10 +227,10 @@ export function coverSheet(doc, cover, context, previous = null) {
       if (node !== next) previous.insertBefore(node, next);
     }
     previous.dataset.done = sheet.dataset.done;
-    sheetRows.set(previous, { scope, rows: desired });
+    sheetRows.set(previous, { scope, rows: desired, items });
     return previous;
   }
-  sheetRows.set(sheet, { scope, rows });
+  sheetRows.set(sheet, { scope, rows, items });
   return sheet;
 }
 
