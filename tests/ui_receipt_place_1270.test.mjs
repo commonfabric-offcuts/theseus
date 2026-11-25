@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as pending from '../web/pending-sends.mjs';
+import { timingCall } from '../web/action-timing.mjs';
 import * as imageOwner from '../web/card-images.mjs';
 import { Uploads } from '../web/uploads.mjs';
 import { miniDocument, Element } from './fixtures/mini_dom.mjs';
@@ -77,7 +78,7 @@ function appFixture(t) {
   const elements={main,messages:f.host,'new-message-sheet':home};
   const registry={sessions:new Map([[f.editor.key,{editor:f.editor}]]),runtime:{current:pin},disposed:false,
     sessionFor:()=>({underWay:()=>f.item.status==='preparing',uploads:{previewSubmission:async()=>null}})};
-  const c=vm.createContext({...pending,document:f.doc,window:win,innerHeight:900,innerWidth:1512,Node:{DOCUMENT_POSITION_FOLLOWING:4},
+  const c=vm.createContext({...pending,timingCall,document:f.doc,window:win,innerHeight:900,innerWidth:1512,Node:{DOCUMENT_POSITION_FOLLOWING:4},
     getComputedStyle:()=>({getPropertyValue:()=>0}),$:id=>elements[id],registry,views,topic:{id:'t'},bootstrap:{actor_kind:'human'},
     retired:false,topicUnavailable:false,authorityReviewPending:()=>false,inline:null,anchorActing:false,listActAnchor:null,
     roomy:null,anchorHold:null,restoredSendViews:new WeakSet(),messageEntries:map,displayActor:id=>id,displayRules:()=>[],

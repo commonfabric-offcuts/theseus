@@ -105,7 +105,10 @@ function appFixture({ headNew = false, failure = false, marked = false, short = 
     cardScroll: { showFull: async (card, message) => { shown.push([card.dataset.id, message.body]); if (wholeWait) await wholeWait; return true; } },
     revealSelection() {}, menu: { light: entry => lights.push(entry.dataset.id) }, document: doc, onScreen: () => true, marks, api, bootstrap: { instance_id: 'fixture' },
     crypto: { randomUUID: () => 'read-' + ++serial }, revisionOf: each => each.revision ?? 1,
-    openedHere: id => { visitNew.clear(id); openedIds.add(id); }, stackMessages: () => { repaints++; afterRepaint?.(); }, attention: { refresh() {} }, commitReload: null,
+    openedHere: id => { visitNew.clear(id); openedIds.add(id); }, stackMessages: () => { repaints++; afterRepaint?.(); },
+    // This controller fixture observes the render request;1265 executes the
+    // actual affected-dossier painter separately, with real stack owners.
+    paintReadChanges: () => { repaints++; afterRepaint?.(); }, attention: { refresh() {} }, commitReload: null,
     run: fn => fn(), checkDossierNew: async () => { shown.push('check'); }, status() {}, writing };
   // Execute the real application block, with no module startup, server or fake Reader open.
   const begin = app.indexOf('const dossierNewFlights ='), end = app.indexOf('// A message a link on the page names');

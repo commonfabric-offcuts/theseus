@@ -12,7 +12,7 @@ Object.defineProperties(Element.prototype, {
   ownerDocument: { get() { return this.document; } },
 });
 const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
-const body = app.slice(app.indexOf('function paintMessageUpdates() {'), app.indexOf('function paintCardAuthor('));
+const body = app.slice(app.indexOf('function paintMessageUpdates('), app.indexOf('function paintCardAuthor('));
 const css = readFileSync(new URL('../web/stack-look.css', import.meta.url), 'utf8');
 function fixture() {
   const doc = miniDocument(), visitNew = new VisitNew('reader'), messages = new Map(), messageEntries = new Map();

@@ -10,7 +10,7 @@ import { paintRemoval } from '../web/message-removal.mjs';
 import { configureCoverRefresh, messageUpdateActivity, messageUpdateHost, updateMenuItem } from '../web/cover-refresh.mjs';
 const app=readFileSync(new URL('../web/app.mjs',import.meta.url),'utf8');
 const authorCode=app.slice(app.indexOf('function paintCardAuthor('),app.indexOf('// Who the composers may whisper to'));
-const updatesCode=app.slice(app.indexOf('function paintMessageUpdates()'),app.indexOf('// Generated context may quote'));
+const updatesCode=app.slice(app.indexOf('function paintMessageUpdates('),app.indexOf('// Generated context may quote'));
 let serial=0;
 const pending={request_id:'request',operation_id:'operation',state:'pending',by:'viewer',recipient:'agent',root_id:'message',observed_revision:1,at_ms:1795580000000};
 function fixture(t,refresh=null){
