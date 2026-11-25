@@ -1,4 +1,5 @@
 import { timingCall } from './action-timing.mjs';
+import { POSITION_FORMAT, offeredPositionFormat, expandPositions } from './dossier-positions.mjs';
 // An attempt that did not end in an answer the page can use. details is
 // Theseus's own answer, when it gave one: it answers every request it reads
 // with JSON (server.py _error and send_error), so an attempt without it got no
@@ -290,6 +291,8 @@ export class Api {
     this.token = token;
     this.fetcher = fetcher;
     this.pause = pause;
+    this.positionFormat = null;
+    this.formatRead = 0;
     // Told when the server refused this Api's session, as a restarted server
     // does: the page renews its session then (app.mjs).
     this.refused = () => {};
@@ -348,12 +351,27 @@ export class Api {
     return body;
   }
 
-  bootstrap(options) { return this.request('/api/bootstrap', undefined, options); }
+  adoptReadFormats(answer) {
+    ++this.formatRead;
+    this.positionFormat = answer?.instance_id && answer.actor && !answer.error ? offeredPositionFormat(answer) : null;
+  }
+  bootstrap(options) {
+    const token = this.token, read = ++this.formatRead;
+    return this.request('/api/bootstrap', undefined, options).then(answer => {
+      if (this.token === token && read === this.formatRead) this.adoptReadFormats(answer);
+      return answer;
+    });
+  }
   command(envelope, options) {
     const saved = JSON.parse(JSON.stringify(envelope));
     return this.change(() => this.request('/api/command', saved, options), options?.signal, options?.timing);
   }
-  view(name, args = {}, options) { return this.request('/api/view', { name, args }, options); }
+  view(name, args = {}, options) {
+    if (name !== 'topic_messages' && name !== 'stack_positions') return this.request('/api/view', { name, args }, options);
+    const query = this.positionFormat === POSITION_FORMAT && !Object.prototype.hasOwnProperty.call(args, 'position_format')
+      ? { ...args, position_format: POSITION_FORMAT } : args;
+    return this.request('/api/view', { name, args: query }, options).then(expandPositions);
+  }
 
   upload(envelope, blob, options) {
     const saved = JSON.parse(JSON.stringify(envelope));

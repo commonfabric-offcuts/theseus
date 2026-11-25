@@ -846,6 +846,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise RequestError(503, "CAPABILITIES_UNAVAILABLE", "Whether the reader is a person or an agent could not be confirmed.")
             result = {"instance_id": self.server.instance_id, "actor": self.server.actor, "actor_kind": capabilities["actor_kind"],
                       "limits": capabilities["limits"], "authority": authority}
+            if isinstance(capabilities.get("read_formats"), dict):
+                result["read_formats"] = capabilities["read_formats"]
             # Where the page's attention starts: a delivery naming the reader
             # with a larger number arrived after the page opened.
             attention = capabilities.get("attention")
