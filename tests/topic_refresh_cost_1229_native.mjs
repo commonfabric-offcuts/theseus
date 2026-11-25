@@ -256,9 +256,9 @@ try {
       const body=`Native ${surface} probe ${number}`;
       let field,send;
       if(surface==='inline-reply'){
-        const parent=openPhase.posts.at(-1).receipt.result.message_id;
-        const card=page.locator(`.message-card[data-id="${parent}"]`);
-        await card.locator(':scope > .message-preview').click();
+        const card=page.locator('#messages .message-card:visible').last();
+        const parent=await card.getAttribute('data-id');
+        await card.hover();await page.locator('.message-bar [data-act=reply]').click();
         field=page.locator(`[id="reply-${parent}-writing-body"]`);
         send=page.locator(`[id="reply-${parent}-send"]`);
       }else{
@@ -288,7 +288,8 @@ try {
   }
   await Promise.allSettled(responseJobs);
   report.warnings=await page.evaluate(()=>render1229.warnings);
-} catch(error) { report.failures.push({name:'harness or setup barrier',detail:error.stack}); }
+} catch(error) { report.failures.push({name:'harness or setup barrier',detail:error.stack});
+  if(page&&!page.isClosed())await page.screenshot({path:evidence+'/failure.png',fullPage:true}).catch(()=>{}); }
 finally {
   if(browser){
     const rows=execFileSync('ps',['-axo','pid=,ppid=,command='],{encoding:'utf8'}).split('\n').map(line=>{const m=/^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);return m&&{pid:+m[1],parent:+m[2],command:m[3]};}).filter(Boolean);
