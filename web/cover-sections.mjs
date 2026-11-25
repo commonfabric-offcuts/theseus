@@ -1,17 +1,26 @@
 // Viewer/device preferences only. Core's cover words and revision are untouched.
-import { parseBlocks, formatNodes } from './message-format.mjs';
+import { parseBlocks, formatNodes, inlineNodes } from './message-format.mjs';
 
 const documents = new WeakMap();
 const PREFIX = 'theseus:cover-sections:1:';
-function readClosed(doc, key) {
+function readChoices(doc, key) {
   try {
     const value = JSON.parse(doc.defaultView?.localStorage.getItem(key) ?? 'null');
-    return new Set(Array.isArray(value) ? value.filter(x => typeof x === 'string') : []);
-  } catch { return new Set(); }
+    const choices = new Map();
+    for (const entry of Array.isArray(value) ? value : []) {
+      if (typeof entry === 'string') choices.set(entry, false); // 1006 closed choices.
+      else if (entry && typeof entry.section === 'string' && entry.open === true) choices.set(entry.section, true);
+    }
+    return choices;
+  } catch { return new Map(); }
 }
-function sync(doc, key, closed) {
+function show(section, open) {
+  if (!open && section.children[1]?.contains?.(section.ownerDocument?.activeElement)) section.children[0].focus({ preventScroll: true });
+  section.open = open;
+}
+function sync(doc, key, choices) {
   for (const node of doc.querySelectorAll?.('.cover-section') ?? []) {
-    if (node.dataset.coverFoldScope === key) node.open = !closed.has(node.dataset.coverFoldSection);
+    if (node.dataset.coverFoldScope === key) show(node, choices.get(node.dataset.coverFoldSection) ?? node.dataset.coverFoldDefault === 'true');
   }
 }
 function preferences(doc) {
@@ -20,10 +29,35 @@ function preferences(doc) {
   doc.defaultView?.addEventListener('storage', event => {
     if (event.key !== null && !event.key.startsWith(PREFIX)) return;
     for (const key of kept.keys()) if (event.key === null || event.key === key) {
-      const closed = readClosed(doc, key); kept.set(key, closed); sync(doc, key, closed);
+      const choices = readChoices(doc, key); kept.set(key, choices); sync(doc, key, choices);
     }
   });
   return kept;
+}
+
+// Authored sections and generated items share exactly one preference owner.
+export function coverDisclosure(heading, { doc, viewer, topicId, rootId, sectionId, initiallyOpen = true }) {
+  const key = viewer && rootId ? PREFIX + JSON.stringify([viewer, topicId ?? null, rootId]) : null;
+  const kept = preferences(doc);
+  if (key && !kept.has(key)) kept.set(key, readChoices(doc, key));
+  const section = doc.createElement('details'); section.className = 'cover-section';
+  const summary = doc.createElement('summary'); summary.className = 'cover-section-heading'; summary.append(heading);
+  const body = doc.createElement('div'); body.className = 'cover-section-body';
+  section.append(summary, body); section.dataset.coverFoldDefault = String(initiallyOpen);
+  section.open = (key ? kept.get(key).get(sectionId) : undefined) ?? initiallyOpen;
+  if (key) {
+    section.dataset.coverFoldScope = key; section.dataset.coverFoldSection = sectionId;
+    section.addEventListener('toggle', () => {
+      const current = kept.get(key);
+      if (section.open === (current.get(sectionId) ?? initiallyOpen)) return;
+      current.set(sectionId, section.open);
+      try {
+        doc.defaultView?.localStorage.setItem(key, JSON.stringify([...current].map(([id, open]) => open ? { section: id, open: true } : id)));
+      } catch { /* A refused preference write keeps the in-document choice. */ }
+      sync(doc, key, current);
+    });
+  }
+  return { section, summary, body };
 }
 
 // Group the existing painter's nodes, keeping their source maps/links/marks.
@@ -32,39 +66,25 @@ export function coverSectionNodes(text, { doc, viewer, topicId, rootId }) {
   const nodes = formatNodes(text, { doc });
   const blocks = parseBlocks(text);
   if (!blocks.some(block => block.kind === 'heading')) return nodes;
-  const key = viewer && rootId ? PREFIX + JSON.stringify([viewer, topicId ?? null, rootId]) : null;
-  const kept = preferences(doc);
-  if (key && !kept.has(key)) kept.set(key, readClosed(doc, key));
-  const closed = key ? kept.get(key) : new Set();
   const output = [], parents = [], occurrences = new Map();
   const append = node => parents.length ? parents.at(-1).body.append(node) : output.push(node);
   for (const [index, node] of nodes.entries()) {
-    // With no display rules, formatNodes paints these blocks one-for-one.
-    // A heading's first readable position is after its Markdown prefix; it
-    // is not the block boundary and cannot be used to look up its level.
     const heading = blocks[index]?.kind === 'heading' ? blocks[index] : null;
     if (!heading) { append(node); continue; }
     while (parents.length && parents.at(-1).level >= heading.level) parents.pop();
-    const name = JSON.stringify([heading.level, text.slice(heading.start, heading.end)]);
+    const marker = /[ \t]+\{folded\}$/.exec(heading.words.text);
+    let label = node, source = text.slice(heading.start, heading.end);
+    if (marker && marker.index > 0) {
+      // Reuse mapped inline words from the parser. Never shift the remaining
+      // source or retain a parent source span that includes the annotation.
+      label = doc.createElement('span'); label.className = node.className;
+      label.append(...inlineNodes(heading.words.slice(0, marker.index), { doc }));
+      source = text.slice(heading.start, heading.words.at(marker.index)) + text.slice(heading.words.end(), heading.end);
+    }
+    const name = JSON.stringify([heading.level, source]);
     const occurrence = occurrences.get(name) ?? 0; occurrences.set(name, occurrence + 1);
     const sectionId = JSON.stringify([name, occurrence]);
-    const section = doc.createElement('details'); section.className = 'cover-section';
-    const summary = doc.createElement('summary'); summary.className = 'cover-section-heading'; summary.append(node);
-    const body = doc.createElement('div'); body.className = 'cover-section-body';
-    section.append(summary, body); section.open = !closed.has(sectionId);
-    if (key) {
-      section.dataset.coverFoldScope = key; section.dataset.coverFoldSection = sectionId;
-      section.addEventListener('toggle', () => {
-        const current = kept.get(key);
-        if (section.open === !current.has(sectionId)) return;
-        if (section.open) current.delete(sectionId); else current.add(sectionId);
-        try {
-          if (current.size) doc.defaultView?.localStorage.setItem(key, JSON.stringify([...current]));
-          else doc.defaultView?.localStorage.removeItem(key);
-        } catch { /* A refused preference write keeps the in-document choice. */ }
-        sync(doc, key, current);
-      });
-    }
+    const { section, body } = coverDisclosure(label, { doc, viewer, topicId, rootId, sectionId, initiallyOpen: !(marker && marker.index > 0) });
     append(section); parents.push({ level: heading.level, body });
   }
   return output;
