@@ -50,20 +50,29 @@ function fixture(placement = 'visible', stands = 'Initial cover words') {
   main.append(list);list.append(home);home.open=false;
   list.contains = node => node === list || [...list.descendants()].includes(node);
   const entries = () => list.querySelectorAll('[data-id]');
-  let cover = { stands, waiting:[], payload:null, owner:'reader', by:'writer', at_ms:1795620000000, revision:1, writer:'writer', root_id:'m1' };
+  const targetId=['above','below'].includes(placement)?'target':'m1';
+  let cover = { stands, waiting:[], payload:null, owner:'reader', by:'writer', at_ms:1795620000000, revision:1, writer:'writer', root_id:targetId };
   for (let i=1;i<=3;i++) {
-    const item={id:'m'+i, seq:i, topic_id:'isolated-1276', author_id:'other', author_kind:'agent', addressees:['reader'], body:'Message '+i,
-      reply_to:i===1?null:'m1', acts:i===1?{cover,cover_revision:1}:{}, stack_position:{root_id:'m1',through:null,below:false,at:{messages:3,acts:1},cover,cover_revision:1}};
-    const card=doc.createElement('button');card.className='message-card';card.dataset.id=item.id;card.dataset.seq=String(i);card.h=120;
+    const item={id:'m'+i, seq:100+i, topic_id:'isolated-1276', author_id:'other', author_kind:'agent', addressees:['reader'], body:'Message '+i,
+      reply_to:i===1?null:'m1', acts:i===1&&targetId==='m1'?{cover,cover_revision:1}:{}, stack_position:{root_id:'m1',through:null,below:false,at:{messages:103,acts:1},cover:targetId==='m1'?cover:null,cover_revision:1}};
+    const card=doc.createElement('button');card.className='message-card';card.dataset.id=item.id;card.dataset.seq=String(item.seq);card.h=120;
     const author=doc.createElement('span');author.className='message-author';card.append(author);list.append(card);messages.set(item.id,item);cards.set(item.id,card);
   }
+  const addSingle=(id,seq,ownedCover=null)=>{const item={id,seq,topic_id:'isolated-1276',author_id:'other',author_kind:'agent',addressees:['reader'],body:id,reply_to:null,
+    acts:ownedCover?{cover:ownedCover,cover_revision:1}:{},stack_position:{root_id:id,through:null,below:false,at:{messages:seq,acts:1},cover:ownedCover,cover_revision:1}};
+    const card=doc.createElement('button');card.className='message-card';card.dataset.id=id;card.dataset.seq=String(seq);card.h=40;
+    const author=doc.createElement('span');author.className='message-author';card.append(author);list.append(card);messages.set(id,item);cards.set(id,card);};
+  // A genuinely separate preceding card keeps the reading card away from the
+  // special first-card-at-page-top policy. Offscreen covers belong to their
+  // own dossier, before/after the reading dossier in real renderer order.
+  addSingle('prefix',105);if(targetId==='target')addSingle('target',placement==='above'?104:99,cover);
   const state=stackState(list);state.levels.set('m1','open');let height=80;
   const sheet=()=>list.querySelector('.dossier-cover');
   const draw=()=>{
     arrangeStacks(list,messages,{doc,viewer:'reader'});
     const s=sheet();if(s){s.y=placement==='above'?120:placement==='below'?1800:placement==='crossing'?250:320;s.h=height;}
     const shift=placement==='above'?height-80:placement==='crossing'?height-80:0;
-    for(const [id,card] of cards)card.y=(id==='m1'?100:430+(Number(id.slice(1))-2)*180)+shift;
+    for(const [id,card] of cards)card.y=id==='prefix'?50:id==='target'?(placement==='above'?220:1900)+(height-80):430+(Number(id.slice(1))-1)*180+shift;
   };
   draw();
   doc.documentElement={scrollHeight:5000};doc.body={};doc.caretPositionFromPoint=()=>null;
@@ -76,15 +85,17 @@ function fixture(placement = 'visible', stands = 'Initial cover words') {
     ResizeObserver:Observer,MutationObserver:Observer,requestAnimationFrame:f=>{frames.set(++frame,f);return frame;},cancelAnimationFrame:id=>frames.delete(id)});
   vm.runInContext(anchorSource+';globalThis.api={captureListAnchor,restoreListAnchor,keepListAnchor,watchListAnchor,state:()=>({anchorActing,anchorHold})};',context);
   const revise=(patch={},newHeight=height)=>{cover={...cover,...patch,revision:cover.revision+1,at_ms:cover.at_ms+1000};height=newHeight;
-    messages.get('m1').acts={cover,cover_revision:cover.revision};
-    for(const item of messages.values())item.stack_position={...item.stack_position,cover,cover_revision:cover.revision,at:{messages:3,acts:cover.revision}};draw();};
+    messages.get(targetId).acts={cover,cover_revision:cover.revision};
+    for(const item of messages.values())if(item.stack_position.root_id===targetId)item.stack_position={...item.stack_position,cover,cover_revision:cover.revision,at:{messages:103,acts:cover.revision}};draw();};
   return {doc,list,home,win,messages,cards,state,sheet,draw,revise,context,api:context.api,scrolls,events,frames,entries};
 }
 
 for (const placement of ['above','below','visible']) for (const height of [80,180,40]) test(`1276 actual renderer ${placement} revision height ${height} preserves source-selected place`,()=>{
-  const f=fixture(placement),old=f.sheet(),card=f.cards.get('m2'),before=card.getBoundingClientRect().top,saved=f.api.captureListAnchor(),anchorTop=saved.tops.get(saved.anchor);
+  const f=fixture(placement),old=f.sheet(),card=f.cards.get('m1'),before=card.getBoundingClientRect().top,saved=f.api.captureListAnchor(),anchorTop=saved.tops.get(saved.anchor);
   assert.equal(saved.anchor,placement==='visible'?old:card,'actual firstInView selection');
   f.api.keepListAnchor(()=>f.revise({stands:'Altered cover words'},height));
+  console.log(JSON.stringify({coverReading1276:{placement,height,before,after:card.getBoundingClientRect().top,anchorTop,scrollY:f.win.scrollY,sameSheet:f.sheet()===old}}));
+  if(placement==='visible'&&height===80)assert.equal(card.getBoundingClientRect().top,before,'same-height visible cover rewrite keeps the reading message top');
   assert.equal(f.sheet(),old,'routine revision retains actual reading sheet');assert.equal(old.isConnected,true);
   assert.equal(f.sheet().querySelector('.cover-stands').textContent,'Altered cover words','new Core words are rendered');
   assert.equal(saved.anchor.getBoundingClientRect().top,anchorTop,'source-selected anchor holds');
@@ -123,8 +134,8 @@ test('1276 real cover removal and real message removal retain successor fallback
   f.messages.get('m1').acts={cover:null,cover_revision:2};
   for(const item of f.messages.values())item.stack_position={...item.stack_position,cover:null,cover_revision:2};f.draw();f.api.restoreListAnchor(saved);
   assert.equal(old.isConnected,false);assert.equal(f.sheet(),null);assert.equal(f.cards.get('m1').getBoundingClientRect().top,top);
-  const g=fixture('below'),before=g.api.captureListAnchor(),successor=g.cards.get('m3'),edge=before.tops.get(before.anchor);
-  g.cards.get('m2').remove();g.messages.delete('m2');g.cards.delete('m2');g.draw();g.api.restoreListAnchor(before);
+  const g=fixture('below'),before=g.api.captureListAnchor(),successor=g.cards.get('m2'),edge=before.tops.get(before.anchor);
+  g.cards.get('m1').remove();g.messages.delete('m1');g.cards.delete('m1');g.draw();g.api.restoreListAnchor(before);
   assert.equal(successor.getBoundingClientRect().top,edge,'removed message still hands off its old viewport position');
 });
 test('1276 changed viewer/dossier scope does not reuse the old sheet or its controls',()=>{
