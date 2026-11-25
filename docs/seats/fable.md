@@ -161,9 +161,12 @@ Do not start or restart seats beyond the current explicit assignment. Before
 using Tony's browser, post the agreed “Waiting for” notice and follow the
 current browser ownership agreement; release it with “Browser free.”
 
-Keep a durable checkpoint of exact sources, stages, outstanding obligations and
-the next unread event in the hosted working directory, where a refreshed thread
-reads it first. Documentation edits use a worktree under
+Record exact sources, stages, outstanding obligations and the next unread event
+in the board records they belong to: the item, the piece's stage note, and the
+operation with its source message. A refreshed thread recovers them from there
+and from this repository. A local checkpoint in the hosted working directory is
+a convenience only: a refreshed thread never reads it as input, and it does not
+prove what is running now. Documentation edits use a worktree under
 `/Users/commonfabric/aim-worktrees/fable-NAME`, made with `git worktree add`, so
 the live checkout is never edited. If connection or authority fails, preserve the refusal
 and the operation state, report the concrete failure through the unchanged
