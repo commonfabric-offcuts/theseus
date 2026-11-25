@@ -71,7 +71,7 @@ function fixture(placement = 'visible', stands = 'Initial cover words') {
   const draw=()=>{
     arrangeStacks(list,messages,{doc,viewer:'reader'});
     const s=sheet();if(s){s.y=placement==='above'?120:placement==='below'?1800:placement==='crossing'?250:320;s.h=height;}
-    const shift=placement==='above'?height-80:placement==='crossing'?height-80:0;
+    const shift=placement==='below'?0:height-80;
     for(const [id,card] of cards)card.y=id==='prefix'?50:id==='target'?(placement==='above'?220:1900)+(height-80):430+(Number(id.slice(1))-1)*180+shift;
   };
   draw();
