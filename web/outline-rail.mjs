@@ -309,7 +309,8 @@ export class OutlineRail {
   async applyChanges(batch, full=false) {
     if(!this.handles)return true;
     const personal=batch.windows.filter(page=>page.scope.kind==='actor').flatMap(page=>page.items);
-    if(full||personal.some(item=>['workspace','participation','outcome_order','topic_order'].includes(item.resource_kind)))return this.reload();
+    if(full||personal.some(item=>['workspace','participation','outcome_order','topic_order'].includes(item.resource_kind))||
+      batch.windows.some(page=>page.scope.kind==='workspace'&&page.items.some(item=>item.resource_kind!=='topic')))return this.reload();
     const rowChanges=new Map();
     for(const item of batch.counts){const prior=this.pages.loaded.get(item.id);if(prior)this.pages.loaded.set(item.id,{...prior,...item});}
     for(const item of batch.topics){let rows=rowChanges.get(item.workspace_id);if(!rows)rowChanges.set(item.workspace_id,rows=[]);rows.push(item);}

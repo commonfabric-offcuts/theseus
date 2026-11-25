@@ -55,6 +55,8 @@ export class PageRefresh {
         if(answer.topics.some(item=>typeof item?.id!=='string'||!spaces.has(item.workspace_id))||
           answer.counts.some(item=>!spaces.has(item?.id))||new Set(answer.topics.map(item=>item.id)).size!==answer.topics.length||
           new Set(answer.counts.map(item=>item.id)).size!==answer.counts.length)throw invalid();
+        if(answer.attention_counts!==undefined&&(!answer.attention_counts||
+          !['unread','addressed','commit_seq'].every(key=>Number.isSafeInteger(answer.attention_counts[key])&&answer.attention_counts[key]>=0)))throw invalid();
         // Publish before accepting frontiers. Any failure replays the exact
         // window; existing version fences make repeated keys idempotent.
         const published=await this.publish(answer,force);
@@ -69,7 +71,7 @@ export class PageRefresh {
         if(this.disposed||!this.current())return;
         const failure=readFailure(error?.code==='CLEANUP_DEFERRED'&&error.cause?error.cause:error);
         if(failure.kind==='resync'){this.cursors.clear();this.seed=null;this.force=true;this.pending=true;}
-        else if(['retry','defer','superseded'].includes(failure.kind)){this.pending=true;this.failures++;}
+        else if(['retry','defer','superseded'].includes(failure.kind)){this.pending=true;this.force||=force;this.failures++;}
         else {this.pending=false;this.stopped=true;}
         this.failed(failure);return;
       }

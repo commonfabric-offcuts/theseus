@@ -49,3 +49,13 @@ The release-specific producer is the unstarted1139 follow-on, not installed1135.
 1229 preserves the optional release payload and observed-once consumer on
 initial/reconnect observation, plus an explicit future releaseChanged door.
 It does not implement that producer or claim release signals exist today.
+
+The tab's unread total remains current for ordinary subscription deliveries.
+A private delivery/read change may include only canonical unread/addressed
+totals from the existing reader-count owner in the same snapshot, without
+loading attention items or raising a notification. Named arrivals still read
+the full attention owner once, and a refused attention read remains owed.
+A full reconnect/resync obligation survives transient failure with no new key.
+
+Count projections and full attention answers name their snapshot commit.
+An older count answer cannot overwrite a later full attention result.

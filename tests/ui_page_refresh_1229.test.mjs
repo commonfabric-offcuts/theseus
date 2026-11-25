@@ -78,3 +78,39 @@ test('a visible outcome peek keeps last truth, retries without a new commit and 
   peek.read=async()=>{throw Object.assign(Error('busy'),{code:'SERVER_BUSY'});};await peek.refresh();assert.equal(jobs.size,1);
   peek.hide();assert.equal(jobs.size,0);assert.equal(peek.link,null);
 });
+
+test('a transient full-only owner remains owed on an empty-key retry with no new commit',async()=>{
+  const fullCalls=[];let failure=true;
+  const {feed,calls,clock}=setup({publish:(_batch,full)=>{fullCalls.push(full);if(full&&failure){failure=false;return false;}return true;}});
+  await feed.request(true);assert.deepEqual(fullCalls,[true]);assert.equal(feed.cursors.get('actor:reader').after_seq,1);assert.equal(clock.calls.length,1);
+  await clock.calls[0].fn();await feed.running;
+  assert.deepEqual(fullCalls,[true,true]);assert.equal(feed.cursors.get('actor:reader').after_seq,2);assert.equal(calls.length,2);feed.dispose();
+});
+
+test('a named attention failure keeps the change window owed and retries under quiet traffic',async()=>{
+  const {Attention}=await import('../web/attention.mjs');let reads=0;
+  const doc={title:'Theseus',hidden:false,hasFocus:()=>true};
+  const attention=new Attention({instanceId:'i1',doc,notifications:null,api:{async view(){
+    if(++reads===1)throw Object.assign(Error('busy'),{code:'SERVER_BUSY'});
+    return {instance_id:'i1',unread:1,addressed:1,latest_addressed:[]};
+  }}});
+  const {feed,clock}=setup({publish:()=>attention.refresh({confirmed:true})});
+  await feed.request();assert.equal(doc.title,'Theseus');assert.equal(feed.cursors.get('actor:reader').after_seq,1);assert.equal(clock.calls.length,1);
+  await clock.calls[0].fn();await feed.running;
+  assert.equal(reads,2);assert.equal(doc.title,'(1) Theseus');assert.equal(attention.addressed,1);assert.equal(feed.cursors.get('actor:reader').after_seq,2);feed.dispose();
+});
+
+test('ordinary private count projections keep the tab total without loading or notifying attention',async()=>{
+  const {Attention}=await import('../web/attention.mjs');let reads=0;const doc={title:'Theseus'};
+  const attention=new Attention({instanceId:'i1',doc,notifications:{permission:'granted'},api:{async view(){reads++;}}});
+  assert.equal(attention.acceptCounts({unread:4,addressed:0}),true);assert.equal(doc.title,'(4) Theseus');assert.equal(reads,0);assert.equal(attention.after,null);
+  attention.acceptCounts({unread:0,addressed:0});assert.equal(doc.title,'Theseus');
+  assert.equal(attention.acceptCounts({unread:-1,addressed:0}),false);assert.equal(doc.title,'Theseus');
+});
+
+test('older private count projections cannot undo a later confirmed attention count',async()=>{
+  const {Attention}=await import('../web/attention.mjs');const doc={title:'Theseus'};
+  const attention=new Attention({instanceId:'i1',doc,notifications:null,api:{async view(){return {instance_id:'i1',commit_seq:12,unread:2,addressed:1,latest_addressed:[]};}}});
+  attention.acceptCounts({commit_seq:10,unread:5,addressed:1});await attention.refresh({confirmed:true});
+  attention.acceptCounts({commit_seq:11,unread:4,addressed:1});assert.equal(doc.title,'(2) Theseus');assert.equal(attention.unread,2);
+});

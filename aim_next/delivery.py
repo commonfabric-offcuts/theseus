@@ -360,6 +360,7 @@ class Delivery:
                 item["topic_readable"] = False
             items.append(item)
         return {"instance_id": self.instance_id,
+                "commit_seq": int(db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()[0]),
                 "unread": sum(entry[0] for entry in counts.values()),
                 "addressed": sum(entry[1] for entry in counts.values()),
                 "latest_addressed": items,

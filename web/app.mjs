@@ -3280,12 +3280,13 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       const hasHere=(kinds)=>personal.some(item=>kinds.includes(item.resource_kind)&&(item.resource_id===topic.id||views.messages.has(item.resource_id)));
       const publicChange=own.some(item=>item.resource_kind==='topic');
       const workspaceChange=space.some(item=>item.resource_kind==='workspace');
+      if(batch.attention_counts)attention.acceptCounts(batch.attention_counts);
       const reads=[freshness.request({refresh:full})];
       if(full||publicChange||batch.affected_topics?.includes(topic.id)||hasHere(['read','mark','waiting','acts','whisper','reaction','removal','source_cover_read']))reads.push(loadUnread());
       if(full||hasHere(['mark','reaction','removal']))reads.push(loadMarks());
       if(full||has(['memory_read']))reads.push(loadReadState(),loadShownPage());
       if(full||workspaceChange||here.conversation&&publicChange)reads.push(loadConversation());
-      if(full||batch.attention_changed===true)reads.push(attention.refresh());
+      if(full||batch.attention_changed===true)reads.push(attention.refresh({confirmed:true}));
       if(full||space.some(item=>item.resource_kind==='workspace'))reads.push(outcomeScope.load());
       if(full){reads.push(wakeLights.load());reads.push(healthLight.releaseChanged());}
       const result=await Promise.all(reads);

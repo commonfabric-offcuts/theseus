@@ -63,6 +63,8 @@ class PageChangesCase(ReaderCase):
         self.committed(self.command('message.post',{'body':'Elsewhere ordinary fixture'},target={'topic_id':'t1'},actor='agent-a'))
         ordinary=self.batch(windows)
         self.assertFalse(ordinary['attention_changed'])
+        canonical=self.store.view('owner','attention',{})
+        self.assertEqual(ordinary['attention_counts'], {key:canonical[key] for key in ('unread','addressed','commit_seq')})
         self.assertIn('t1',ordinary['affected_topics'])
         windows=[{'scope':p['scope'],'cursor':p['checkpoint']} for p in ordinary['windows']]
         self.committed(self.command('message.post',{'body':'Named fixture','addressees':['owner'],'intent':'tell'},target={'topic_id':'t1'},actor='agent-a'))

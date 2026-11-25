@@ -158,6 +158,11 @@ class Changes:
                 affected = {row['id'] for row in db.execute('SELECT id,workspace_id FROM topics WHERE id IN (%s)' % ','.join('?'*len(affected)), tuple(sorted(affected))) if row['workspace_id'] in spaces}
                 changed.update(affected)
                 answer['affected_topics'] = sorted(affected)
+            if not answer['attention_changed'] and (deliveries or affected):
+                totals = self._unread(db, actor)
+                answer['attention_counts'] = dict(commit_seq=int(db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()[0]),
+                                                 unread=sum(row[0] for row in totals.values()),
+                                                 addressed=sum(row[1] for row in totals.values()))
             if changed:
                 from .store import _TOPIC_SUMMARY
                 # The IDs came only from authorized workspace scopes, but a

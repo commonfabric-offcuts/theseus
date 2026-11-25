@@ -19,35 +19,56 @@ export class Attention {
   }
   listen(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   // Overlapping requests share one read and ask for one more after it.
-  refresh() {
-    if (this.running) { this.again = true; return this.running; }
-    this.running = (async () => {
-      do { this.again = false; await this.load(); } while (this.again);
+  refresh({ confirmed = false } = {}) {
+    if (this.running) this.again = true;
+    else this.running = (async () => {
+      let accepted;
+      do { this.again = false; accepted = await this.load(); } while (this.again);
+      return accepted;
     })().finally(() => { this.running = null; });
-    return this.running;
+    if (!confirmed) return this.running;
+    return this.running.then(accepted => {
+      if (accepted !== true) throw this.error ?? Object.assign(Error('Attention could not be confirmed.'), {code:'INVALID_FRESHNESS_VIEW'});
+      return true;
+    });
   }
   async load() {
-    let answer;
+    let answer; this.error = null;
     // The foreground lane queues; the background lane sheds, for reads that
     // keep a retry timer of their own, and this read keeps none.
     // here: the outcome the page is inside, so the answer says whether it is
     // one of the outcomes waiting on the reader.
     const args = typeof this.here === 'string' ? { workspace_id: this.here } : {};
     try { answer = checkedView(await this.api.view('attention', args, { readClass: 'foreground' }), this.instanceId); }
-    catch { return; } // A failed read keeps what is shown; the next commit asks again.
-    if (!Number.isSafeInteger(answer.unread) || !Number.isSafeInteger(answer.addressed) || !Array.isArray(answer.latest_addressed)) return;
-    this.unread = answer.unread; this.addressed = answer.addressed;
-    this.doc.title = answer.unread > 0 ? `(${answer.unread}) ${this.baseTitle}` : this.baseTitle;
+    catch (error) { this.error = error; return false; } // The shared page owner retains the window for retry.
+    if (!Number.isSafeInteger(answer.unread) || !Number.isSafeInteger(answer.addressed) || !Array.isArray(answer.latest_addressed)) {
+      this.error=Object.assign(Error('Attention could not be confirmed.'),{code:'INVALID_FRESHNESS_VIEW'});return false;
+    }
+    this.acceptCounts(answer);
     // Delivery numbers only grow, so a message that was already waiting, even
     // one first listed after newer ones are read, is never news. Without a
     // starting number, the first answer only records where the page started.
     const numbers = answer.latest_addressed.map(item => item.seq).filter(Number.isSafeInteger);
     const fresh = this.after === null ? [] : answer.latest_addressed.filter(item => Number.isSafeInteger(item.seq) && item.seq > this.after);
     this.after = Math.max(this.after ?? 0, ...numbers);
-    this.last = answer; this.lastHere = args.workspace_id ?? null;
+    this.last = {...answer,unread:this.unread,addressed:this.addressed}; this.lastHere = args.workspace_id ?? null;
     for (const listener of [...this.listeners]) listener(answer);
-    if (this.notifications?.permission !== 'granted' || (!this.doc.hidden && this.doc.hasFocus?.())) return;
+    if (this.notifications?.permission !== 'granted' || (!this.doc.hidden && this.doc.hasFocus?.())) return true;
     for (const item of fresh.reverse()) this.notify(item);
+    return true;
+  }
+  // A private count projection has no notification items. It updates only
+  // totals; the full owner still decides addressed news and waiting facts.
+  acceptCounts(counts) {
+    if(!counts||!['unread','addressed'].every(key=>Number.isSafeInteger(counts[key])&&counts[key]>=0))return false;
+    if(Number.isSafeInteger(counts.commit_seq)){
+      if(counts.commit_seq<(this.countSeq??-1))return true;
+      this.countSeq=counts.commit_seq;
+    }
+    this.unread=counts.unread;this.addressed=counts.addressed;
+    this.doc.title=counts.unread>0?`(${counts.unread}) ${this.baseTitle}`:this.baseTitle;
+    if(this.last)this.last={...this.last,...counts};
+    return true;
   }
   notify(item) {
     const title = `${item.message.author_id} in ${item.topic.title}${item.topic.title_truncated ? '…' : ''}`;
