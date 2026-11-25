@@ -653,7 +653,7 @@ export class TopicViews {
       if (!current()) return false;
       if (answer.message_id !== id) throw invalid('The reactions answer is for another message.');
       if (reactionsOf(answer).version < version) throw behind();
-      if (learnReactions(this.messages, answer)) this.paint('reactions');
+      if (learnReactions(this.messages, answer)) this.paint('reactions', id);
       landed();
       return true;
     }

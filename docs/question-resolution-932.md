@@ -40,7 +40,8 @@ topic version. An open Reader also refreshes its question on topic changes,
 covering archival and legacy waits cleared by writing elsewhere in the topic.
 
 The Reader names its own question's wait and offers Resolve only when Core
-permits it. Resolved shows by/when; superseded links to the later question.
+permits it. Terminal Resolved/Superseded states have no display label in a card or the
+Reader origin (1239); their authoritative facts remain kept.
 The client learns terminal states monotonically and filters them from every
 loaded cover before its next paint, including stale cover reads. Unknown
 command outcomes keep the exact operation for Retry; a late receipt cannot
@@ -52,3 +53,11 @@ Default preserved: thumbs still clear plain waits exactly as before. Explicit
 go-ahead/no-go-ahead answers remain separate. Closed questions cannot receive
 a new decision or be restored by thumb Undo. Record-owned decisions retain
 their existing controls and authority.
+
+Item 1239 replaces 1237's one-label presentation with no terminal labels or
+card-author display projection. Shared question-state learning for reaction
+eligibility stays, as do waiting/Resolve actions and resolution commands.
+Author/time/edit/carries, star/update, withdrawal/removal and reaction owners
+retain their content. The 1237 composition file now holds deliberate absence
+through repeated cached paints; 932 covers the actual Reader origin and kept
+question facts/controls. Native timing and live observations remain separate.

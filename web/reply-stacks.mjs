@@ -664,6 +664,23 @@ export async function checkDossierNew(list, stack, pressed) {
   state.checking.delete(stack.id); state.again();
 }
 
+// One changed card's dossier reads its current confirmed New state without
+// arranging the feed. Use the existing header owner, including head-New to
+// unread-replies transitions, while retaining the stack's presentation.
+export function paintHeadReading(card, messages, unread, nameOf) {
+  const section = card.closest('.reply-stack'), list = section?.parentElement;
+  if (!list) return;
+  const state = states.get(list), stack = state?.stacks?.find(stack => stack.id === section.dataset.stack);
+  if (!stack || state.checking.has(stack.id)) return;
+  const row = section.querySelector('.stack-head');
+  if (!row) return;
+  const current = { ...stack, head: messages.get(stack.head.id) ?? stack.head,
+    replies: stack.replies.map(item => messages.get(item.id) ?? item) };
+  const host = row.parentElement;
+  paintHead(host, current, { state, unread, nameOf, doc: card.ownerDocument,
+    open: Boolean(row.querySelector('.stack-hide')), separate: host.classList.contains('stack-frame-head') });
+}
+
 // The marks alone on the row of the stack a message heads, when only what that message
 // carries changed (item 127): the row's other parts, the stacks' order and the New line
 // stay as they are, so nothing is arranged again. A card heading no stack has no row.

@@ -38,12 +38,12 @@ export const answerOf = (item, viewer) => reactionsOf(item).answers.find(answer 
 // choices. Each part is a word inside the card, never a control of its own
 // (a card is a button); a press on one is taken by MessageMenu, which also
 // offers every act as a real button in the bar over the lit card.
-export function paintReactions(card, item, viewer, kind, doc = card.ownerDocument) {
+export function paintReactions(card, item, viewer, kind, doc = card.ownerDocument, pending = null) {
   const value = reactionsOf(item), answerable = mayAnswer(item, viewer, kind);
-  const key = JSON.stringify([value.version, item.go_ahead === true, Boolean(item.withdrawal), Boolean(item.removal), questionOf(item)?.state, answerable, value.thumbs.map(t => t.actor_id)]);
+  const key = JSON.stringify([value.version, item.go_ahead === true, Boolean(item.withdrawal), Boolean(item.removal), questionOf(item)?.state, answerable, value.thumbs.map(t => t.actor_id), pending]);
   let line = card.querySelector(':scope > .message-reactions');
   if (line?.dataset.key === key) return;
-  const empty = !value.thumbs.length && !item.go_ahead;
+  const empty = !value.thumbs.length && !item.go_ahead && pending === null;
   if (empty) { line?.remove(); return; }
   if (!line) { line = node(doc, 'span', undefined, 'message-reactions'); card.insertBefore(line, card.querySelector(':scope > .note-corner')); }
   line.dataset.key = key; line.replaceChildren();
@@ -57,6 +57,20 @@ export function paintReactions(card, item, viewer, kind, doc = card.ownerDocumen
     line.append(count);
   }
   line.append(...answerParts(doc, item, viewer, kind));
+  if (pending !== null) {
+    const saving = node(doc, 'span', pending ? '👍 Saving…' : '👍 Removing…', 'reaction-pending');
+    saving.setAttribute('aria-label', thumbPendingWords(pending));
+    saving.setAttribute('role', 'status'); line.append(saving);
+  }
+}
+
+export const thumbPendingWords = on => on ? 'Saving thumbs-up…' : 'Removing thumbs-up…';
+// Pending is distinct from aria-pressed, which always describes recorded truth.
+export function paintThumbPending(button, pending = null) {
+  if (!button) return;
+  if (pending === null) { button.removeAttribute('aria-busy'); delete button.dataset.thumbPending; return; }
+  button.setAttribute('aria-busy', 'true'); button.dataset.thumbPending = String(pending);
+  button.title = thumbPendingWords(pending); button.setAttribute('aria-label', button.title);
 }
 
 // One owner of the decision words, eligibility and recorded answers. A card
@@ -83,7 +97,7 @@ function answerParts(doc, item, viewer, kind, { buttons = false, busy = false, a
 }
 
 // The Reader's 👍 beside Send, for the message it shows.
-export function paintReaderThumb(button, item, viewer, busy = false) {
+export function paintReaderThumb(button, item, viewer, busy = false, pending = null) {
   const can = Boolean(item) && mayThumb(item, viewer);
   button.hidden = !can;
   if (!can) return;
@@ -93,6 +107,8 @@ export function paintReaderThumb(button, item, viewer, busy = false) {
   button.setAttribute('aria-pressed', String(on)); button.disabled = busy;
   button.title = on ? 'You said you read and understood it. Press to take it back.' : 'Thumbs-up: read and understood';
   button.setAttribute('aria-label', button.title);
+  paintThumbPending(button, pending);
+  if (pending !== null) button.textContent = '👍 …';
 }
 
 // The Reader's line below the message shares its card's decisions. The
@@ -131,9 +147,9 @@ export function learnReactions(messages, answer) {
 // reading(id): a read of the message's reactions begins; the function it
 // returns is called once it has landed (stack-feed.mjs reading).
 export class Reactions {
-  constructor({ api, instanceId, authority, learned = () => {}, recorded = () => {}, cleared = () => {}, reading = () => () => {} }) {
-    Object.assign(this, { api, instanceId, authority, learned, recorded, cleared, reading });
-    this.busy = new Set();
+  constructor({ api, instanceId, authority, learned = () => {}, recorded = () => {}, cleared = () => {}, reading = () => () => {}, changed = () => {}, current = () => true }) {
+    Object.assign(this, { api, instanceId, authority, learned, recorded, cleared, reading, changed, current });
+    this.busy = new Set(); this.pending = new Map();
   }
   async read(id) {
     const landed = this.reading(id);
@@ -151,24 +167,30 @@ export class Reactions {
   async send(kind, item, args, expected, said = null) {
     if (this.busy.has(item.id)) return null;
     this.busy.add(item.id);
+    let current = () => this.current();
     try {
       const { authority_id, authority_epoch } = this.authority();
+      current = () => this.current() && this.authority()?.authority_id === authority_id && this.authority()?.authority_epoch === authority_epoch;
+      if (kind === 'message.thumb') { this.pending.set(item.id, args.thumbed); this.changed(item.id); }
       let receipt = null, failure = null;
       try {
         receipt = await this.api.command({ v: 1, instance_id: this.instanceId, operation_id: crypto.randomUUID(), kind,
           target: { message_id: item.id }, expected: { ...expected, authority: { authority_id, authority_epoch } }, args });
       } catch (error) { failure = { error }; }
       const committed = receipt?.status === 'committed', result = committed ? receipt.result : null;
-      if (result?.message_id === item.id && Number.isSafeInteger(result.mark_revision)) this.cleared(result);
+      if (current() && result?.message_id === item.id && Number.isSafeInteger(result.mark_revision)) this.cleared(result, kind);
       if (!failure && !committed) failure = { receipt };
       const answer = failure && notTaken(failure);
-      const thrown = failure && (!said || answer.kind === 'unreached' ? unsaved(failure, answer) : (said(failure), null));
+      const thrown = failure && (!said || answer.kind === 'unreached' ? unsaved(failure, answer) : (current() && said(failure), null));
       // Whatever the answer, the message's reactions as Core holds them now.
-      try { this.learned(await this.read(item.id)); } catch { /* the next commit reads them again */ }
+      try { const value = await this.read(item.id); if (current()) this.learned(value, kind); } catch { /* the next commit reads them again */ }
       if (thrown) throw thrown;
-      if (committed) { this.recorded(receipt); return receipt; }
+      if (committed && current()) { this.recorded(receipt); return receipt; }
       return null;
-    } finally { this.busy.delete(item.id); }
+    } finally {
+      this.busy.delete(item.id);
+      if (this.pending.delete(item.id) && current()) this.changed(item.id);
+    }
   }
   thumb(item, on, said = null) {
     return this.send('message.thumb', item, { thumbed: on }, { thumb_revision: reactionsOf(item).thumb_revision }, said);
