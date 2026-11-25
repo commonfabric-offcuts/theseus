@@ -37,6 +37,13 @@ const processCPU = (before, after) => after.map(row => ({id:row.id,type:row.type
   seconds:row.cpuTime-(before.find(old => old.id===row.id)?.cpuTime ?? row.cpuTime)}));
 const canonical = value => value && typeof value==='object' ? Array.isArray(value) ? value.map(canonical)
   : Object.fromEntries(Object.keys(value).sort().map(key => [key,canonical(value[key])])) : value;
+const readSummary = reads => {
+  const byName={},multiplicity={};
+  for(const read of reads){byName[read.name]=(byName[read.name]??0)+1;
+    const key=read.name+':'+JSON.stringify(canonical(read.args));multiplicity[key]=(multiplicity[key]??0)+1;}
+  return {reads,byName,multiplicity};
+};
+const cleanReads = reads => reads.every(read=>read.status>=200&&read.status<300&&!read.failure&&!read.bodyFailure&&read.bodyEnded!==undefined);
 try {
   facts = await control({method:'ready',runtime_evidence:true});
   report.runtime = facts.runtime_evidence;
@@ -136,8 +143,14 @@ try {
   await page.goto(facts.origin+'/?topic=cost1229-open');
   await page.waitForFunction(() => document.body.dataset.ready==='true');
   const settle = async () => {
-    await page.waitForFunction(() => { const p=window.render1229;return p.seq!==null && p.pending===0 && performance.now()-p.last>=750; },null,{timeout:20000});
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    for(let attempt=0;attempt<10;attempt++){
+      await page.waitForFunction(() => { const p=window.render1229;return p.seq!==null && p.pending===0 && performance.now()-p.last>=750; },null,{timeout:20000});
+      const observed=responseJobs.length;
+      await Promise.allSettled(responseJobs);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      if(observed===responseJobs.length&&await page.evaluate(()=>render1229.pending===0&&performance.now()-render1229.last>=750))return;
+    }
+    throw new Error('response jobs did not settle within the bounded drain');
   };
   await settle();
   report.loadedFeed=await page.evaluate(()=>({cards:document.querySelectorAll('#messages .message-card').length,
@@ -172,10 +185,13 @@ try {
   };
   await coverage();
   report.warmupEnd = await page.evaluate(() => ({time:performance.now(),seq:render1229.seq,reads:render1229.reads.length}));
+  const restReadStart=report.warmupEnd.reads;
   const restCPU=await processes(),restMetrics=await metrics(cdp),restStart=Date.now();
   await new Promise(resolve=>setTimeout(resolve,3000));
+  await settle();
   report.rest={wallMs:Date.now()-restStart,processCPU:processCPU(restCPU,await processes()),
-    before:restMetrics,after:await metrics(cdp)};
+    before:restMetrics,after:await metrics(cdp),...readSummary(await page.evaluate(from=>render1229.reads.slice(from),restReadStart))};
+  check('idle rest does not reread views',report.rest.reads.length===0,report.rest);
   await coverage();
   for (const addressed of [false,true]) {
     const phase = {name:addressed?'addressed-elsewhere':'unaddressed-elsewhere',posts:[],reads:[],samples:[]};
@@ -215,7 +231,7 @@ try {
       check(operation+' unchanged rows untouched',observed.unchangedRowMutations.length===0,observed.unchangedRowMutations);
       const forbidden=new Set(['topic','topic_unread','marks','wakes','topic_tools','memory_items','pipeline','pipeline_row','health_light','workspace_links','conversation']);
       check(operation+' unrelated resources unread',observed.reads.every(read=>!forbidden.has(read.name)),observed.reads.map(read=>read.name));
-      check(operation+' successful reads',observed.reads.every(read=>read.status>=200&&read.status<300&&!read.failure),observed.reads);
+      check(operation+' successful complete reads',cleanReads(observed.reads),observed.reads);
       if(!addressed)check(operation+' no unrelated attention read',observed.reads.every(read=>read.name!=='attention'),observed.reads.map(read=>read.name));
       if(addressed){
         const attention=await control({method:'agent_view',actor:facts.actor,name:'attention',args:{}});
@@ -235,19 +251,28 @@ try {
     report.cases.push(phase);await writeFile(evidence+'/progress.json',JSON.stringify(report,null,2));
   }
   const openCPU=await processes(),openMetrics=await metrics(cdp),openStart=Date.now();
-  const openPhase={name:'open-topic-positive',posts:[]};
+  const openPhase={name:'open-topic-positive',posts:[],samples:[]};
+  const openReadStart=await page.evaluate(()=>render1229.reads.length);
   for(let number=0;number<count;number++){
+    const boundary=await page.evaluate(()=>({reads:render1229.reads.length,seq:render1229.seq}));
     const body=`Render open-topic probe ${number}`,operation=`cost1229-open-${number}`;
     const receipt=await control({method:'agent_message',operation_id:operation,topic_id:'cost1229-open',whole_topic:true,
       body,post_args:{reply_to:roots[0],reply_without_quote:'Identified scratch open-topic measurement.'}});
     assert.equal(receipt.status,'committed');openPhase.posts.push({operation,receipt});
     await page.waitForFunction(body=>document.querySelector('#messages')?.textContent.includes(body),body,{timeout:20000});
     await settle();
+    const sample={operation,before:boundary,after:await page.evaluate(()=>({time:performance.now(),seq:render1229.seq})),
+      ...readSummary(await page.evaluate(from=>render1229.reads.slice(from),boundary.reads))};
+    openPhase.samples.push(sample);
+    check(operation+' successful complete reads',cleanReads(sample.reads),sample.reads);
+    check(operation+' no duplicate view/args',Object.values(sample.multiplicity).every(n=>n<=1),sample.multiplicity);
   }
   const openAfter=await metrics(cdp);
   openPhase.wallMs=Date.now()-openStart;openPhase.processCPU=processCPU(openCPU,await processes());
   openPhase.metrics=Object.fromEntries(['TaskDuration','ScriptDuration','LayoutDuration','RecalcStyleDuration','LayoutCount','RecalcStyleCount'].map(key=>[key,openAfter[key]-openMetrics[key]]));
   openPhase.functions=await coverage();report.openTopic=openPhase;
+  Object.assign(openPhase,readSummary(await page.evaluate(from=>render1229.reads.slice(from),openReadStart)));
+  openPhase.perMessage={reads:openPhase.reads.length/count,layouts:openPhase.metrics.LayoutCount/count,styles:openPhase.metrics.RecalcStyleCount/count};
   check('open topic still reaches feed',openPhase.posts.length===count&&openPhase.functions.captureListAnchor>0,openPhase.functions);
   report.sends=[];
   for(const surface of ['inline-reply','bottom-composer']){
@@ -282,12 +307,17 @@ try {
         functions:await coverage(),metrics:Object.fromEntries(['TaskDuration','ScriptDuration','LayoutDuration','RecalcStyleDuration','LayoutCount','RecalcStyleCount'].map(key=>[key,after[key]-before[key]])),
         reads:await page.evaluate(from=>render1229.reads.slice(from),boundary),warnings:await page.evaluate(from=>render1229.warnings.slice(from),warningStart),networkErrors:report.networkErrors.slice(errorStart)};
       phase.sends.push(sample);
+      check(surface+' successful complete reads',cleanReads(sample.reads),sample.reads);
+      check(surface+' no unexpected response errors',sample.networkErrors.length===0,sample.networkErrors);
+      check(surface+' no warning flicker',sample.warnings.length===0,sample.warnings);
       await writeFile(evidence+'/progress.json',JSON.stringify({...report,activeSend:phase},null,2));
     }
     report.sends.push(phase);
   }
-  await Promise.allSettled(responseJobs);
+  await settle();
   report.warnings=await page.evaluate(()=>render1229.warnings);
+  check('clean traffic has no unexpected body or structured response errors',report.networkErrors.length===0,report.networkErrors);
+  check('clean traffic has no warning flicker',report.warnings.length===0,report.warnings);
 } catch(error) { report.failures.push({name:'harness or setup barrier',detail:error.stack});
   if(page&&!page.isClosed())await page.screenshot({path:evidence+'/failure.png',fullPage:true}).catch(()=>{}); }
 finally {
