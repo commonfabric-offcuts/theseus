@@ -4,6 +4,7 @@ from .contract import LIMITS, Refusal, _identifier, _json
 
 
 COMMANDS = {
+    "release_card.create": "_command_release_card_create", "release_card.update": "_command_release_card_update",
     "performance.record": "_command_performance_record",
     "current_rule.update": "_command_current_rule_update",
     "pipeline.clock_record": "_command_pipeline_clock_record",
@@ -80,7 +81,7 @@ COMMANDS = {
     "stack.cover_refresh": "_command_stack_cover_refresh",
     "tool.use": "_command_tool_use", "tool.link": "_command_tool_link", "tool.record": "_command_tool_record",
 }
-EXPECTED = {"current_rule.update": {"rule_revision", "item_revision"},"workspace.link_set": {"link_revision"},**{"assessment."+name:set() for name in ("request","attach","finish","renew","abandon")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
+EXPECTED = {"release_card.create": set(), "release_card.update": {"message_revision"}, "current_rule.update": {"rule_revision", "item_revision"},"workspace.link_set": {"link_revision"},**{"assessment."+name:set() for name in ("request","attach","finish","renew","abandon")},"agent.execution": {"execution_revision"}, "workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"}, "submission.set_aside": set(),
             "participation.set": {"topic_revision"}, "topic.update": {"topic_revision", "topic_fields"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
             "message.post": set(), "message.withdraw": set(), "message.unsend": set(), "message.retract": set(), "message.resolve": set(), "topic.read_through": set(), "message.edit": {"message_revision"}, "message.refresh": {"message_revision"},
@@ -129,7 +130,7 @@ EXPECTED = {"current_rule.update": {"rule_revision", "item_revision"},"workspace
             "stack.cover": {"cover_revision"}, "stack.cover_refresh": {"cover_revision"},
             "stack.move": {"move_revision", "source_topic_id"},
             "tool.use": set(), "tool.link": set(), "tool.record": set()}
-REQUIRED_EXPECTED = {"current_rule.update": "rule_revision","workspace.link_set": "link_revision","agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
+REQUIRED_EXPECTED = {"release_card.update": "message_revision", "current_rule.update": "rule_revision","workspace.link_set": "link_revision","agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision", "memory.star": "star_revision", "memory.delete": "item_revision",
                      "memory.move": "item_revision", "memory.copy": "item_revision", "memory.transfer.undo": "item_revision",
@@ -155,6 +156,8 @@ EXPECTED["pipeline.clock_record"] = {"clock_revision"}
 EXPECTED["performance.record"] = set()
 REQUIRED_EXPECTED["pipeline.clock_record"] = "clock_revision"
 VIEWS = {
+    "release_card": {"message_id", "workspace_id", "release", "revision"},
+    "release_card_history": {"message_id", "cursor", "limit"},
     "current_rule": {"workspace_id", "history"},
     "work_context": {"workspace_id", "piece_id", "topic_id", "topic_ids"},
     "pipeline_clock": {"piece_id"},

@@ -42,6 +42,7 @@ from .cli_tools import ToolVerbs, register as register_tools
 from .cli_covers import CoverVerbs, register as register_covers
 from .cli_links import LinkVerbs, register as register_links
 from .cli_current_rule import CurrentRuleVerbs, register as register_current_rule
+from .cli_release_cards import ReleaseCardVerbs, register as register_release_cards
 
 
 class Parser(argparse.ArgumentParser):
@@ -458,6 +459,7 @@ def _parser():
     link.add_argument("--revision", type=int)
     link.add_argument("--origin")
     register_current_rule(verb)
+    register_release_cards(verb)
     register_pipeline(verb)
     register_clock(verb)
     register_targets(verb)
@@ -592,7 +594,7 @@ class Failed(Exception):
         self.code, self.recorded = code, recorded
 
 
-class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
+class Agent(ReleaseCardVerbs, CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs, CoverVerbs, LinkVerbs):
     """The everyday verbs: each builds its envelopes, saves each request before dispatch."""
 
     def __init__(self, profile, options, stdin, lines):

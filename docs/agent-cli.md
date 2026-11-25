@@ -160,6 +160,17 @@ their existing behavior.
 
 ## Everyday verbs
 
+Typed Release cards (1288): `release-card create TOPIC FILE --divergence-reason
+TEXT`, `release-card update MESSAGE FILE --expected N`, `release-card read
+MESSAGE [--revision N]`, and `release-card history MESSAGE [--cursor N]
+[--limit N]`. Writes accept `--operation ID` and retain the existing bound
+outbox/retry semantics. FILE holds the bounded typed payload from
+[the wire contract](release-card-1248.md); Core supplies verified Live time.
+Write verbs independently read back the recorded typed/message revision.
+On `READ_BACK_UNCONFIRMED`, recover that saved operation instead of publishing
+another card. A plain `edit` refuses a typed Release card; its replies, notes
+and existing discussion retain their usual commands.
+
 The verbs below build each envelope, capture the binding and a fresh operation
 ID, and print plain lines; `--json` (before or after the verb) prints each raw
 Core result as one JSON line instead. They are the same commands and views as

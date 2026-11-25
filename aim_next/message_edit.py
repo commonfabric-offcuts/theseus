@@ -563,6 +563,9 @@ class MessageEdit:
             # An edit writes only actor-scoped changes, which the guard passes: refused here in an outcome kept to
             # read, reached, archived or completed (item 404).
             self._refuse_if_closed(db, actor, db.execute("SELECT workspace_id FROM topics WHERE id=?", (message["topic_id"],)).fetchone()[0])
+        from .release_cards import editing
+        if not editing.get() and db.execute("SELECT 1 FROM release_cards WHERE message_id=?", (message["id"],)).fetchone():
+            raise Refusal("TYPED_CARD_UPDATE_REQUIRED", "Update this release through its typed release-card writer")
         return message
 
     def _command_message_edit(self, db, actor, envelope):
