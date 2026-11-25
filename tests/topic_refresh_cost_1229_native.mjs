@@ -8,10 +8,12 @@ import {fixtureControl} from './fixture_control.mjs';
 
 const {chromium} = await import(process.env.AIM_PLAYWRIGHT_CORE);
 const evidence = process.argv[2], count = Number(process.argv[3] ?? 6);
+const seedCount=Number(process.argv[4]??0);
 assert.ok(evidence && Number.isSafeInteger(count) && count > 0 && count <= 100);
+assert.ok(Number.isSafeInteger(seedCount)&&seedCount>=0&&seedCount<=500);
 await mkdir(evidence, {recursive: true});
 const marker = `theseus-render1229-${process.pid}-${Date.now()}`;
-const report = {schema:1, startedMs:Date.now(), count, cases:[], failures:[], limits:[
+const report = {schema:1, startedMs:Date.now(), count, cases:[], failures:[], networkErrors:[], warnings:[], limits:[
   'One fresh headless Chrome tab, 1400x900; no personal profile or live data.',
   'Sequential committed messages with a 750ms quiet drain; CPU includes this pacing.',
   'Precise coverage enabled: CPU is an instrumented trend, not the original 3.7-message/s sample.',
@@ -49,6 +51,13 @@ try {
   await control({method:'agent_message',operation_id:'cost1229-open-join',join:true,
     topic_id:'cost1229-open',whole_topic:true,body:'Open-topic warm-up fixture reply',
     post_args:{reply_to:roots[0],reply_without_quote:'Synthetic render-cost setup.'}});
+  report.seed={dossiers:seedCount,bodyCharacters:0};
+  for(let number=0;number<seedCount;number++){
+    const body=`Render cost seed dossier ${number}\n\n`+'Retained fixture writing and its wrapping across the open feed. '.repeat(40);
+    const receipt=await control({method:'agent_message',operation_id:`cost1229-seed-${number}`,sender:'person',
+      topic_id:'cost1229-open',whole_topic:true,body,post_args:{divergence_reason:'Independent render-cost seed dossier.'}});
+    assert.equal(receipt.status,'committed');report.seed.bodyCharacters+=body.length;
+  }
   browser = await chromium.launch({headless:true,executablePath:process.env.AIM_CHROME,args:[`--${marker}`]});
   report.browser = {engine:browser.browserType().name(),version:browser.version()};
   assert.equal(report.browser.engine,'chromium');
@@ -80,6 +89,12 @@ try {
     };
   });
   page = await context.newPage();
+  const responseJobs=[];
+  page.on('response',response=>{
+    if(new URL(response.url()).pathname!=='/api/view')return;
+    const request=response.request().postDataJSON();
+    responseJobs.push(response.json().then(answer=>{if(answer.error)report.networkErrors.push({time:Date.now(),name:request.name,args:request.args,status:response.status(),error:answer.error});},error=>report.networkErrors.push({time:Date.now(),name:request.name,args:request.args,status:response.status(),bodyFailure:String(error)})));
+  });
   page.on('pageerror',error => report.failures.push({name:'pageerror',detail:error.stack}));
   await page.goto(facts.origin+'/?topic=cost1229-open');
   await page.waitForFunction(() => document.body.dataset.ready==='true');
@@ -88,11 +103,25 @@ try {
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   };
   await settle();
+  report.loadedFeed=await page.evaluate(()=>({cards:document.querySelectorAll('#messages .message-card').length,
+    characters:document.querySelector('#messages').textContent.length,nodes:document.querySelector('#messages').querySelectorAll('*').length}));
   await page.evaluate(() => {
     const p=window.render1229;
     p.rows=new Map([...document.querySelectorAll('#outline a[data-topic-id]')].map(row=>[row.dataset.topicId,row]));
     p.feed=new MutationObserver(records => {p.feedMutations+=records.length;});
     p.feed.observe(document.querySelector('#messages'),{subtree:true,childList:true,characterData:true,attributes:true});
+    p.rowMutations=[];p.warnings=[];
+    p.rail=new MutationObserver(records=>{for(const record of records){
+      const element=record.target.nodeType===Node.ELEMENT_NODE?record.target:record.target.parentElement;
+      const row=element?.closest('a[data-topic-id]');if(row)p.rowMutations.push({id:row.dataset.topicId,type:record.type,attribute:record.attributeName});
+    }});
+    p.rail.observe(document.querySelector('#outline'),{subtree:true,childList:true,characterData:true,attributes:true});
+    p.warningObserver=new MutationObserver(records=>{for(const record of records){
+      const element=record.target.nodeType===Node.ELEMENT_NODE?record.target:record.target.parentElement;
+      const notice=element?.closest('.notice');
+      if(notice&&!notice.hidden&&notice.textContent.trim())p.warnings.push({time:performance.now(),text:notice.textContent});
+    }});
+    p.warningObserver.observe(document.documentElement,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['hidden']});
   });
   const cdp = await context.newCDPSession(page);
   await cdp.send('Performance.enable'); await cdp.send('Profiler.enable');
@@ -115,7 +144,7 @@ try {
     const phase = {name:addressed?'addressed-elsewhere':'unaddressed-elsewhere',posts:[],reads:[],samples:[]};
     const beforeMetrics=await metrics(cdp),beforeCPU=await processes(),started=Date.now();
     for(let number=0;number<count;number++) {
-      const boundary=await page.evaluate(()=>({reads:render1229.reads.length,seq:render1229.seq,mutations:render1229.feedMutations}));
+      const boundary=await page.evaluate(()=>({reads:render1229.reads.length,seq:render1229.seq,mutations:render1229.feedMutations,rowMutations:render1229.rowMutations.length}));
       const operation=`cost1229-${addressed?'to':'plain'}-${number}`;
       const receipt=await control({method:'agent_message',operation_id:operation,topic_id:'cost1229-other',
         whole_topic:true,body:`Render probe ${operation}`,post_args:{reply_to:roots[1],
@@ -134,6 +163,7 @@ try {
           rowPresent:Boolean(row),seq:render1229.seq,feedMutations:render1229.feedMutations,
           replaced:[...render1229.rows].filter(([id,old])=>id!==topic&&document.querySelector(`#outline a[data-topic-id="${id}"]`)!==old).map(([id])=>id)};
       },{from:boundary.reads,topic:item.id});
+      observed.unchangedRowMutations=await page.evaluate(({from,topic})=>render1229.rowMutations.slice(from).filter(row=>row.id!==topic),{from:boundary.rowMutations,topic:item.id});
       const functions=await coverage();
       const multiplicity={};
       for(const read of observed.reads){const key=read.name+':'+JSON.stringify(canonical(read.args));multiplicity[key]=(multiplicity[key]??0)+1;}
@@ -145,6 +175,7 @@ try {
       check(operation+' no feed anchor scan',functions.captureListAnchor===0,functions);
       check(operation+' no feed DOM mutation',observed.feedMutations===boundary.mutations,{before:boundary.mutations,after:observed.feedMutations});
       check(operation+' unchanged rows retained',observed.replaced.length===0,observed.replaced);
+      check(operation+' unchanged rows untouched',observed.unchangedRowMutations.length===0,observed.unchangedRowMutations);
       const forbidden=new Set(['topic','topic_unread','marks','wakes','topic_tools','memory_items','pipeline','pipeline_row','health_light','workspace_links','conversation']);
       check(operation+' unrelated resources unread',observed.reads.every(read=>!forbidden.has(read.name)),observed.reads.map(read=>read.name));
       check(operation+' successful reads',observed.reads.every(read=>read.status>=200&&read.status<300&&!read.failure),observed.reads);
@@ -180,6 +211,45 @@ try {
   openPhase.metrics=Object.fromEntries(['TaskDuration','ScriptDuration','LayoutDuration','RecalcStyleDuration','LayoutCount','RecalcStyleCount'].map(key=>[key,openAfter[key]-openMetrics[key]]));
   openPhase.functions=await coverage();report.openTopic=openPhase;
   check('open topic still reaches feed',openPhase.posts.length===count&&openPhase.functions.captureListAnchor>0,openPhase.functions);
+  report.sends=[];
+  for(const surface of ['inline-reply','bottom-composer']){
+    const phase={name:surface,sends:[]};
+    for(let number=0;number<count;number++){
+      const body=`Native ${surface} probe ${number}`;
+      let field,send;
+      if(surface==='inline-reply'){
+        const parent=openPhase.posts.at(-1).receipt.result.message_id;
+        const card=page.locator(`.message-card[data-id="${parent}"]`);
+        await card.locator(':scope > .message-preview').click();
+        field=page.locator(`[id="reply-${parent}-composer"] textarea`);
+        send=page.locator(`[id="reply-${parent}-send"]`);
+      }else{
+        field=page.locator('#inline-writing-body');await field.click();
+        const kind=page.locator('#inline-kind-message');if(await kind.isVisible())await kind.click();
+        send=page.locator('#inline-send');
+      }
+      await field.fill(body);
+      await page.waitForFunction(id=>document.getElementById(id)?.closest('.composer')?.querySelector('[data-save]')?.dataset.save==='saved',await field.getAttribute('id'),{timeout:20000});
+      await settle();await coverage();
+      const boundary=await page.evaluate(()=>render1229.reads.length),warningStart=await page.evaluate(()=>render1229.warnings.length);
+      const before=await metrics(cdp),cpu=await processes(),started=Date.now(),errorStart=report.networkErrors.length;
+      const response=page.waitForResponse(response=>{try{return response.request().postDataJSON()?.kind==='message.send';}catch{return false;}},{timeout:20000});
+      await send.click();const receipt=await(await response).json();assert.equal(receipt.status,'committed');
+      await page.locator(`#messages .message-card[data-id="${receipt.result.message_id}"]`).waitFor({state:'attached',timeout:20000});
+      await settle();
+      const source=await control({method:'agent_view',actor:facts.actor,name:'source',args:{source_ref:{kind:'message',id:receipt.result.message_id}}});
+      check(surface+' committed writing preserved',source.body?.includes(body),source.body);
+      const after=await metrics(cdp),processCPUResult=processCPU(cpu,await processes());
+      const sample={number,receipt,wallMs:Date.now()-started,processCPU:processCPUResult,
+        functions:await coverage(),metrics:Object.fromEntries(['TaskDuration','ScriptDuration','LayoutDuration','RecalcStyleDuration','LayoutCount','RecalcStyleCount'].map(key=>[key,after[key]-before[key]])),
+        reads:await page.evaluate(from=>render1229.reads.slice(from),boundary),warnings:await page.evaluate(from=>render1229.warnings.slice(from),warningStart),networkErrors:report.networkErrors.slice(errorStart)};
+      phase.sends.push(sample);
+      await writeFile(evidence+'/progress.json',JSON.stringify({...report,activeSend:phase},null,2));
+    }
+    report.sends.push(phase);
+  }
+  await Promise.allSettled(responseJobs);
+  report.warnings=await page.evaluate(()=>render1229.warnings);
 } catch(error) { report.failures.push({name:'harness or setup barrier',detail:error.stack}); }
 finally {
   if(browser){
