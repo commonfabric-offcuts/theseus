@@ -10,7 +10,9 @@ changes; reads never write aggregates or repair records.
 
 A newest-visible topic window of32 messages can certify a dossier's newest
 message and newest message by another author when both global maxima belong
-to it. An incomplete certificate retains the exact recursive aggregate,
+to it. Read its first candidate before consuming that window; an unrelated
+newest candidate goes directly to the exact recursive aggregate, so older
+named-message reads do not pay for a later unrelated window. An incomplete certificate retains the exact recursive aggregate,
 including a full window of the reader's own messages. This is a shortcut for
 this demonstrated hot path, not universal constant cost for arbitrary dossiers.
 Source/change candidate volume and ancestry depth remain real costs.
