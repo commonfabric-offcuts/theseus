@@ -5931,5 +5931,13 @@
         "tests/fixtures/schema_46.sql"
       ]
     }
+  },
+  "tests/ui_topic_working_set_1247.test.mjs": {
+    "d86d5b45b44bcc9209b1876a6bf7898ff87b257e01c7e16a452e95fc13b19eda": {
+      "inputs": [
+        "web/app.mjs"
+      ],
+      "scope": "repository"
+    }
   }
 }

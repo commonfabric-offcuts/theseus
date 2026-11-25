@@ -5,7 +5,9 @@ import { TopicViews } from '../web/topic-views.mjs';
 import { DossierHeads } from '../web/stack-order.mjs';
 import { VisitNew } from '../web/visit-new.mjs';
 import { CardReplies } from '../web/card-replies.mjs';
-import { stackState, forgetStackMessages } from '../web/reply-stacks.mjs';
+import { stackState, forgetStackMessages, drawn, arrangeStacks } from '../web/reply-stacks.mjs';
+import { paintPendingSends, adoptPendingSend } from '../web/pending-sends.mjs';
+import { renderer799 } from './fixtures/renderer799.mjs';
 import { readFileSync } from 'node:fs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 
@@ -184,7 +186,9 @@ test('1247 actual app retirement releases DOM, observers, stack/body owners but 
   const kept = { dataset: { id: 'm2', seq: '2' }, isConnected: true };
   const writing = { draft: { body: 'Later B', attachments: [{ id: 'image-B' }] }, submissions: [{ id: 'op-A', envelope: { operation_id: 'original' }, status: 'unknown' }] };
   const original = structuredClone(writing), events = [], list = { addEventListener() {} };
-  const state = stackState(list); state.stacks = [{ head: item(1), replies: [item(2)] }]; state.sections.set('m1', gone); state.kept.add('m1');
+  const state = stackState(list); state.stacks = [{ id: 'm1', head: item(1), replies: [item(2)] }]; state.sections.set('m1', gone); state.kept.add('m1');
+  state.only = row => row.body === 'Words 1';
+  assert.equal(drawn(list, 'm1'), true, 'the old drawn index holds the retiring body');
   const rows = new Map([['m1', { observer: { disconnect: () => events.push('reply-observer') }, ui: { dispose: () => events.push('reply-ui'), root: { remove() {} } } }]]);
   const replies = { rows, loads: new Map(), queue: new Map(), closed: new Set(['m1']), retire: CardReplies.prototype.retire };
   const env = { windowEvictions: new Set(), messageEntries: new Map([['m1', gone], ['m2', kept]]), newAbove: new Set(['m1']), coldArrivals: null,
@@ -192,7 +196,8 @@ test('1247 actual app retirement releases DOM, observers, stack/body owners but 
     dropCardDocuments: () => events.push('documents'), dropCardImages: () => events.push('images'), cardScroll: { forget: id => events.push('scroll-' + id) }, cardIn: node => node,
     cardObserver: { unobserve: () => events.push('observer') }, middleObserver: { unobserve: () => events.push('middle') }, halfShown: new Set([1]), atMiddle: new Set([1]), openedIds: new Set(['m1']),
     cardReplies: replies, messageChanges: { hidden: new Map([['m1', 1]]) }, questionStates: { closed: new Map(), removed: new Set() },
-    views: { messages: new Map([['m2', item(2)]]), windowRoots: new Set(), windowHints: new Map() }, anchorHold: { arrivals: new Map([[gone, item(1)]]) },
+    views: { messages: new Map([['m2', item(2)]]), windowRoots: new Set(), windowHints: new Map() },
+    anchorHold: { arrivals: new Map([[gone, item(1)]]), cardSet: new Set([gone]), backward: new Set([gone]), held: [gone] },
     visitNew: new VisitNew('me'), reader: null, messageEdit: null, forgetStackMessages, $: () => list,
     stackFeed: { forgetMessages: ids => events.push(['feed', [...ids]]) } };
   const ports = appFunctions('function queueWindowEvictions', 'async function readWindowGap', env,
@@ -202,6 +207,7 @@ test('1247 actual app retirement releases DOM, observers, stack/body owners but 
   assert.equal(env.registry.cards.size, 0); assert.equal(rows.size, 0); assert.equal(state.stacks.length, 0); assert.equal(state.kept.size, 0);
   for (const event of ['documents', 'images', 'scroll-m1', 'observer', 'middle', 'reply-observer', 'reply-ui']) assert.ok(events.includes(event), event);
   assert.equal(ports.state().anchorHold, null); assert.deepEqual(ports.state().coldArrivals, { before: 2, after: 0 });
+  assert.equal(drawn(list, 'm1'), false, 'disposal immediately replaces the index before any arrange');
   assert.deepEqual(writing, original); assert.equal(env.registry.sessions.get('original').editor, writing);
 });
 
@@ -221,6 +227,59 @@ test('1247 focus, edit, Reader, held press and exact placing receipt consume pro
   env.pressHold.down = false; env.document.getSelection = () => ({ isCollapsed: false, rangeCount: 1,
     getRangeAt: () => ({ intersectsNode: entry => entry === other }) });
   assert.ok(getOptions().pins.has('m2'), 'a dragged text range protects every intersected card');
+});
+
+test('1247 pending reply placement survives window pressure; actual adoption hands protection to focused canonical content', () => {
+  const r = renderer799('person'), doc = r.list.ownerDocument;
+  r.add([item(1), { ...item(2), reply_to: 'm1' }]);
+  const submission = { id: 'local-A', sendOperationId: 'send-A', presentPending: true, topicId: 't', status: 'unknown',
+    snapshot: { body: 'Exact A', reply_to: 'm2', attachments: [] } };
+  const editor = { context: { instanceId: 'i', actor: 'person' }, submissions: [submission], draft: { body: 'Later B', attachments: ['image-B'] } };
+  const oldDocument = globalThis.document; globalThis.document = doc;
+  try {
+    const parent = r.list.querySelector('[data-id=m2]');
+    paintPendingSends(r.list, [editor], { topicId: 't', parent: () => parent });
+    const local = r.list.querySelector('[data-pending-send]'), words = local.querySelector('.message-preview');
+    const image = doc.createElement('img'); local.append(image);
+    const entries = new Map([['m1', r.list.querySelector('[data-id=m1]')], ['m2', parent]]);
+    const env = { windowTargets: new Set(), document: doc, messageEntries: entries, halfShown: new Set(), atMiddle: new Set(), pressHold: { down: false },
+      reader: null, registry: { cards: new Map(), current: null, sessions: new Map([['writing', { editor }]]) }, messageEdit: null, menu: null,
+      views: null, listActAnchor: null, anchorHold: null, pendingSendCard: id => r.list.querySelectorAll('[data-pending-send]').find(card => card.dataset.pendingSend === id) };
+    Object.assign(env, { windowEvictions: new Set(), newAbove: new Set(), coldArrivals: null, halfShown: new Set(), atMiddle: new Set(), openedIds: new Set(),
+      dropCardDocuments: entry => assert.notEqual(entry, local), dropCardImages: entry => assert.notEqual(entry, local), cardScroll: null, cardIn: entry => entry,
+      cardObserver: null, middleObserver: null, cardReplies: null, messageChanges: null, questionStates: null, visitNew: null, forgetStackMessages, $: () => r.list, stackFeed: null });
+    // The options closure reads its actual views owner; it is installed after construction.
+    const views = new TopicViews({ instanceId: 'i', topicId: 't', window: () => options() }); env.views = views;
+    const options = appFunctions('function topicWindowOptions', 'function queueWindowEvictions', env, 'topicWindowOptions');
+    const retirement = appFunctions('function queueWindowEvictions', 'async function readWindowGap', env, '{ queueWindowEvictions, releaseWindowReferences }');
+    views.evicted = ids => retirement.queueWindowEvictions(ids);
+    const initial = page(1, 300); initial.items[1].reply_to = 'm1'; views.messagesPage(initial, { initial: true });
+    assert.ok(options().pins.has('m2'), 'pending reply keeps its admitted placement parent and containing dossier');
+    views.messagesPage(page(301, 330), { live: true, cursor: 300 });
+    retirement.releaseWindowReferences();
+    assert.ok(views.messages.has('m2')); assert.ok(views.messages.has('m1')); assert.equal(views.messages.size, 300);
+    assert.equal(local.isConnected, true); assert.equal(local.querySelector('.message-preview'), words); assert.equal(image.isConnected, true);
+    submission.status = 'confirmed'; submission.receipt = { instance_id: 'i', operation_id: 'send-A', kind: 'message.send', status: 'committed', recorded: true,
+      result: { message_id: 'm331', seq: 331 } };
+    assert.ok(options().pins.has('m331'), 'receipt target is protected while its local card still owns placement');
+    const canonical = item(331); views.messagesPage({ ...page(331, 331), items: [canonical] }, { live: true, cursor: 330 });
+    words.focus();
+    const adoption = adoptPendingSend(r.list, [editor], canonical, { topicId: 't' });
+    assert.equal(adoption.card, local); assert.equal(adoption.active, words);
+    local.dataset.id = canonical.id; local.dataset.seq = String(canonical.seq); entries.set(canonical.id, local);
+    // Canonical placement moves the adopted card out of its old parent dossier.
+    r.list.insertBefore(local, null);
+    assert.equal(options().pins.has('m2'), false, 'settled history no longer pins the old placement parent');
+    assert.ok(options().pins.has(canonical.id), 'focused adopted content uses the canonical focus owner');
+    views.messagesPage(page(332, 660), { live: true, cursor: 331 });
+    retirement.releaseWindowReferences();
+    // Draw the actual admitted cards represented by this small DOM fixture.
+    arrangeStacks(r.list, new Map([...views.messages].filter(([id]) => entries.has(id))), { doc, viewer: 'person' });
+    assert.ok(views.messages.has(canonical.id)); assert.equal(views.messages.size, 300);
+    assert.equal(local.querySelector('.message-preview'), words); assert.equal(image.isConnected, true); assert.equal(doc.activeElement, words);
+    assert.deepEqual(editor.draft, { body: 'Later B', attachments: ['image-B'] }); assert.equal(submission.sendOperationId, 'send-A');
+    doc.activeElement = null; views.trimWindow(); assert.equal(options().pins.has(canonical.id), false, 'old unfocused sent history is ordinary cache data');
+  } finally { globalThis.document = oldDocument; }
 });
 
 test('1247 explicit gap navigation survives passive turnover; pointer, key, wheel and touch cancel late focus/admission', async () => {

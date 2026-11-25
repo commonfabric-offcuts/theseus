@@ -1134,6 +1134,19 @@ function arrivalLayout(saved) {
     return [node, { top: box.top + window.scrollY, left: box.left, width: box.width, height: box.height }];
   }));
 }
+function releaseRetiredAnchorReferences(saved) {
+  // Repaint captured this snapshot before window disposal. Keep fallbacks
+  // through restoration, then release detached cards before retaining a hold.
+  const connected = node => Boolean(node?.isConnected);
+  for (const key of ['cards', 'held']) saved[key] = saved[key].filter(connected);
+  for (const key of ['cardSet', 'backward', 'present']) if (saved[key])
+    saved[key] = new Set([...saved[key]].filter(connected));
+  for (const key of ['tops', 'arrivals', 'arrivalOwners', 'arrivalLayout']) if (saved[key])
+    saved[key] = new Map([...saved[key]].filter(([node]) => connected(node)));
+  for (const key of ['last', 'control']) if (!connected(saved[key])) saved[key] = null;
+  if (saved.point && !connected(saved.point.text)) saved.point = null;
+  if (saved.acted && (!connected(saved.acted.entry) || !connected(saved.acted.node))) saved.acted = null;
+}
 function retainArrivalAnchor(saved) {
   anchorHold = null;
   if (!saved.arrivals?.size || !saved.anchor?.isConnected) return;
@@ -1141,6 +1154,7 @@ function retainArrivalAnchor(saved) {
     entry.isConnected && drawn(saved.list, entry.dataset.id) && entry.getBoundingClientRect().height > 0 &&
     (entry.compareDocumentPosition(saved.anchor) & Node.DOCUMENT_POSITION_FOLLOWING)));
   if (!saved.arrivalOwners.size) return;
+  releaseRetiredAnchorReferences(saved);
   saved.y = window.scrollY;
   saved.arrivalLayout = arrivalLayout(saved);
   anchorHold = saved;
@@ -1219,7 +1233,7 @@ function holdTopArrivals(saved) {
         !(entry.compareDocumentPosition(saved.anchor) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
     state.waiting.add(entry.dataset.id); newAbove.add(entry.dataset.id); changed = true;
   }
-  if (changed) { anchorHold = saved; feedOf().arrange(); }
+  if (changed) { releaseRetiredAnchorReferences(saved); anchorHold = saved; feedOf().arrange(); }
 }
 function releaseTopArrivals(absorb = false) {
   const list = $('messages'), waiting = stackState(list).waiting;
@@ -1607,7 +1621,11 @@ function topicWindowOptions() {
   const held = anchorHold?.anchor?.closest?.('[data-id]')?.dataset.id;
   if (held) pins.add(held);
   for (const session of registry?.sessions.values() ?? []) for (const submission of session.editor.submissions) {
-    if (submission.status === 'confirmed' && pendingSendCard(submission.id)) pins.add(submission.receipt.result.message_id);
+    if (!pendingSendCard(submission.id)) continue;
+    // A local reply can sit inside its parent's dossier. Retiring that
+    // placement would disconnect its independent writing/image owner.
+    if (submission.snapshot?.reply_to) pins.add(submission.snapshot.reply_to);
+    if (submission.status === 'confirmed') pins.add(submission.receipt.result.message_id);
   }
   return { pins, budget: Math.max(0, 300 - external.size), anchor: held ?? listActAnchor?.id ?? visible[0] ?? null };
 }

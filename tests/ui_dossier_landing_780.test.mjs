@@ -32,7 +32,7 @@ function app({loaded=false, readerOpen=false}={}) {
   const presentation=readerOpen?{source:'existing',writing:'exact unsaved words'}:null;
   const registry={disposed:false,generation:0,current:presentation,cleanup:{foreground:()=>({read:job=>job({readClass:'foreground'}),release:()=>calls.push(['release'])})}};
   const scope={console,structuredClone,checkedView,document:doc,routeHref,topicLinkNeedsLookup,resolveTopicLink,
-    registry,topic:{id:'t',workspace_id:'w1'},views,topicUnavailable:false,listAccessEpoch:0,retired:null,landingSerial:0,
+    registry,topic:{id:'t',workspace_id:'w1'},views,topicUnavailable:false,listAccessEpoch:0,retired:null,landingSerial:0,windowReadSerial:0,windowTargets:new Set(),
     linkOwnerScope:null,pageHereOutcome:null,
     here:{page:false},reader:{dialog:{open:readerOpen}},
     $:id=>doc.byId(id),entries:()=>views.messages.has('root')?[{dataset:{id:'root'}}]:[],

@@ -47,3 +47,19 @@ cancels a pending gap landing's focus/admission; passive arrivals alone do not.
 No new hover or swipe action is added. The own file names these owner/model
 paths; actual browser key/touch/scroll/selection/geometry, image pixels, heap
 plateau and timing remain empirical obligations, not claims of these controls.
+
+438 carry repair: the extracted landing/reading fixtures supply the real
+windowReadSerial owner, preserving later-gesture cancellation. Pending replies
+protect their admitted placement parent while their independent local card is
+present, as well as the exact confirmed target until canonical adoption. This
+keeps passive parent retirement from disconnecting a pending card's containing
+dossier. After adoption, current focus protects the canonical card; unfocused
+settled history returns to the ordinary budget. Disposal replaces the stack
+snapshot/index and clears the previous hold, including its cardSet/backward
+references. These are below-browser owner controls, not native focus or heap
+collection proof.
+The enclosing capture can outlive disposal through its repaint finally.
+Before a valid arrival hold is retained, its arrays, sets, geometry maps,
+last/control and text/acted references now drop detached nodes. The surviving
+reading anchor and later arrival-size compensation remain owned by that hold.
+The own test's actual app-source read is explicitly declared for CI discovery.
