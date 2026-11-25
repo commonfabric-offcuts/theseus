@@ -41,7 +41,7 @@ export class OutlineDossiers {
   }
   parents() {
     const parents=[...this.outline.list.querySelectorAll('a[data-topic-id]')].filter(el => el.getClientRects().length && !el.closest('[inert]'));
-    return parents;
+    return [...new Map(parents.map(parent => [parent.dataset.topicId, parent])).values()];
   }
   sync() {
     if (!this.outline.handles) return;
@@ -67,9 +67,9 @@ export class OutlineDossiers {
       if (returned || !state.loaded && !state.busy && !state.error) this.load(state);
     }
   }
-  refresh(alreadyReading = null) {
+  refresh(alreadyReading = null, topicIds = null) {
     this.sync();
-    return Promise.all(this.parents().map(parent => {
+    return Promise.all(this.parents().filter(parent => !topicIds || topicIds.has(parent.dataset.topicId)).map(parent => {
       const state = this.states.get(parent.dataset.topicId);
       // A sync read begun during this refresh window is already fresh enough.
       // One that predates the window may have missed its change and must queue.

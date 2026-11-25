@@ -1,4 +1,5 @@
-import { paintPendingSends } from './pending-sends.mjs';
+import { paintPendingSends, pendingSendVisual, adoptPendingSend, reconcilePlacedSend, clearPendingSends, keepPendingSendPlace } from './pending-sends.mjs';
+import { paintCardWords, cardWordOptions } from './message-card-content.mjs';
 import { MessageChanges } from './message-changes.mjs';
 import { OlderFeed } from './older-feed.mjs';
 import { topicCloseUI } from './topic-close-ui.mjs';
@@ -112,7 +113,7 @@ import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
 import { agentTalk, readNow, learnReply, learnAnswered, paintAwaiting, paintReading, seenRanges, wakeOnPress } from './card-reading.mjs';
 import { entries, entryOf, lineSeq, reveal, headClick, foldedClick, stackState, stackPage, shownView, drawn, paintHeadCarries, paintFolderColors, fillFrom, paintFoldedNames, checkDossierNew, forgetStackMessages } from './reply-stacks.mjs';
-import { cardImages, paintCardImages, dropCardImages } from './card-images.mjs';
+import { cardImages, paintCardImages, adoptCardImages, dropCardImages } from './card-images.mjs';
 import { paintThumb } from './image-pick.mjs';
 import { newestNew } from './stack-order.mjs';
 import { StackFeed } from './stack-feed.mjs';
@@ -135,7 +136,7 @@ import { showLine, lineText } from './lines.mjs';
 let retired = null, notebookSheet = null, outcomeColorPicker = null, mentionNotices = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
 let outcomePageLayout = null, topicClosing = null, notebookDeleting=null, olderFeed = null, paragraphSwitch=null;
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { retired = ids; dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { clearPendingSends(ids.get('messages')); retired = ids; dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -444,12 +445,33 @@ const restoredSendViews = new WeakSet();
 function pendingSendCard(id) {
   return [...$('messages').querySelectorAll('[data-pending-send]')].find(card => card.dataset.pendingSend === id) ?? null;
 }
+function restorePendingSendPlace(card, top) {
+  // The focused submission is this repaint's anchor, including when its
+  // canonical stack moves beyond the page's available scroll range.
+  roomy?.(); roomy = null;
+  const moved = holdRoom($('messages'), card, top, () => card.getBoundingClientRect().top, true);
+  if (moved) window.scrollBy({ top: moved, behavior: 'instant' });
+}
 function paintSubmittedWriting() {
   if (!registry || !views || !topic) return;
-  paintPendingSends($('messages'), [...registry.sessions.values()].map(session => session.editor), {
+  const editors = [...registry.sessions.values()].map(session => session.editor);
+  const current = () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending();
+  if (current()) for (const editor of editors) for (const item of editor.submissions ?? []) {
+    const id = item.status === 'confirmed' ? item.receipt?.result?.message_id : null;
+    const canonical = id && messageEntries.get(id), message = id && views.messages.get(id);
+    if (canonical && message && pendingSendCard(item.id)) keepPendingSendPlace($('messages'),
+      () => reconcilePlacedSend($('messages'), editors, message, canonical, { topicId: topic.id, authority: registry.runtime.current, current }),
+      { current, restore: restorePendingSendPlace });
+  }
+  paintPendingSends($('messages'), editors, {
     topicId: topic.id,
+    current: () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending(),
+    visual: (editor, item) => pendingSendVisual(editor, item, { authorKind: bootstrap.actor_kind,
+      parent: item.snapshot.reply_to ? feedMessages().get(item.snapshot.reply_to) : null }),
+    nameOf: displayActor, displayRules: displayRules(), end: $('new-message-sheet'),
+    readImage: (editor, item, attachment) => registry.sessionFor(editor).uploads.previewSubmission(item, attachment),
     underway: (editor, item) => registry.sessionFor(editor).underWay(item.id),
-    parent: ref => ref?.kind === 'message' ? messageEntries.get(ref.id)?.closest('.reply-stack') ?? messageEntries.get(ref.id) : null,
+    parent: ref => ref?.kind === 'message' ? messageEntries.get(ref.id) : null,
     placed: id => Boolean(id && messageEntries.get(id)?.isConnected && drawn($('messages'), id)),
     check: (editor, item) => run(async () => {
       if (item.status !== 'confirmed') await registry.checkConfirmation(editor);
@@ -662,11 +684,13 @@ function changed(editor) {
 // away) ends one range and starts the next, and a range never spans a gap
 // between runs. Only another actor's message can settle a delivery, so the
 // person's own are never reported.
+function readingAllowed() {
+  return !unreadLandingBusy && !$('main').inert && readThrough && topic && !topicUnavailable &&
+    !$('messages').hidden && !authorityReviewPending() && !review.open &&
+    document.visibilityState === 'visible' && document.hasFocus();
+}
 function noteRead() {
-  if (unreadLandingBusy) return;
-  if ($('main').inert) return;
-  if (!readThrough || !topic || topicUnavailable || $('messages').hidden || authorityReviewPending() || review.open) return;
-  if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  if (!readingAllowed()) return;
   const source = registry.current?.source;
   if (source) {
     if (registry.current.sourceUnavailable || source.source_ref.kind !== 'message' || source.topic_id !== topic.id) return;
@@ -675,14 +699,22 @@ function noteRead() {
     return;
   }
   if (!laidOut) return;
-  const shown = new Set();
+  const shown = new Set(), arrivals = [];
   for (const entry of entries($('messages'))) {
     const seq = Number(entry.dataset.seq);
-    if ((halfShown.has(seq) || atMiddle.has(seq)) && onScreen(entry)) shown.add(seq);
+    if ((halfShown.has(seq) || atMiddle.has(seq)) && onScreen(entry)) {
+      shown.add(seq);
+      const id = entry.dataset.id, item = views.messages.get(id);
+      if (!retired && entry.isConnected && messageEntries.get(id) === entry &&
+          item?.topic_id === topic.id && item.seq === seq && item.author_id !== bootstrap.actor) arrivals.push(id);
+    }
   }
   if (!shown.size) return;
   for (const [from, through] of seenRanges([...views.messages.values()], seq => shown.has(seq), id => views.runOf(id), bootstrap.actor))
     views.sighted(from, through, readThrough.seen(topic.id, from, through));
+  let changed = false;
+  for (const id of arrivals) changed = newAbove.delete(id) || changed;
+  if (changed) paintNewAbove();
 }
 // A card counts as on screen when at least half of it, or of the viewport,
 // shows it. The second holds exactly when the card crosses the viewport's
@@ -1054,14 +1086,18 @@ function captureListAnchor() {
   const control = anchor === list && (first?.dataset.line === 'older') ? first : null;
   const cards = entries(list).filter(entry => drawn(list, entry.dataset.id));
   const cardHold = !writing && !field && !acted && anchor !== list && list.contains(anchor);
-  const held = acted ? cards.slice(cards.indexOf(acted.entry)) : cardHold ? [anchor, ...cards.filter(card => anchor.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING)] : [anchor];
-  const tops = new Map(held.map(node => [node, node?.getBoundingClientRect().top]));
+  const cardSet = new Set(cards);
+  const following = anchor ? cards.filter(card => card !== anchor && anchor.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING) : [];
+  const preceding = anchor ? cards.filter(card => card !== anchor && card.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING).reverse() : [];
+  const held = [anchor, ...following, ...preceding], backward = new Set(preceding);
+  const box = anchor?.getBoundingClientRect();
+  const tops = new Map([[anchor, box?.top]]);
   if (acted) tops.set(anchor, acted.mark.top);
   // Inside a long card, hold the line crossing the edge, so an image or
   // rewrap above that line is absorbed even when the card's own top stayed.
   let point = null;
   if (cardHold && tops.get(anchor) < 0) {
-    const box = anchor.getBoundingClientRect(), x = Math.max(1, Math.min(innerWidth - 1, box.left + box.width / 2));
+    const x = Math.max(1, Math.min(innerWidth - 1, box.left + box.width / 2));
     const caret = document.caretPositionFromPoint?.(x, 1), old = caret ? null : document.caretRangeFromPoint?.(x, 1);
     const text = caret?.offsetNode ?? old?.startContainer, offset = caret?.offset ?? old?.startOffset;
     if (text?.nodeType === Node.TEXT_NODE && anchor.contains(text)) {
@@ -1071,7 +1107,7 @@ function captureListAnchor() {
     }
   }
   const edge = control?.getBoundingClientRect().top, last = cards.at(-1), present = control ? new Set(entries(list)) : null;
-  return { list, anchor, cards, held, tops, point, control, edge, last, present, y: window.scrollY,
+  return { list, anchor, cards, cardSet, held, backward, tops, point, control, edge, last, present, y: window.scrollY,
     topicViews: views,
     acted, baseline: Boolean(writing || field || acted || control || anchor !== cards[0] || tops.get(anchor) < 0),
     height: document.documentElement.scrollHeight,
@@ -1087,7 +1123,7 @@ function recordListArrivals(saved, revised = []) {
     const item = views.messages.get(entry.dataset.id);
     return item && item.topic_id === topic.id && item.author_id !== bootstrap.actor &&
       messageEntries.get(item.id) === entry &&
-      ((!saved.cards.includes(entry) && item.seq > saved.newest) || changed.has(item.id)) ? [[entry, item]] : [];
+      ((!saved.cardSet.has(entry) && item.seq > saved.newest) || changed.has(item.id)) ? [[entry, item]] : [];
   }));
 }
 // Record geometry in document coordinates: scrolling is a separate owner.
@@ -1134,17 +1170,19 @@ function restoreListAnchor(saved) {
   if (!saved || retired || !saved.list.isConnected || saved.list.hidden) return;
   // An arrival restoration may not reverse a scroll made since its capture.
   if (saved.arrivals?.size && saved.y !== window.scrollY) { anchorHold = null; return; }
-  const { list, anchor, cards, held, tops, point, control, edge, last, present, acted } = saved;
+  const { list, anchor, cards, cardSet, held, backward, tops, point, control, edge, last, present, acted } = saved;
   // Room an earlier hold kept is given back first; the hold measures without it.
   if (roomy) { roomy(); roomy = null; }
   const landed = control && last ? loadedAfter(list, present, last) : null;
   if (landed) { anchorHold = null; window.scrollBy({ top: landed.getBoundingClientRect().top - edge, behavior: 'instant' }); return; }
   const afterAct = acted && actedListCard(acted.mark);
   if (acted && !afterAct && listActAnchor === acted.mark) listActAnchor = null;
-  const hold = afterAct?.node ?? held.find(node => node?.isConnected && (cards.includes(node) ? drawn(list, node.dataset.id) && (!acted || node.getBoundingClientRect().height > 0) : node.getClientRects().length));
+  const hold = afterAct?.node ?? held.find(node => node?.isConnected && (cardSet.has(node) ? drawn(list, node.dataset.id) && (!acted || node.getBoundingClientRect().height > 0) : node.getClientRects().length));
   const line = hold === anchor && point?.text.isConnected && point.text.data === point.words && point.range.getClientRects().length ? point : null;
-  if (hold && (saved.baseline || saved.arrivals?.size)) {
-    const delta = holdRoom(list, hold, line ? line.top : tops.get(afterAct ? anchor : hold), line ? () => line.range.getBoundingClientRect().top : undefined, Boolean(afterAct));
+  if (hold && (saved.baseline || saved.arrivals?.size || hold !== anchor)) {
+    const position = line ? () => line.range.getBoundingClientRect().top
+      : !afterAct && backward.has(hold) ? () => hold.getBoundingClientRect().bottom : undefined;
+    const delta = holdRoom(list, hold, line ? line.top : tops.get(anchor), position, Boolean(afterAct));
     window.scrollBy({ top: delta, behavior: 'instant' });
     retainArrivalAnchor(saved);
   } else if (anchorHold === saved) anchorHold = null;
@@ -1231,15 +1269,16 @@ function keepListAnchor(paint, act = null, revised = []) {
 function paintNewAbove() {
   const list = $('messages');
   for (const id of newAbove) {
-    const entry = messageEntries.get(id);
-    if (entry?.isConnected && stackState(list).waiting?.has(id) &&
-        views.messages.get(id)?.topic_id === topic?.id) continue;
-    if (!entry?.isConnected || !drawn(list, id) || entry.getBoundingClientRect().top >= 0) newAbove.delete(id);
+    const entry = messageEntries.get(id), item = views.messages.get(id);
+    // Count retained arrival offers, not an estimate of current visibility.
+    // Only activation measures its chosen card; passive paints need no scan.
+    if (!entry?.isConnected || entry.dataset.id !== id || !item || item.id !== id ||
+        item.topic_id !== topic?.id || item.author_id === bootstrap.actor) newAbove.delete(id);
   }
   if (!newAboveButton && newAbove.size) {
     newAboveButton = button('New above ↑', () => {
       const entry = entries(list).find(card => newAbove.has(card.dataset.id));
-      if (!entry || retired || !list.isConnected || list.hidden) return;
+      if (!entry || retired || topicUnavailable || authorityReviewPending() || !list.isConnected || list.hidden) return;
       const id = entry.dataset.id, currentTopic = topic, message = views.messages.get(id);
       if (!message || message.topic_id !== currentTopic?.id || messageEntries.get(id) !== entry) return;
       releaseTopArrivals();
@@ -1262,7 +1301,10 @@ function paintNewAbove() {
     $('main').append(newAboveButton);
   }
   if (newAboveButton) {
-    newAboveButton.hidden = !newAbove.size || list.hidden;
+    const count = newAbove.size, words = `New above · ${count} ↑`;
+    if (newAboveButton.textContent !== words) newAboveButton.textContent = words;
+    newAboveButton.setAttribute('aria-label', `Read ${count} new ${count === 1 ? 'message' : 'messages'} above`);
+    newAboveButton.hidden = !count || list.hidden || retired || topicUnavailable || authorityReviewPending();
     newAboveButton.style.left = `${list.getBoundingClientRect().left}px`;
   }
 }
@@ -1431,9 +1473,10 @@ function paintViews(kind, reactionId = null) {
     if (registry?.current?.topicUpdatesPaused) { registry.current.topicUpdatesPaused = false; reader.paintStatus(); }
     paintMarks(); noteRead(); return;
   }
-  keepListAnchor(() => {
+  const paint = () => keepListAnchor(() => {
   if (kind === 'messages' && views.windowOptions) { releaseWindowReferences(); syncDossierHeads(); }
   // Newest first, so where each new card goes is at or after where the one before it went.
+  let adoptedFocus = null;
   const renderedMessages = kind === 'messages' ? feedMessages() : null;
   if (kind === 'messages') for (const [id, entry] of messageEntries) if (!renderedMessages.has(id)) {
     dropCardDocuments(entry); dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
@@ -1443,11 +1486,16 @@ function paintViews(kind, reactionId = null) {
   for (const item of messages ? [...messages.values()].sort((a, b) => b.seq - a.seq) : []) {
     let card = messageEntries.get(item.id);
     if (!card) {
+      const adoption = registry && adoptPendingSend($('messages'), [...registry.sessions.values()].map(session => session.editor), item, {
+        topicId: topic.id, authority: registry.runtime.current,
+        current: () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending(),
+      });
+      if (adoption?.refocus) adoptedFocus = adoption;
       const ref = { kind: 'message', id: item.id };
       // The revision a click or keypress may clear is the one the card shows.
       // A reply can live in the card: its controls must not be inside a
       // native button. Return remains the message menu's; Space opens it.
-      card = node('div'); card.tabIndex = 0; card.setAttribute('role', 'button');
+      card = adoption?.card ?? node('div'); card.tabIndex = 0; card.setAttribute('role', 'button');
       card.onclick = () => run(() => cardReplies?.shown(item.id) ? openMessageReader(item.id, card) : replyInCard(item.id, card));
       card.addEventListener('keydown', event => {
         if (event.target !== card || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -1486,12 +1534,13 @@ function paintViews(kind, reactionId = null) {
         return opened;
       };
       // On its card first, so a whisper's words name the card for a screen reader.
-      const author = node('span', undefined, 'message-author');
-      card.append(author);
+      const author = card.querySelector(':scope > .message-author') ?? node('span', undefined, 'message-author');
+      if (author.parentElement !== card) card.prepend(author);
       paintCardAuthor(author, item);
-      card.append(formatWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true, replyBasis: item.reply_basis, agentReply: item.author_kind === 'agent' && Boolean(item.reply_to), copyFences: 'feed', revision: revisionOf(item), struck: item.struck, showChanges: messageChanges?.shown(item.id, revisionOf(item)) ?? true, displayRules: displayRules() }));
-      if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
+      paintCardWords(card, item, cardWordOptions(item, { revision: revisionOf(item),
+        showChanges: messageChanges?.shown(item.id, revisionOf(item)) ?? true, displayRules: displayRules() }));
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
+      if (adoption) adoptCardImages(card, item, cardImageBytes(item.id));
       paintCardImages(card, item, cardImageBytes(item.id));
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
@@ -1520,8 +1569,15 @@ function paintViews(kind, reactionId = null) {
     movedDossiers.paint($('messages'), views.movedPointers ?? []);
     placeLine(); menu?.paint(); paintDossierSourceStatus();
   }
-  if (kind === 'messages') { paintMessageContext(); syncCardReplies(); }
+  if (kind === 'messages') {
+    paintMessageContext(); syncCardReplies(); paintSubmittedWriting();
+    if (adoptedFocus && !adoptedFocus.active?.isConnected) adoptedFocus.card.focus({ preventScroll: true });
+  }
   });
+  if (kind === 'messages') keepPendingSendPlace($('messages'), paint, {
+    current: () => !retired && !topicUnavailable && !authorityReviewPending(),
+    restore: restorePendingSendPlace,
+  }); else paint();
   if (kind === 'messages') noteRead();
 }
 // Each admitted canonical message's entry; local submitted writing is separate.
@@ -1719,7 +1775,7 @@ function syncDossierHeads() {
   }
   if (views.windowOptions) releaseWindowReferences();
 }
-function stackMessages() { syncDossierHeads(); feedOf().arrange(); paintDossierSourceStatus(); paintWindowGaps(); }
+function stackMessages() { syncDossierHeads(); feedOf().arrange(); paintDossierSourceStatus(); paintWindowGaps(); paintSubmittedWriting(); }
 function paintStarredStatus() {
   const line = $('starred-status'), words = $('starred-status-words'), retry = $('starred-retry');
   line.hidden = topicUnavailable || authorityReviewPending() || !views.starredPending;
@@ -2063,9 +2119,9 @@ function paintMessageUpdates() {
   for (const [id, entry] of messageEntries) {
     const item = views.messages.get(id), card = cardIn(entry), author = card && messageUpdateHost(card, entry);
     if (item && author) {
-      for (const old of entry.querySelectorAll('.message-update')) old.remove();
-      const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
-      if (update) author.append(update);
+      const update = messageUpdateActivity(document, item, updateContext(item.topic_id), entry.querySelector('.message-update'));
+      for (const old of entry.querySelectorAll('.message-update')) if (old !== update) old.remove();
+      if (update && update.parentElement !== author) author.append(update);
       // A dossier's tab already has the shared New control. Its message's
       // own header (or folded row) carries the individual arrival mark.
       // A between-others entry wraps a button and a hidden card. Its badge
@@ -2092,6 +2148,7 @@ function paintReplyContext(card, item, messages = feedMessages()) {
   paintReplyLine(line, item, context);
 }
 function paintCardAuthor(author, item) {
+  const retained = messageEntries.get(item.id), entry = retained ?? author, previousUpdate = entry.querySelector('.message-update');
   const struck = cardScroll?.revisions.get(item.id) === revisionOf(item) && cardScroll.wholes.has(item.id)
     ? cardScroll.strikes.get(item.id) : item.struck;
   const changes = { struck, shown: () => messageChanges?.shown(item.id, revisionOf(item)) ?? true,
@@ -2104,8 +2161,10 @@ function paintCardAuthor(author, item) {
   if (here?.conversation && !item.withdrawal && !item.removal) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
   // The star in its header, put back as the line is painted again (StackFeed.paintStar).
   stackFeed?.paintStar(author, item);
-  const update = messageUpdateActivity(document, item, updateContext(item.topic_id));
-  if (update) author.append(update);
+  const update = messageUpdateActivity(document, item, updateContext(item.topic_id), previousUpdate);
+  for (const old of entry.querySelectorAll('.message-update')) if (old !== update) old.remove();
+  const host = retained ? messageUpdateHost(cardIn(retained), retained) ?? author : author;
+  if (update && update.parentElement !== host) host.append(update);
   paintVisitNew(author, author, Boolean(visitNew?.has(item.id)));
 }
 // Who the composers may whisper to, and who everyone in this topic is: the
@@ -3179,7 +3238,7 @@ async function checkAvailability(read, current, topicDenied = true) {
     dossierHeads?.invalidate();
     drawFeed(false);
     // Nor the pictures of its messages (card-images.mjs).
-    dropCardDocuments(); dropCardImages($('messages'));
+    clearPendingSends($('messages')); dropCardDocuments(); dropCardImages($('messages'));
     $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
     // No settings for a topic the reader cannot see.
     $('settings-open').hidden = true; $('topic-menu').hidden = true; settings?.close();

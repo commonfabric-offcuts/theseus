@@ -1,3 +1,4 @@
+import { messageUpdateHost } from '../web/cover-refresh.mjs';
 // 151 Build2 page return: real bounded owners, no Core, HTTP or browser.
 // These checks do not execute app.mjs's startup or its generic integration file.
 import test from 'node:test';
@@ -109,7 +110,7 @@ function cardEnvironment(t, { views, heads = null, entries = new Map(), registry
     feedMessages: () => heads?.messages(views.messages) ?? views.messages,
     cardIn, clearVisitNew() {}, paintFoldWords, paintAwaiting() {}, paintReactions() {},
     questionOf, questionPill, paintAuthor, displayActor: id => id, marks: null, wasEdited, carriesOf, paintWithdrawal, paintRemoval,
-    here: null, stackFeed: null, messageUpdateActivity: () => null, updateContext: () => ({}),
+    here: null, stackFeed: null, messageUpdateHost, messageUpdateActivity: () => null, updateContext: () => ({}),
     visitNew: null, paintVisitNew() {}, cardObserver: null, middleObserver: null,
     menu: { paint() { counts.menu++; } },
     reader: { paintOrigin() { counts.origin++; }, hideUnavailableSource() { counts.hidden++; } },

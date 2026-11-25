@@ -307,7 +307,7 @@ class FoldThroughCase(StackCase):
 
 
 class AnsweredFoldCase(StackCase):
-    """A person's reply to a message, or their thumbs-up on it, folds it for them in Core, as their Fold would (item 377)."""
+    """A person's reply folds for them (377); a thumb leaves their fold choice alone (1244)."""
 
     def thumb(self, message, on=True, revision=0, actor="owner"):
         return self.command("message.thumb", {"thumbed": on}, target={"message_id": message}, expected={"thumb_revision": revision}, actor=actor)
@@ -343,14 +343,14 @@ class AnsweredFoldCase(StackCase):
         self.assertEqual(self.sql("SELECT reply_to FROM messages WHERE id=?", (sent["message_id"],)), [(message,)])
         self.assertEqual(self.folded(message), (True, 1))
 
-    def test_a_thumbs_up_folds_its_message_and_taking_it_back_unfolds_nothing(self):
+    def test_a_thumbs_up_and_taking_it_back_leave_the_message_unfolded(self):
         message, other = self.post("Shipped the copy"), self.post("Next")
         self.committed(self.thumb(message))
-        self.assertEqual(self.folded(message), (True, 1), "a thumbs-up folds the message for its giver")
+        self.assertEqual(self.folded(message), (False, 0), "a thumbs-up leaves the message open")
         self.assertEqual((self.folded(message, "agent-a"), self.folded(other)), ((False, 0), (False, 0)))
         self.committed(self.thumb(message, on=False, revision=1))
-        self.assertEqual(self.folded(message), (True, 1), "taking the thumbs-up back leaves it folded")
-        self.assertEqual(len(self.rows("fold")), 1)
+        self.assertEqual(self.folded(message), (False, 0), "taking the thumbs-up back keeps the fold choice")
+        self.assertEqual(len(self.rows("fold")), 0)
 
     def test_a_starred_message_never_folds_this_way_and_a_folded_one_stays_as_it_is(self):
         starred, folded = self.post("Keep this"), self.post("Already out of the way")
@@ -364,7 +364,7 @@ class AnsweredFoldCase(StackCase):
         self.assertEqual(self.folded(folded), (True, 1), "one already folded stays at its revision, with no new row")
         self.assertEqual(len(self.rows("fold")), 1)
 
-    def test_a_message_unfolded_later_folds_again_on_the_next_reply_or_thumbs_up(self):
+    def test_a_message_unfolded_later_folds_again_on_reply_but_not_thumbs_up(self):
         message = self.post("Two questions")
         self.committed(self.command("message.post", {"body": "First", "reply_to": message}, target={"topic_id": "t1"}, actor="owner"))
         self.committed(self.fold(message, on=False, revision=1))
@@ -373,7 +373,7 @@ class AnsweredFoldCase(StackCase):
         self.assertEqual(self.folded(message), (True, 3), "the next reply folds it again")
         self.committed(self.fold(message, on=False, revision=3))
         self.committed(self.thumb(message))
-        self.assertEqual(self.folded(message), (True, 5), "and so does the next thumbs-up")
+        self.assertEqual(self.folded(message), (False, 4), "a later thumbs-up preserves explicit Unfold")
 
     def test_replying_to_your_own_message_folds_it_too(self):
         mine = self.post("My plan", actor="owner")
