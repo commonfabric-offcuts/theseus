@@ -162,3 +162,9 @@ test('Health exposes incomplete and drop limits alongside own slowest observatio
   assert.match(line.summary, /1 recorded/); assert.match(line.details.join(' '), /1 incomplete/); assert.match(line.details.join(' '), /at least 4 local drops/);
   assert.match(line.details.join(' '), /Frame callbacks do not prove pixels/); assert.match(line.details.join(' '), /loaded build loaded-build/);
 });
+
+test('evicting an already confirmed local observation does not invent an upload loss', async () => {
+  const f = fixture();
+  for (let n = 0; n < 129; n++) { f.owner.begin('thumb').finish('failed', 'refused'); await f.owner.flush(); }
+  assert.equal(f.owner.records.size, 128); assert.equal(f.owner.localDropped, 0);
+});

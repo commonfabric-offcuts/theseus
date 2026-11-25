@@ -34,7 +34,10 @@ export class ActionTimings {
     if (kind !== 'idle') trace.mark('input');
     while (this.records.size > 128) {
       const oldest = this.records.keys().next().value, gone = this.records.get(oldest);
-      gone.retire(false); this.records.delete(oldest); this.dirty.delete(oldest); this.localDropped++;
+      const covered = this.flight?.records.some(row => row.id === oldest && row.sequence === gone.row.sequence);
+      const lost = this.dirty.has(oldest) && !covered;
+      gone.retire(false); this.records.delete(oldest); this.dirty.delete(oldest);
+      if (lost) this.localDropped++;
     }
     this.schedule();
     row.overhead_ms += finite(this.now() - start);

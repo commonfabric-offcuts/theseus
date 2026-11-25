@@ -85,3 +85,7 @@ and focused. It does not mean a later dialog close/focus restoration completed.
 `send_canonical_dom` means the current view owns the connected canonical node;
 `frame1/frame2` record later callbacks for that endpoint. A failed or superseded
 source, missing canonical placement or missing thumb reconciliation is incomplete.
+
+Local loss counts only discarded dirty observations not covered by the retained
+immutable batch. Evicting an already confirmed local cache entry is not an upload
+loss; a retained unconfirmed batch remains pending under its original operation.
