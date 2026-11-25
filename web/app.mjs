@@ -1312,7 +1312,8 @@ function placeLine() {
     views.olderCursor === null ? null : () => run(loadToUnread), views.line?.sent_ms ?? null, views.held);
   paintFoldedNames($('messages'), views.messages);
 }
-function paintViews(kind) {
+function paintViews(kind, reactionId = null) {
+  if (kind === 'reactions' && reactionId !== null) { paintThumbMessage(reactionId, false); return; }
   if (questionStates) for (const item of feedMessages().values()) questionStates.of(item);
   // Notebook pages remain admitted in TopicViews for reads and links. Their
   // visible list belongs to the right rail, so a memory update moves no feed.
@@ -1580,7 +1581,8 @@ function feedOf() {
     newest: (stack, mark) => run(() => openDossierNew(stack, mark)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), arranged: stacksRedrawn,
     hold: (paint, act) => keepListAnchor(paint, act), navigate: () => releaseTopArrivals(), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyInCard(id, card)),
-    thumb: (item, on) => menu?.thumb(item, on), redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); paintMessageUpdates(); }, home: $('new-message-sheet'),
+    thumb: (item, on) => menu?.thumb(item, on), thumbPending: id => reactions?.pending.get(id) ?? null,
+    redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); paintMessageUpdates(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
     // On a phone its menu offers the title bar's Reply and Archive first, as the glyphs fold into it (first).
     menu: (item, anchor, first = []) => openMessageMenu({ anchor, items: messageMenuItems(item, null, anchor, first), label: 'This message', sheet: true }),
@@ -1634,11 +1636,13 @@ function clearVisitNew(id) {
 const cardRead = item => readNow(item, { viewer: bootstrap.actor, marked: marks?.state(item.id)?.marked === true, opened: openedIds.has(item.id) });
 // Each loaded card's read look, agent talk, reply arrow and the dots on the
 // reader's own message while it waits for a reply, as they now stand.
-function paintCardReading() {
+function paintCardReading(id = null) {
   if (!views) return;
   const { kindOf } = whisperPeople();
-  learnAnswered(views.messages, bootstrap.actor, kindOf);
-  for (const entry of entries($('messages'))) {
+  if (id === null) learnAnswered(views.messages, bootstrap.actor, kindOf);
+  else if (views.messages.has(id)) learnAnswered(new Map([[id, views.messages.get(id)]]), bootstrap.actor, kindOf);
+  const selected = id === null ? entries($('messages')) : [messageEntries.get(id)].filter(Boolean);
+  for (const entry of selected) {
     const card = cardIn(entry), item = views.messages.get(card.dataset.id);
     if (!item) continue;
     const quiet = agentTalk(item, bootstrap.actor, bootstrap.actor_kind, kindOf);
@@ -1650,6 +1654,22 @@ function paintCardReading() {
     paintNoteCorner(card, item, (id, opener) => run(() =>
       openSource({ kind: 'message', id }, opener, marks.capture(id), 'note')));
   }
+}
+// Local pending feedback changes no confirmed reading/stack state and does no
+// feed scan or anchor capture. Reconciliation paints only the named card and
+// its dossier's existing New marks; actual fold/line effects keep their owners.
+function paintThumbMessage(id, pendingOnly = true) {
+  if (!pendingOnly && pressHold.down) { pressHold.after('thumb:' + id, () => paintThumbMessage(id, false)); return; }
+  const entry = messageEntries.get(id), item = feedMessages().get(id);
+  const paint = () => {
+    if (item && entry) {
+      if (!pendingOnly) { paintCardReading(id); stackFeed?.paintReactionReading(cardIn(entry)); }
+      stackFeed?.paintFoldedThumb(cardIn(entry), item);
+    }
+    menu?.paintMessage(id, entry);
+  };
+  if (pendingOnly) paint(); else keepListAnchor(paint, entry ? { id, anchor: cardIn(entry) } : null);
+  if (readerItem()?.id === id) paintReaderThumb$();
 }
 // A message the page shows, brought into view: its stack opened first when it
 // folds the message away, and its fold opened. A hidden structural question
@@ -2162,7 +2182,7 @@ function readerItem() {
 }
 function paintReaderThumb$() {
   const item = readerItem();
-  paintReaderThumb($('thumb-source'), reactions && item, bootstrap.actor, Boolean(item && reactions?.busy.has(item.id)));
+  paintReaderThumb($('thumb-source'), reactions && item, bootstrap.actor, Boolean(item && reactions?.busy.has(item.id)), item ? reactions?.pending.get(item.id) ?? null : null);
   paintReaderReactions($('reader-reactions'), reactions && item, bootstrap.actor, bootstrap.actor_kind, {
     busy: Boolean(item && reactions?.busy.has(item.id)), answer: (id, choice) => run(() => answerFromReader(id, choice)) });
 }
@@ -3662,14 +3682,32 @@ async function initialize() {
   marks = new Marks({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current, cancelOpen: () => registry.cancelOpen(),
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
   marks.listen(paintMarks);
-  reactions = new Reactions({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current,
-    learned: answer => {
+  const reactionPage = shell.page, reactionRegistry = registry;
+  reactions = new Reactions({ api, instanceId: bootstrap.instance_id, authority: () => reactionRegistry.runtime.current,
+    current: () => !retired && shell.page === reactionPage && !reactionRegistry.disposed,
+    changed: id => paintThumbMessage(id),
+    learned: (answer, kind) => {
       const source = registry.current?.source;
       if (source?.source_ref?.id === answer.message_id) Object.assign(source, { reactions: answer.reactions, go_ahead: answer.go_ahead });
-      if (learnReactions(views.messages, answer)) paintViews('reactions'); else paintReaderThumb$();
+      if (learnReactions(views.messages, answer)) {
+        if (kind === 'message.thumb') paintThumbMessage(answer.message_id, false); else paintViews('reactions');
+      } else if (source?.source_ref?.id === answer.message_id) paintReaderThumb$();
     },
     // A 👍 or an answer that cleared the person's mark on its message: the card, its pill and the marks line read so at once.
-    cleared: result => marks.learn(result.message_id, result.mark_revision, { topicId: result.topic_id, seq: result.seq }),
+    cleared: (result, kind) => {
+      const quiet = kind === 'message.thumb';
+      const changed = marks.learn(result.message_id, result.mark_revision, { topicId: result.topic_id, seq: result.seq }, quiet);
+      if (!quiet || !changed) return;
+      const entry = messageEntries.get(result.message_id), item = feedMessages().get(result.message_id);
+      if (entry && item) {
+        const card = cardIn(entry);
+        paintCardAuthor(card.querySelector('.message-author'), item);
+        paintFold(entry, marks.state(item.id)?.marked === true);
+      }
+      const count = marks.marked(topic.id).length;
+      $('topic-marks-words').textContent = marksWords(count); $('topic-marks').hidden = !count || topicUnavailable;
+      paintReaderMark();
+    },
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); }, reading: id => reading('reaction:' + id) });
   const withdrawalPage = shell.page;
   withdrawals = new Withdrawals({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current,
@@ -3734,6 +3772,7 @@ async function initialize() {
       !freshness?.stopped && views.messages.has(id) && messageEntries.get(id) === entry && drawn($('messages'), id),
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)) });
   menu = new MessageMenu({ host: $('messages'), acted: clearVisitNew, item: id => feedMessages().get(id), viewer: bootstrap.actor, kind: bootstrap.actor_kind,
+    pending: id => reactions?.pending.get(id) ?? null,
     editChoice: (item, card) => messageMenuItems(item, null, card).find(choice => choice.label === 'Edit'),
     navigate: () => releaseTopArrivals(),
     reply: (id, card) => run(() => replyMessage(id, card)),
@@ -3741,7 +3780,7 @@ async function initialize() {
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
     // What Theseus answered without taking a card's 👍 or answer is said with its card (stack-feed.mjs notTaken).
-    thumb: (item, on) => act(thumbMessage(item, on, cardSaid('message.thumb', item, { thumbed: on }, 'reaction:' + item.id)).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })),
+    thumb: (item, on) => run(() => thumbMessage(item, on, cardSaid('message.thumb', item, { thumbed: on }, 'reaction:' + item.id)).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })),
     answer: (item, answer) => act(reactions.answer(item, answer, cardSaid('message.answer', item, { answer }, 'reaction:' + item.id))),
     more: openMessageMore, copy: copyMessage,
     expand: (card, item) => cardScroll.expand(card, item),

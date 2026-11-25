@@ -27,7 +27,7 @@ import { inlineStops, focusStop } from './message-controls.mjs';
 import { cardIn } from './fold.mjs';
 import { pageItself, writing, readingMovement, plainReturn, returnIntent } from './pane-keys.mjs';
 import { copyKey, onMac } from './writing-input.mjs';
-import { paintReactions, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
+import { paintReactions, paintThumbPending, mayThumb, mayAnswer, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
 import { entries, entryOf, navigationStops, shownSelected, stopAt, onEarlierRow } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
 import { showGlyph } from './glyphs.mjs';
@@ -81,8 +81,8 @@ export class MessageMenu {
   // Show full message does. foldState(item): 'fold', 'unfold' or null (none); fold(item): folds or unfolds it.
   // navigate(): materialize waiting arrivals at a confirmed feed-key destination.
   constructor({ host, item, viewer, kind, reply, inlineReply = reply, quote = (id, card) => reply(id, card), thumb, answer, more, editChoice = () => null, expand = () => {}, copy = () => {},
-    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, acted = () => {}, navigate = () => {}, write = () => { panes.things?.leave?.(); return shell.write(null); }, mac = onMac(), doc = document }) {
-    Object.assign(this, { host, item, viewer, kind, reply, inlineReply, quote, thumb, answer, more, editChoice, expand, copy, clipped, showFull, foldState, fold, acted, navigate, write, mac, doc });
+    clipped = () => false, showFull = async () => {}, foldState = () => null, fold = () => {}, acted = () => {}, navigate = () => {}, pending = () => null, write = () => { panes.things?.leave?.(); return shell.write(null); }, mac = onMac(), doc = document }) {
+    Object.assign(this, { host, item, viewer, kind, reply, inlineReply, quote, thumb, answer, more, editChoice, expand, copy, clipped, showFull, foldState, fold, acted, navigate, pending, write, mac, doc });
     this.lit = null; this.touch = pressOf(doc).touch; this.before = null;
     // The bar's buttons it has put behind its ⋯ for want of room in the window (fit).
     this.behind = new Set();
@@ -317,6 +317,11 @@ export class MessageMenu {
     const { thumb, yes, no } = this.buttons;
     thumb.hidden = !mayThumb(item, this.viewer);
     thumb.setAttribute('aria-pressed', String(thumbed(item, this.viewer)));
+    const pending = this.pending?.(item.id) ?? null;
+    thumb.disabled = pending !== null;
+    thumb.title = thumbed(item, this.viewer) ? 'Remove thumbs up' : 'Thumbs up';
+    thumb.setAttribute('aria-label', thumb.title);
+    paintThumbPending(thumb, pending);
     const answerable = mayAnswer(item, this.viewer, this.kind), mine = answerOf(item, this.viewer);
     yes.hidden = no.hidden = !answerable;
     yes.setAttribute('aria-pressed', String(mine === 'yes')); no.setAttribute('aria-pressed', String(mine === 'no'));
@@ -393,10 +398,16 @@ export class MessageMenu {
   paint() {
     for (const entry of entries(this.host)) {
       const item = this.item(entry.dataset.id);
-      if (item) paintReactions(cardIn(entry), item, this.viewer, this.kind, this.doc);
+      if (item) paintReactions(cardIn(entry), item, this.viewer, this.kind, this.doc, this.pending?.(item.id) ?? null);
     }
     if (this.lit && !this.lit.isConnected) this.light(null);
     else if (this.lit) this.paintBar();
+  }
+  // A local thumb changes this message, not every loaded card.
+  paintMessage(id, entry) {
+    const item = this.item(id);
+    if (item && entry?.dataset.id === id) paintReactions(cardIn(entry), item, this.viewer, this.kind, this.doc, this.pending?.(id) ?? null);
+    if (this.lit?.dataset.id === id) this.paintBar();
   }
   act(name) {
     const entry = this.lit, item = entry && this.item(entry.dataset.id);
