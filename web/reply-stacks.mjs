@@ -47,7 +47,7 @@ const coverTools = new WeakMap();
 // Canonical fold/place facts return with their records; this makes no act.
 export function forgetStackMessages(list, retained) {
   const state = states.get(list); if (!state) return;
-  for (const name of ['kept', 'unreadKept', 'peeked', 'earlier', 'whole', 'waiting', 'filled', 'apart', 'sourceRoots', 'writing', 'folded', 'starred', 'coordination', 'coordinationHere', 'below']) {
+  for (const name of ['kept', 'unreadKept', 'peeked', 'earlier', 'whole', 'waiting', 'filled', 'apart', 'sourceRoots', 'writing', 'folded', 'starred', 'coordination', 'coordinationHere', 'below', 'earlierRows', 'contextRows']) {
     const set = state[name]; if (set) for (const id of set) if (!retained.has(id)) set.delete(id);
   }
   for (const name of ['levels', 'savedLevels', 'here', 'sections', 'checking', 'held']) {

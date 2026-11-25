@@ -707,6 +707,9 @@ async function present(presentation) {
   if (presentation.surface === 'card') { cardReplies?.surface(presentation)?.show(presentation); cardReplies?.paint(); return; }
   if (presentation.surface === 'inline') inline.show(presentation);
   else {
+    // A newly opened cold source consumes a canonical slot immediately,
+    // without waiting for another arrival to retire passive feed records.
+    if (views?.windowOptions && views.messages.size) { views.trimWindow(); paintViews('messages'); }
     retainRevisionTargets(presentation);
     offerAuthor(presentation);
     let dossierError = null;
@@ -784,6 +787,7 @@ function stacksRedrawn() {
   const presentation = registry?.current;
   if ($('reader').open && presentation?.core && registry.isSourceCurrent(presentation)) takeNeighbors(presentation, presentation.core);
   if (views) placeLine();
+  if (views?.windowOptions) paintWindowGaps();
 }
 // A Notebook page shown in the Reader is read once the person can see it, as
 // a message is (noteRead): in a visible, focused page. One shown in the
@@ -1026,7 +1030,7 @@ let newAboveButton = null;
 // A later gesture owns its own place (including More and keyboard navigation).
 // Reads/settlement have no gesture, so keep the acted identity until then.
 for (const kind of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
-  document.addEventListener(kind, () => { listActAnchor = null; }, { capture: true, passive: true });
+  document.addEventListener(kind, () => { listActAnchor = null; windowReadSerial++; }, { capture: true, passive: true });
 }
 function actedListCard(mark) {
   if (!mark || mark.list !== $('messages') || mark.views !== views) return null;
@@ -1393,6 +1397,7 @@ function paintViews(kind, reactionId = null) {
   // under a press held down they wait for it to end, so the click lands where it began.
   if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }
   if (kind === 'starred') { keepListAnchor(paintStarredStatus); return; }
+  if (kind === 'window') { keepListAnchor(paintWindowGaps); return; }
   // A thumbs-up reads its message (card-reading.mjs, readNow): its card, and its stack's count of new replies, read so.
   if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); }); paintReaderThumb$(); return; }
   // A star, a stack's name, a join or a place, here or on another device (stack-feed.mjs).
@@ -1519,23 +1524,29 @@ function paintViews(kind, reactionId = null) {
   });
   if (kind === 'messages') noteRead();
 }
-// Each message's entry by id, kept for the page's life.
+// Each admitted canonical message's entry; local submitted writing is separate.
 const messageEntries = new Map();
 const windowEvictions = new Set(), windowTargets = new Set();
 let windowGapHost = null, windowReadSerial = 0, coldArrivals = null;
 function topicWindowOptions() {
   const pins = new Set(windowTargets), visible = [], external = new Set();
   const active = document.activeElement;
+  const selection = document.getSelection?.();
+  const ranges = selection && !selection.isCollapsed ? Array.from({ length: selection.rangeCount }, (_, n) => selection.getRangeAt(n)) : [];
   for (const [id, entry] of messageEntries) {
+    if (pressHold.down) pins.add(id);
     if (halfShown.has(Number(entry.dataset.seq)) || atMiddle.has(Number(entry.dataset.seq))) { pins.add(id); visible.push(id); }
     if (entry.contains(active)) pins.add(id);
+    if (ranges.some(range => range.intersectsNode(entry))) pins.add(id);
   }
-  for (const source of [reader?.source, registry?.current?.source, messageEdit?.writing?.source]) {
+  for (const source of [reader?.source, registry?.current?.source]) {
     if (source?.source_ref?.kind === 'message') {
       pins.add(source.source_ref.id);
       if (!views.messages.has(source.source_ref.id)) external.add(source.source_ref.id);
     }
   }
+  if (messageEdit?.id) { pins.add(messageEdit.id); if (!views.messages.has(messageEdit.id)) external.add(messageEdit.id); }
+  if (menu?.lit?.isConnected) pins.add(menu.lit.dataset.id);
   if (listActAnchor?.id) pins.add(listActAnchor.id);
   const held = anchorHold?.anchor?.closest?.('[data-id]')?.dataset.id;
   if (held) pins.add(held);
@@ -1545,7 +1556,7 @@ function topicWindowOptions() {
   return { pins, budget: Math.max(0, 300 - external.size), anchor: held ?? listActAnchor?.id ?? visible[0] ?? null };
 }
 function queueWindowEvictions(ids) {
-  for (const id of ids) if (messageEntries.has(id) || registry?.cards.has(id)) windowEvictions.add(id);
+  for (const id of ids) windowEvictions.add(id);
 }
 function releaseWindowReferences() {
   if (!windowEvictions.size) return;
@@ -1560,15 +1571,26 @@ function releaseWindowReferences() {
     halfShown.delete(seq); atMiddle.delete(seq); openedIds.delete(id);
     cardReplies?.retire(id); cardReplies?.closed.delete(id); cardReplies?.queue.delete(id);
     if (registry?.cards.get(id) !== registry?.current) registry?.cards.delete(id);
-    messageChanges?.hidden.delete(id); questionStates?.closed.delete(id); questionStates?.removed.delete(id);
+    messageChanges?.hidden.delete(id);
   }
   windowEvictions.clear();
   const retained = new Set([...views.messages.keys(), ...views.windowRoots]);
+  // A previous size hold may contain retired cards, layouts and arrival
+  // objects. The surrounding repaint captures/restores its current anchor.
+  anchorHold = null;
+  visitNew?.retain(retained);
+  const facts = new Set(retained);
+  for (const id of views.windowHints.keys()) facts.add(id);
+  for (const id of [reader?.source?.source_ref?.id, registry?.current?.source?.source_ref?.id, messageEdit?.id]) if (id) facts.add(id);
+  for (const map of [messageChanges?.hidden, questionStates?.closed, questionStates?.removed]) {
+    if (map) for (const id of map.keys()) if (!facts.has(id)) map.delete(id);
+  }
   forgetStackMessages($('messages'), retained); stackFeed?.forgetMessages(retained);
 }
 async function readWindowGap(gap) {
   if (retired || topicUnavailable || registry.disposed || authorityReviewPending()) return false;
   const request = ++windowReadSerial, currentViews = views, currentTopic = topic, access = listAccessEpoch, generation = registry.generation;
+  const windowReadStart = views.windowKnowledge;
   const current = () => request === windowReadSerial && views === currentViews && topic === currentTopic && access === listAccessEpoch &&
     generation === registry.generation && !retired && !topicUnavailable && !registry.disposed && !authorityReviewPending();
   const foreground = registry.cleanup.foreground();
@@ -1581,7 +1603,7 @@ async function readWindowGap(gap) {
     try {
       // This still-current foreground navigation admits into today's window;
       // passive arrivals alone do not cancel the person's read-back gesture.
-      if (!views.messagesPage(page, { anchored: true, contiguous: true, cursor: gap.before, windowEpoch: views.windowEpoch })) return false;
+      if (!views.messagesPage(page, { anchored: true, contiguous: true, cursor: gap.before, windowEpoch: views.windowEpoch, windowReadStart })) return false;
       if (coldArrivals === gap) coldArrivals = page.next_cursor !== null && page.next_cursor > gap.after
         ? { before: page.next_cursor, after: gap.after } : null;
       if (wanted && current()) { const card = landOn(wanted.id, { full: true }); card?.focus({ preventScroll: true }); }
@@ -1603,6 +1625,10 @@ function paintWindowGaps() {
     control.onclick = () => run(() => readWindowGap(gap.original ?? gap));
     return control;
   });
+  if (views.windowPressure) {
+    const status = before.get('pressure') ?? node('span', 'More messages are waiting while this view is held.');
+    status.dataset.windowGap = 'pressure'; status.setAttribute('role', 'status'); controls.push(status);
+  }
   if (controls.length !== windowGapHost.children.length || controls.some((control, n) => control !== windowGapHost.children[n])) windowGapHost.replaceChildren(...controls);
   windowGapHost.hidden = topicUnavailable || !controls.length;
 }
@@ -1681,7 +1707,10 @@ function refreshDossierHeads(id = null) {
 }
 function syncDossierHeads() {
   if (!dossierHeads || topicUnavailable || registry?.disposed || authorityReviewPending()) return;
-  dossierHeads.sync(views.messages, views.removals);
+  // Position reads may split/join dossiers without a new message page.
+  // Recompute their supplemental-original reservations before admitting DOM.
+  views.trimWindow?.();
+  dossierHeads.sync(views.messages, views.removals, views.windowOptions ? views.windowRoots : null);
   const messages = feedMessages();
   for (const [id, entry] of messageEntries) if (!messages.has(id)) {
     if (views.windowOptions) { windowEvictions.add(id); continue; }
@@ -1758,6 +1787,7 @@ function feedOf() {
 function drawFeed(on, ...parts) {
   const sheet = $('new-message-sheet'), inFeed = $('messages').contains(sheet);
   for (const id of ['messages', 'topic-people', ...parts]) $(id).hidden = !on;
+  if (!on && windowGapHost) windowGapHost.hidden = true;
   reader?.keepReplyVisible();
   if (on) paintStarredStatus(); else $('starred-status').hidden = true;
   if (on === inFeed) return;
@@ -1848,9 +1878,9 @@ function landOn(id, { full = false } = {}) {
 // source opens through the ordinary Reader owner instead.
 let landingSerial = 0;
 async function landOnMessage(id, serial = ++landingSerial, current = () => true) {
-  const accessEpoch = listAccessEpoch, generation = registry.generation;
+  const accessEpoch = listAccessEpoch, generation = registry.generation, windowRequest = ++windowReadSerial, windowReadStart = views.windowKnowledge;
   const mine = () => !retired && !registry.disposed && !topicUnavailable &&
-    accessEpoch === listAccessEpoch && serial === landingSerial && generation === registry.generation && current();
+    accessEpoch === listAccessEpoch && serial === landingSerial && generation === registry.generation && windowRequest === windowReadSerial && current();
   if (!mine()) return false;
   if (!views.messages.has(id)) {
     const foreground = registry.cleanup.foreground();
@@ -1862,7 +1892,9 @@ async function landOnMessage(id, serial = ++landingSerial, current = () => true)
       const cursor = source.seq + 1;
       const page = checkedView(await foreground.read(options => api.view('topic_messages', { topic_id: topic.id, audience: 'all', direction: 'before', cursor, limit: 30 }, options)), bootstrap.instance_id);
       if (!mine()) return false;
-      views.messagesPage(page, { anchored: true, cursor });
+      windowTargets.add(id);
+      try { if (!views.messagesPage(page, { anchored: true, cursor, windowReadStart })) return false; }
+      finally { windowTargets.delete(id); }
     } finally { foreground.release(); }
   }
   if (!mine()) return false;
@@ -2996,6 +3028,7 @@ function listPage(kind, more = false) {
   if (listLoads.has(kind)) return listLoads.get(kind);
   const accessEpoch = listAccessEpoch, mayPaint = !topicUnavailable;
   const currentTopic = topic, currentViews = views, generation = registry.generation;
+  const windowEpoch = views.windowEpoch, windowRequest = windowReadSerial, windowReadStart = views.windowKnowledge;
   const outcome = { topic: currentTopic, views: currentViews, generation, accessEpoch, applied: false, rowsAdded: 0, cursorAdvanced: false };
   const cursor = kind === 'messages' ? views.olderCursor : views.memoryCursor;
   if (more && cursor === null) return Promise.resolve();
@@ -3005,12 +3038,16 @@ function listPage(kind, more = false) {
   if (more) args.cursor = cursor;
   const run = foreground.read(options => api.view(kind === 'messages' ? 'topic_messages' : 'memory_items', args, options)).then(page => {
     checkedView(page, bootstrap.instance_id);
-    if (!mayPaint || accessEpoch !== listAccessEpoch || authorityReviewPending()) return outcome;
+    if (!mayPaint || accessEpoch !== listAccessEpoch || authorityReviewPending() || retired || registry.disposed ||
+        topic !== currentTopic || views !== currentViews || generation !== registry.generation || more && windowRequest !== windowReadSerial) return outcome;
     if (kind === 'messages') {
       // Measure only this synchronous application, not another load that
       // advanced the same frontier while this request was in flight.
       const beforeRows = views.messages.size, beforeCursor = views.olderCursor;
-      const applied = views.messagesPage(page, { initial: !more, cursor });
+      const moved = more && cursor !== views.olderCursor;
+      const applied = views.messagesPage(page, { initial: !more, cursor, anchored: moved, contiguous: more,
+        windowEpoch: more ? views.windowEpoch : windowEpoch, windowReadStart });
+      if (applied && moved) views.olderCursor = page.next_cursor === null || views.olderCursor === null ? null : Math.min(views.olderCursor, page.next_cursor);
       return { ...outcome, applied, rowsAdded: applied ? views.messages.size - beforeRows : 0,
         cursorAdvanced: applied && beforeCursor !== null && (views.olderCursor === null || views.olderCursor < beforeCursor) };
     }
@@ -3642,7 +3679,8 @@ async function initialize() {
     if (views !== headViews || retired) return null;
     const full = new Set(views.messages.keys()), heads = [];
     for (const [id, record] of dossierHeads?.records ?? []) if (record.state === 'available') { full.add(id); heads.push(id); }
-    for (const source of [reader?.source, registry?.current?.source, messageEdit?.writing?.source]) if (source?.source_ref?.kind === 'message') full.add(source.source_ref.id);
+    for (const source of [reader?.source, registry?.current?.source]) if (source?.source_ref?.kind === 'message') full.add(source.source_ref.id);
+    if (messageEdit?.id) full.add(messageEdit.id);
     return { budget: 300, fullRecords: full.size, canonicalDOM: messageEntries.size,
       loaded: [...views.messages.keys()], heads, runs: new Set(views.runs.values()).size, hints: views.windowHints.size,
       gaps: views.windowGaps.length, protected: [...topicWindowOptions().pins], pressure: views.windowPressure,
@@ -3797,7 +3835,9 @@ async function initialize() {
             try {
               const page = checkedView(await foreground.read(options => api.view('topic_messages', { topic_id: topic.id, audience: 'all', direction: 'before', cursor: source.seq + 1, limit: 30 }, options)), bootstrap.instance_id);
               if (accessEpoch !== listAccessEpoch || topicUnavailable || registry.current) return true;
-              views.messagesPage(page, { anchored: true, cursor: source.seq + 1 });
+              windowTargets.add(id);
+              try { views.messagesPage(page, { anchored: true, cursor: source.seq + 1 }); }
+              finally { windowTargets.delete(id); }
             } finally { foreground.release(); }
           }
           if (accessEpoch !== listAccessEpoch || topicUnavailable || registry.current) return true;

@@ -85,3 +85,24 @@ export function boundMap(map, limit = TOPIC_HINT_BUDGET) {
   while (map.size > limit) map.delete(map.keys().next().value);
   return map;
 }
+
+// Acts use the existing sequence-cursor view. Seek each complete retained
+// interval, and each supplemental/Reader original separately; never walk the
+// unloaded history between an old held source and today's cards.
+export function topicActRanges(messages, runs, alone = null) {
+  const groups = new Map();
+  const add = (item, key) => {
+    const range = groups.get(key) ?? { oldest: item.seq, newest: item.seq, count: 0 };
+    range.oldest = Math.min(range.oldest, item.seq); range.newest = Math.max(range.newest, item.seq); ++range.count;
+    groups.set(key, range);
+  };
+  for (const item of messages.values()) add(item, runs.get(item.id) ?? 'source:' + item.id);
+  if (alone && !messages.has(alone.id)) add(alone, 'source:' + alone.id);
+  const ranges = [];
+  for (const range of [...groups.values()].sort((a, b) => b.newest - a.newest)) {
+    const last = ranges.at(-1);
+    if (last && range.newest >= last.oldest - 1) { last.oldest = Math.min(last.oldest, range.oldest); last.count += range.count; }
+    else ranges.push({ ...range });
+  }
+  return ranges;
+}

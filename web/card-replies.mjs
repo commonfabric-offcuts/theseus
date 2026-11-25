@@ -37,6 +37,7 @@ export class CardReplies {
   }
   surface(p) { return this.rows.get(p?.source?.source_ref?.id)?.ui; }
   retire(id) {
+    this.loads.delete(id); this.queue.delete(id);
     const row = this.rows.get(id); if (!row) return;
     row.observer?.disconnect(); row.ui.dispose(); row.ui.root.remove(); this.rows.delete(id);
   }
@@ -66,7 +67,10 @@ export class CardReplies {
       let load = this.loads.get(id);
       if (!load) {
         load = this.registry.initializeCard({ kind: 'message', id }, this.topic()).then(async p => {
-          if (!p || !card.isConnected || this.disposed || this.registry.disposed) return null;
+          if (!p || !card.isConnected || this.disposed || this.registry.disposed || this.loads.get(id) !== load) {
+            if (p && this.registry.cards.get(id) === p && this.registry.current !== p) this.registry.cards.delete(id);
+            return null;
+          }
           this.offer(p);
           const root = this.template.cloneNode(true), prefix = `reply-${id}-`;
           const ids = new Map([...root.querySelectorAll('[id]')].map(el => [el.id, el.id.replace(/^inline-/, prefix)]));
@@ -113,7 +117,7 @@ export class CardReplies {
           });
           row.observer.observe(ui.$('attachments'));
           this.discover(p, p.editors.reply); return row;
-        }).finally(() => this.loads.delete(id));
+        }).finally(() => { if (this.loads.get(id) === load) this.loads.delete(id); });
         this.loads.set(id, load);
       }
       row = await load;
