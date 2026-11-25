@@ -1082,8 +1082,8 @@ export class Reader {
   }
 
   paintStatus() {
-    if (this.editor?.restoredVersion === this.editor?.localVersion && this.field?.value !== this.editor?.draft.body) this.drawEditor();
     if (!this.editor) return;
+    if (this.editor.restoredVersion === this.editor.localVersion && this.field?.value !== this.editor.draft.body) this.drawEditor();
     const editor = this.editor;
     const state = writingState(editor, { active: this.admits(editor), writable: this.writes(editor), note: this.mode === 'note', status: this.callbacks.status, sign: this.callbacks.sign });
     const barrier = this.mode === 'note' ? null : imageBarrier(editor), send = this.$('send-reply');

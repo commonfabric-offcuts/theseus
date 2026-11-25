@@ -4,6 +4,8 @@ import { Editor, noWriting } from '../web/editor.mjs';
 import { EditorSession, RuntimeAuthority } from '../web/session.mjs';
 import { RecoveryJournal } from '../web/journal.mjs';
 import { InlineComposer } from '../web/inline-composer.mjs';
+import { Reader } from '../web/reader.mjs';
+import { EditorRegistry } from '../web/app-session.mjs';
 import { paintPendingSends } from '../web/pending-sends.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 const copy = value => structuredClone(value);
@@ -22,6 +24,27 @@ const image = editor => {
   return editor;
 };
 const freeze = editor => editor.beginPrepare({ submissionId: 'submission', prepareOperationId: 'prepare', sendOperationId: 'send' });
+test('1233 initial inline activity safely paints an unopened Reader without creating source writing', async () => {
+  // Constructor-equivalent unopened state; actual Reader painter and registry
+  // initialization/activity owners, with transport and editor registration modeled.
+  let activity = 0, released = false, draws = 0;
+  const reader = Object.assign(Object.create(Reader.prototype), { sessions: null, source: null, mode: 'reply', field: { value: '' },
+    drawEditor() { draws++; } });
+  const state = { instance_id: context.instanceId, source_ref: context.sourceRef, destination: { topic_id: 'topic' },
+    source_available: true, destination_available: true, draft: null, note: null,
+    submissions: { instance_id: context.instanceId, items: [], next_cursor: null } };
+  const registry = new EditorRegistry({ api: { view: async () => copy(state) }, journal: {},
+    bootstrap: { instance_id: context.instanceId, actor: context.actor,
+      authority: { authority_id: 'authority', authority_epoch: 'epoch', continuity: 'initial' } },
+    activity() { activity++; reader.paintStatus(); } });
+  registry.cleanup.foreground = () => ({ read: work => work(), release() { released = true; } });
+  registry.register = async () => makeEditor();
+  const inline = await registry.initializeInline({ id: 'topic' });
+  assert.equal(activity, 1); assert.equal(released, true);
+  assert.equal(inline.surface, 'inline'); assert.equal(reader.editor, undefined);
+  assert.equal(reader.source, null); assert.equal(reader.field.value, '');
+  assert.equal(draws, 0, 'initial activity must not draw source writing in an unopened Reader');
+});
 test('1233 exact submitted words and images stay in a separate topic card through unknown and placement', () => {
   const doc = miniDocument(), host = doc.createElement('div'), editor = makeEditor(); host.ownerDocument = doc;
   editor.edit({ body: 'Exact <words>\nsecond line', attachments: [{ id: 'image-1' }] }); image(editor); const item = freeze(editor);
