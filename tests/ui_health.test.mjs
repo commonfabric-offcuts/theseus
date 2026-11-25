@@ -78,7 +78,7 @@ class ClassList {
   contains(name) { return this.names.has(name); }
 }
 const link = () => ({ classList: new ClassList(), textContent: 'Health', attributes: {},
-  setAttribute(key, value) { this.attributes[key] = value; }, removeAttribute(key) { delete this.attributes[key]; } });
+  getAttribute(key) { return this.attributes[key] ?? null; }, setAttribute(key, value) { this.attributes[key] = value; }, removeAttribute(key) { delete this.attributes[key]; } });
 
 test('the Health link lights while anything is red and goes quiet when nothing is', async () => {
   let reply = { red: ['failing:codex-a'] };
