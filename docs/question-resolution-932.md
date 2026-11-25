@@ -52,3 +52,12 @@ Default preserved: thumbs still clear plain waits exactly as before. Explicit
 go-ahead/no-go-ahead answers remain separate. Closed questions cannot receive
 a new decision or be restored by thumb Undo. Record-owned decisions retain
 their existing controls and authority.
+
+Item 1237: repeated card-author paints keep one current terminal question
+label, including its successor link. A cached base author line must not let
+labels or separator text accumulate. Archival/removal hides the label; a
+changed projection replaces it. An unchanged label keeps its DOM identity
+and keyboard focus. Author, time, editing, carries, star, update and reaction
+owners keep their content. The focused composition check executes the real
+`paintCardAuthor`, cached `paintAuthor` and question-state owner together;
+native layout and live interaction evidence remain separate.
