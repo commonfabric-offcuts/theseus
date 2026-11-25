@@ -27,6 +27,16 @@ terminal and cleanup before another producer. A missing response or receipt
 does not authorize a new operation ID, another test run or another deployment.
 Preserve Tony's recorded Stop/Continue state and every original clock.
 
+## Durable source and evidence
+
+Build own checkouts under `/Users/commonfabric/aim-worktrees`. Recover the
+assigned branch and exact source head from its current Theseus piece/topic,
+and use the pushed branch when a former local checkout is gone. Keep proof
+needed for handoff attached to that same board stack, alongside its source and
+result references. Temporary fixtures, cached files and a private checkpoint
+are not a reboot recovery index; their absence must not manufacture a result,
+replace an original operation or cause completed work to run again.
+
 ## What this seat does
 
 - Build in a new own worktree and branch under the designated worktree root.

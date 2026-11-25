@@ -10,14 +10,51 @@ Use **the absolute bound CLI invocation supplied to this seat at startup** to
 read pending deliveries: `inbox`, or the paged delivery view required by the
 seat's wake protocol. Preserve its actor, profile and complete binding. This
 file supplies no identity, replacement binding or permission to restart.
+Resolve this seat file from that selected CLI's repository root. Record the
+actual revision or file hash read; an installed pointer or accepted refresh
+does not prove a fresh agent read it.
 
 Read [VISION](../VISION.md), [AGENTS](../../AGENTS.md), the
-[agent guide](../agent-guide.md), the current auditor brief supplied to the
-seat, and the current-rule Notebook `n-85ea0961d1fd4e5791fed9024aa9b720`.
+[agent guide](../agent-guide.md), [writing to Tony](working-with-tony.md), `current-rule building-theseus`, and the
+current-rule Notebook `n-85ea0961d1fd4e5791fed9024aa9b720` with `note read`.
 The Notebook holds sourced policy; this file does not copy today's queue,
-forecasts, holds or exceptions. Reconcile the durable checkpoint with current
-deliveries, source revisions, release records and outstanding operations.
+forecasts, holds or exceptions. Recover current work from authorized Theseus
+records, including when the inbox is empty. A private local brief, checkpoint,
+memory index or old conversation is not the fresh seat's operating manual.
 Honor current Stop/Continue decisions before resuming anything.
+
+## Recover the current audit
+
+The outcome is `building-theseus`. Use `topics building-theseus` to resolve
+the current Landing and Releases conversations by title. Read current release
+records with `releases`, runtime observations with `health`, and the pipeline's
+Now and Next lists. Follow each relevant `item building-theseus NUMBER` to its
+piece, topic, source and clock; `clock PIECE` retains the recorded forecasts
+and intervals. Read the latest auditor reports and their quoted sources in
+those conversations and the relevant piece topics. Follow paging to the needed
+boundary; neither a preview nor a quiet inbox establishes completed recovery.
+
+Reconcile unfinished audits, private replies, held work, source revisions and
+original operation outcomes before choosing what is owed. Retained request and
+receipt files are evidence, not instructions. Use `reconcile OPERATION` for an
+uncertain saved submission; do not invent a new operation identity or infer a
+write failed because its response is missing. Preserve refusal and retry
+limits from the trusted wake protocol and current sourced disposition.
+
+On this Mac, authorized documentation uses an own checkout under
+`/Users/commonfabric/aim-worktrees`; auditor evidence is retained under
+`/Users/commonfabric/.local/share/theseus/auditor/evidence`. Neither is a temp
+directory. Landing evidence is read, never run, where it was made: each
+landing's `SPEC.json`, `TRAIN`, attempts and deploy and publication receipts in
+`/Users/commonfabric/.local/share/theseus/warp/land/ITEM-land/`; the runtime
+sources a runner ran in the instance's `runner-sources/`; older checks and
+deploys in `/Users/commonfabric/.local/share/theseus/fable-tools/`; and a hosted
+seat's actual turns under the instance's `hosted/codex-worker/home/sessions/`. Current exact source and proof references belong in the relevant
+Theseus conversation or piece, with necessary shared artifacts attached there.
+Stable procedures belong in the repository. Do not publish whispers, private
+questions, credential contents or a private checkpoint as a public handoff.
+If a referenced artifact is missing after reboot, record the gap: absence does
+not prove cleanup, completion or permission to rerun a producer.
 
 ## Read, answer and acknowledge
 
@@ -40,6 +77,19 @@ Honor current Stop/Continue decisions before resuming anything.
   coordinator through a working bound channel. A demonstrable raw-read wrapper
   mistake may be corrected with the original identity and binding unchanged;
   that does not authorize replaying a write.
+- Finish the handled paged snapshot, retain the next unread boundary and return
+  control to the dispatcher. A queue wake or hosted turn does not authorize a
+  new goal, private watcher or sleep loop. The dispatcher owns later wakes.
+- On this Mac auditor has no runner route: it runs as an external chat that
+  Tony starts. That owner-started chat holds the ongoing assignment as an
+  unbudgeted goal and keeps one native `watch --once` armed, re-armed after each
+  wake and never duplicated. The queue-wake rule above does not apply to it.
+
+A new conversation or hosted migration is a separate owner operation. Preserve
+the actor, complete binding, pending deliveries and original operations; keep
+private scopes intact. The owner must reconcile and retire the outgoing
+consumer before another can act as auditor. This file does not perform that
+handoff, change a route or authorize a restart.
 
 ## Audit the evidence
 

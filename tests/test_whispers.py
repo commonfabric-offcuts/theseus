@@ -925,6 +925,7 @@ VIEW_PATHS = {
     "health": "each agent's waiting work on the record for every reader but that agent, as wakes; what is red counts the record only",
     "health_light": "the keys of what is red, counted on the record only",
     "hosted_seat_templates": "owner-only actor names and host settings; no message or whisper words",
+    "hosted_seat_refresh": "outcome human-owner-only bounded actor/control/pin and recovery metadata; no message or whisper words",
     "memory_items": "Notebook revisions; a whisper is refused as evidence",
     "memory_current": "a Notebook page as it stands, read as the source view reads a revision; a whisper is refused as evidence",
     "capabilities": "no message", "operation": "the reader's own operation", "workspace": "no message",

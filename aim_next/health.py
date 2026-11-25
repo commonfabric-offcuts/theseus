@@ -198,6 +198,7 @@ WHY = {
     "nothing_pending": "nothing was waiting by the time it was tried",
     "observation_stale": "its claim ran out, or another runner took over, before the turn could start",
     "recovery_home_busy": "its new thread waits until the other seats sharing its Codex process are idle",
+    "refresh_turn_open": "its requested fresh thread waits for the current turn to finish",
     "recovery_cancelled": "replacing its thread was called off",
     "recovery_creation_unconfirmed": "Codex did not confirm the new thread made for it",
     "recovery_ownership_lost": "another runner took over while its thread was being replaced",

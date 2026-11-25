@@ -71,6 +71,7 @@ class SweepCase(test_message_exposure.HeldOutcomeCase):
                  ("outcome_checks", {"workspace_id": "w1"}), ("check_readings", {"workspace_id": "w1"}), ("outcome_live", {"workspace_id": "w1"}),
                  ("stars", {}), ("tools", {"workspace_id": "w1"}), ("tool", {"tool_id": "act-ledger"})]
         calls += [("pipeline", {"workspace_id": "w1", "section": section}) for section in ("now", "next", "later", "candidates")]
+        calls.append(("hosted_seat_refresh", {"workspace_id": "w1", "actor_ids": ["agent-a"]}))
         calls += [("pipeline_item", {"workspace_id": "w1", "number": number}) for number in (1, 2, 3)]
         for topic in topics:
             calls += [("topic", {"topic_id": topic}), ("topic_messages", {"topic_id": topic}), ("topic_messages", {"topic_id": topic, "direction": "before"}),
