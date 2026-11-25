@@ -27,7 +27,7 @@ export function solid785(p,{fallback=false}={}) {
  assert.notEqual(p.shadow,'none','pill has shadow');
  assert.ok(p.hit,'pill owns its centre hit test');
  assert.ok(p.height>=(p.coarse?44:36)-T785.viewportClipPx,'pill target retains minimum height within viewportClipPx=1');
- assert.equal(p.text,'New above ↑');
+ assert.match(p.text,/^New above · [1-9]\d* ↑$/,'the offer names a positive retained-arrival count');
 }
 export const allExpressions785 = () => [capture785,read785,pill785,frames785,rect785(card785('id"\\\n'))];
 // Every generated page expression used by the item lives here for preflight.
