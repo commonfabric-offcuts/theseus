@@ -1,6 +1,6 @@
 // Private saves are serialized. Public send confirmation never holds that queue.
 import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
-import { holdsWriting } from './editor.mjs';
+import { holdsWriting, noWriting } from './editor.mjs';
 import { uploadWork, currentImages } from './upload-state.mjs';
 import { writingValue } from './writing-comparison.mjs';
 import { sessionRefused, Deadline } from './api.mjs';
@@ -470,7 +470,6 @@ export class EditorSession {
     item.authority = authorityPair(this.authority);
     // The page hears of the reply once it is under way, so it is never shown in doubt.
     const sending = this.start(item, options);
-    this.changed(this.editor);
     return sending;
   }
 
@@ -483,6 +482,9 @@ export class EditorSession {
   // Returns the send.
   track(key, sending) {
     this.sends.set(key, sending);
+    // Resuming the retained operation changes Review ownership too. Publish
+    // that boundary before its private continuation suppresses status paints.
+    this.changed(this.editor);
     const settled = () => { if (this.sends.get(key) === sending) this.sends.delete(key); this.changed(this.editor); };
     sending.then(settled, settled);
     return sending;
@@ -661,6 +663,10 @@ export class EditorSession {
         savedVersion: -1, saveConflict: null, status: 'preparing', preparationConfirmed: false, receipt: null };
       delete item.correctedBy;
       delete item.detached;
+      delete item.restoredWriting;
+      const restored = refused.restoredWriting && this.editor.restoredVersion === reviewedLocalVersion &&
+        same(sharedWriting(this.editor.draft), sharedWriting(refused.snapshot));
+      if (restored) item.localVersion = reviewedLocalVersion;
       refused.correctedBy = item.id;
       this.editor.submissions.push(item);
       // The corrected reply is on its way from here until the act ends.
@@ -680,7 +686,24 @@ export class EditorSession {
       if (this.editor.draft.body || this.editor.draft.attachments.length || this.editor.draft.quotes.length || this.editor.draft.addressees.length) {
         this.editor.ackVersion = Math.min(this.editor.ackVersion, this.editor.localVersion - 1);
       }
-      return await this.prepare(item) ? item : null;
+      if (!await this.prepare(item)) return null;
+      // Preparing the exact restored A again consumes only that unchanged
+      // visible copy. A later B, image choice or authority change keeps its
+      // owner. The original submission's image links remain retained.
+      if (restored && this.editor.localVersion === reviewedLocalVersion &&
+          this.editor.restoredVersion === reviewedLocalVersion && !this.recovery &&
+          !this.editor.imageReservation && !this.editor.imageBusy &&
+          same(sharedWriting(this.editor.draft), sharedWriting(refused.snapshot))) {
+        for (const image of currentImages(this.editor)) { image.selected = false; image.version++; }
+        if (this.editor.uploadState) this.editor.uploadState.revision++;
+        const { id, revision, generation } = this.editor.draft;
+        this.editor.draft = { ...noWriting(), id, revision, generation };
+        this.editor.ackVersion = this.editor.localVersion;
+        delete this.editor.restoredVersion;
+        this.editor.follow();
+        await this.persist();
+      }
+      return item;
     }).then(async item => {
       if (item?.status === 'prepared') {
         this.prepared(this.editor, item, options);
