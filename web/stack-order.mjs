@@ -244,8 +244,8 @@ export const LEVELS = ['folded', 'open'];
 export const RECENT = 7;
 export function earlierOf(stack, level, { held = null } = {}) {
   // What Earlier messages filled the stack with shows at its end, never behind the row (gather, filled).
-  const all = [stack.head, ...stack.replies].filter(item => !stack.filled?.has(item.id));
   if (level !== 'open') return [];
+  const all = [stack.head, ...stack.replies].filter(item => !stack.filled?.has(item.id));
   const at = held === null ? -1 : all.findIndex(item => item.id === held);
   if (at >= 0) return all.slice(0, at);
   return all.length > RECENT ? all.slice(0, all.length - RECENT) : [];
