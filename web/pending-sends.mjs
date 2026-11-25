@@ -56,14 +56,24 @@ export function keepPendingSendPlace(host, paint, { current = () => true,
   return result;
 }
 
-// Core derives message-origin replies from source_ref. The writing snapshot
-// need not duplicate that destination, and later editor state cannot supply it.
+// Core derives only eligible same-topic replies from source_ref. The source
+// facts were read and frozen with A; later editor/Reader state supplies none.
 export function pendingSendReplyTo(item) {
-  return item.snapshot?.reply_to ?? (item.sourceRef?.kind === 'message' ? item.sourceRef.id : null);
+  if (item.snapshot?.reply_to != null) return item.snapshot.reply_to;
+  const ref = item.sourceRef, source = item.replySource;
+  return ref?.kind === 'message' && source?.sourceRef?.kind === 'message' && source.sourceRef.id === ref.id &&
+    typeof source.topicId === 'string' && source.topicId && source.topicId === item.topicId &&
+    source.destinationId === item.topicId && samePin(source.authority, item.authority) &&
+    typeof source.whisper === 'boolean' && (!source.whisper || item.snapshot?.whisper === true) ? ref.id : null;
 }
 
 export function pendingSendVisual(editor, item, { authorKind = 'human', parent = null } = {}) {
   const snapshot = item.snapshot;
+  const replyTo = pendingSendReplyTo(item);
+  // Unknown, unrelated or private-incompatible parent words are not context
+  // for this public card, even when a caller still holds that readable source.
+  const context = replyTo && parent?.id === replyTo && parent.topic_id === item.topicId &&
+    (parent.whisper === false || parent.whisper === true && snapshot.whisper === true) ? parent : null;
   const refs = editor.uploadState?.submission_links?.[item.id]?.refs ?? [];
   const attachments = (snapshot.attachments ?? []).map(ref => {
     const link = refs.find(link => link.media_id === ref.id);
@@ -75,8 +85,8 @@ export function pendingSendVisual(editor, item, { authorKind = 'human', parent =
   return { id: `local:${editor.context.instanceId}:${item.id}`, topic_id: item.topicId,
     author_id: editor.context.actor, author_kind: authorKind, body: snapshot.body, attachments,
     whisper: snapshot.whisper === true, private_to: snapshot.whisper ? snapshot.addressees?.[0] : null,
-    reply_to: pendingSendReplyTo(item), reply_to_author: parent?.author_id,
-    reply_to_excerpt: parent?.body, reply_to_removal: parent?.removal, sent_ms: null };
+    reply_to: replyTo, reply_to_author: context?.author_id,
+    reply_to_excerpt: context?.body, reply_to_removal: context?.removal, sent_ms: null };
 }
 
 export function clearPendingSends(host) {

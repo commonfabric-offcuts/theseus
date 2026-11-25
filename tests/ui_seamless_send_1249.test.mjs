@@ -43,6 +43,7 @@ const confirm = f => {
 
 for (const status of ['preparing','prepared','confirmed']) test('1273 frozen message submission without reply_to targets its dossier ('+status+')',t=>{
   const f=fixture(t);f.item.sourceRef={kind:'message',id:'earlier-parent'};f.item.status=status;
+  f.item.replySource={sourceRef:{...f.item.sourceRef},topicId:'t',destinationId:'t',whisper:false,authority:{...pin}};
   assert.equal(Object.hasOwn(f.item.snapshot,'reply_to'),false);
   const folder=f.doc.createElement('section'),replies=f.doc.createElement('div'),later=f.doc.createElement('div'),end=f.doc.createElement('dialog');
   folder.append(replies);replies.append(later);f.host.append(folder,end);
