@@ -44,6 +44,29 @@ test('1271 the table supplies a root absent from loaded message rows',async()=>{
   const answer=await f.api.view('topic_messages',{topic_id:'t'});
   assert.deepEqual(answer,legacy(packed));assert.equal(answer.items[0].stack_position.root_id,'root');
 });
+for(const named of [false,true])for(const rootLoaded of [false,true])test(
+  '1271 items-only cover expands '+(named?'named positions':'message page')+' with '+(rootLoaded?'root and reply':'reply only'),async()=>{
+    const packed=wire({named,rootLoaded});
+    packed.positions.root.cover={root_id:'root',revision:0,stands:null,waiting:[],payload:null,by:null,at_ms:null,
+      items:[1,2,3].map(number=>({workspace_id:'w1',number,title:'Current linked improvement '+number,
+        state:'Now',piece_id:null,sources:[number===2?'reply':'root']}))};
+    packed.positions.root.cover_revision=0;
+    if(rootLoaded&&!named)packed.items[0].acts.cover_revision=0;
+    const expected=legacy(packed),f=fixture({answer:packed});await f.api.bootstrap();
+    const args={topic_id:'t',message_ids:rootLoaded?['root','reply']:['reply']};
+    const answer=await f.api.view(named?'stack_positions':'topic_messages',args);
+    assert.equal(f.calls.at(-1).body.args.position_format,FORMAT);
+    assert.deepEqual(answer,expected);
+    const cover=answer.items[0].stack_position.cover;
+    assert.equal(cover.stands,null);assert.equal(cover.payload,null);
+    assert.deepEqual(cover.items.map(row=>row.number),[1,2,3]);
+    cover.items[0].title='Local item mutation';
+    assert.equal(packed.positions.root.cover.items[0].title,'Current linked improvement 1');
+    if(rootLoaded){
+      assert.equal(answer.items[1].stack_position.cover.items[0].title,'Current linked improvement 1');
+      if(!named)assert.equal(answer.items[0].acts.cover.items[0].title,'Current linked improvement 1');
+    }
+});
 test('1271 distinct historical message acts survive the root reference',async()=>{
   const packed=wire();packed.items[1].acts={cover:{root_id:'reply',revision:7,stands:'Historical joined cover'},cover_revision:7};
   const f=fixture({answer:packed});await f.api.bootstrap();const answer=await f.api.view('topic_messages',{topic_id:'t'});
