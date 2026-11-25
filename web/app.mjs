@@ -3,6 +3,7 @@ let actionTimings = null;
 const beginTiming = kind => timingCall(actionTimings, 'begin', kind);
 import { paintPendingSends, pendingSendVisual, pendingSendReplyTo, adoptPendingSend, reconcilePlacedSend, clearPendingSends, keepPendingSendPlace } from './pending-sends.mjs';
 import { paintCardWords, cardWordOptions } from './message-card-content.mjs';
+import { paintReleaseCard, deferReleaseCard } from './release-card.mjs';
 import { MessageChanges } from './message-changes.mjs';
 import { OlderFeed } from './older-feed.mjs';
 import { topicCloseUI } from './topic-close-ui.mjs';
@@ -1629,6 +1630,7 @@ function paintViews(kind, reactionId = null) {
       paintCardAuthor(author, item);
       paintCardWords(card, item, cardWordOptions(item, { revision: revisionOf(item),
         showChanges: messageChanges?.shown(item.id, revisionOf(item)) ?? true, displayRules: displayRules() }));
+      paintReleaseCard(card, item);
       // Its images as thumbnails after its words, each read through the message (card-images.mjs, item 474).
       if (adoption) adoptCardImages(card, item, cardImageBytes(item.id));
       paintCardImages(card, item, cardImageBytes(item.id));
@@ -3150,9 +3152,16 @@ async function messageEdited(key, version, read, current) {
   // Refused (the message is no longer readable here): the Reader keeps what it shows, and the page goes on.
   try { latest ??= await read('source', { source_ref: { kind: 'message', id } }); }
   catch (error) { if (['FORBIDDEN', 'INVALID_ARGUMENT'].includes(error?.details?.error?.code)) return done; throw error; }
-  if (!current() || !registry.isSourceCurrent(p) || messageEdit?.id === id || revisionOf(latest) <= revisionOf(p.source)) return done;
-  Object.assign(p.source, { body: latest.body, revision: revisionOf(latest), edited_ms: latest.edited_ms ?? null, struck: latest.struck ?? null, acts: latest.acts ?? p.source.acts });
-  reader.redrawSource();
+  if (!current() || !registry.isSourceCurrent(p) || p.sourceUnavailable || p.availabilityUnconfirmed || messageEdit?.id === id || revisionOf(latest) <= revisionOf(p.source)) return done;
+  const apply = () => {
+    if (!current() || !registry.isSourceCurrent(p) || p.sourceUnavailable || p.availabilityUnconfirmed || !reader.dialog.open || reader.source !== p.source) return;
+    Object.assign(p.source, { body: latest.body, revision: revisionOf(latest), edited_ms: latest.edited_ms ?? null,
+      struck: latest.struck ?? null, acts: latest.acts ?? p.source.acts, release_card: latest.release_card });
+    reader.redrawSource();
+  };
+  if (deferReleaseCard(reader.sourceBody, latest, apply, {
+    protect: () => reader.dialog.open, current: () => current() && registry.isSourceCurrent(p) && !p.sourceUnavailable && !p.availabilityUnconfirmed && reader.dialog.open && reader.source === p.source })) return done;
+  apply();
   return done;
 }
 // Each card whose marks of the person's own note and saved reply changed
@@ -3177,12 +3186,16 @@ function repaintYours(ids) {
 // "Edited" and whether it reads as read, and the reply line of each loaded reply to it; then the
 // conversation's own copy of each edited message (edits, loaded here or not)
 // and of each reply to one, and the stacks, whose rows read first lines.
-function repaintEdited(ids, edits) {
+function repaintEdited(ids, edits, releaseUpdate = false) {
   const CUE = 'Excerpt · Open to read the rest';
   for (const id of ids) {
     const item = views.messages.get(id), entry = messageEntries.get(id);
     if (!item || !entry) continue;
     const card = cardIn(entry);
+    if (deferReleaseCard(card, item, () => repaintEdited([id], edits, true), {
+      force: releaseUpdate,
+      protect: () => reader?.dialog.open && reader.source?.source_ref?.id === id,
+      current: () => !retired && messageEntries.get(id) === entry && views.messages.get(id) === item && !item.removal })) continue;
     if (deferFencePaint(card, () => repaintEdited([id], edits))) continue;
     paintCardAuthor(card.querySelector(':scope > .message-author'), item);
     paintReplyContext(card, item);
@@ -3198,6 +3211,7 @@ function repaintEdited(ids, edits) {
     }
     paintCardImages(card, item, cardImageBytes(id));
     paintCardDocuments(card, item);
+    paintReleaseCard(card, item);
     paintFoldWords(entry, item);
     if (keepingWhole) {
       // Keep the old whole source while its revision is read, rather than
