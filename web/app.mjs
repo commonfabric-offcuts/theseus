@@ -950,7 +950,7 @@ async function openSource(ref, opener, act = null, mode = 'reply', replyCard = n
 // Only recorded arrivals can own a continuous hold after that repaint.
 // More keeps its existing landing rule. A card no longer drawn hands the hold
 // to the next card below it. roomy gives back the room holdRoom kept.
-let roomy = null, listAnchor = null, anchorDepth = 0, anchorWatch = null, anchorActing = false, listActAnchor = null, anchorHold = null;
+let roomy = null, anchorDepth = 0, anchorWatch = null, anchorActing = false, listActAnchor = null, anchorHold = null;
 const newAbove = new Set();
 let newAboveButton = null;
 // A later gesture owns its own place (including More and keyboard navigation).
@@ -1084,7 +1084,6 @@ function restoreListAnchor(saved) {
 function rememberListAnchor(landing = false) {
   if (landing) anchorHold = null;
   if (retired || !$('messages')?.isConnected) return;
-  listAnchor = anchorHold ?? captureListAnchor();
   paintNewAbove();
   anchorWatch?.observe();
   anchorWatch?.mutations.takeRecords();
