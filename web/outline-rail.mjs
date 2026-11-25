@@ -309,13 +309,22 @@ export class OutlineRail {
         if (typeof event.outcomes === 'string') this.outcomesKey = event.outcomes;
         this.sidebarChanges.observe(event);
         if (this.doc.visibilityState !== 'visible') return;
-        if (event.state === 'live') { full = true; changed(); }
+        if (!this.sidebarChanges.enabled) {
+          // Older servers lack scoped changes. Preserve their immediate load
+          // and opaque-key list caching, including folded-outcome counts.
+          if (event.state === 'live') this.reload();
+          else if (event.kind === 'commit') {
+            const dirty = new Set(['topics', 'stars', 'pages', 'counts']);
+            if (this.outcomesKey === null || this.outcomesKey !== this.readOutcomesKey) dirty.add('outcomes');
+            this.reload(dirty);
+          }
+        } else if (event.state === 'live') { full = true; changed(); }
         else if (event.kind === 'commit') changed();
       }) ?? null;
     for (const outcome of this.outcomes.values()) outcome.rail?.updateCurrent(this.currentTopicIn(outcome.id));
     this.doc.getElementById('rail')?.setAttribute('aria-label', 'Outcomes');
     this.paint();
-    if (!handles.outcomeChanges) changed();
+    if (!handles.outcomeChanges) { if (this.sidebarChanges.enabled) changed(); else this.reload(); }
   }
   // Watch the authorized open workspace lists and only Notebook topics whose
   // starred pages are displayed. Personal changes cover stars/counts globally.
