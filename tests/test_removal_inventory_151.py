@@ -11,7 +11,7 @@ import test_message_removal_151 as removal_fixture
 
 # Explicit producer inventory, not a guessed call graph. All ordinary views
 # cross _hand_over; these owners can return message words or attached media.
-CONTENT_VIEWS = {'attention', 'check_readings', 'conversation', 'deliveries', 'delivery', 'media',
+CONTENT_VIEWS = {'release_card', 'attention', 'check_readings', 'conversation', 'deliveries', 'delivery', 'media',
     'outcome_checks', 'pipeline', 'pipeline_item', 'source', 'stars',
     'topic_images', 'topic_messages'}
 REFERENCE_OR_PRIVATE_VIEWS = {'assessment', 'assessments', 'dossier_cover', 'dossier_move_targets', 'dossier_moves',
