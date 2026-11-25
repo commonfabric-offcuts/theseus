@@ -73,7 +73,7 @@ test('875 actual starred rail handler and app landing draw newest seven and the 
   const f = fixture(); let result, requested;
   const stackFeed = Object.assign(Object.create(StackFeed.prototype), { list: f.list });
   const context = vm.createContext({ entries, reveal, opened, stackFeed, $: () => f.list, releaseTopArrivals() {},
-    anchorHold: null, rememberListAnchor() {}, listAccessEpoch: 1, registry: { generation: 1, disposed: false },
+    windowReadSerial: 0, anchorHold: null, rememberListAnchor() {}, listAccessEpoch: 1, registry: { generation: 1, disposed: false },
     retired: false, topicUnavailable: false, views: { messages: f.messages }, shell: { drawer: { isOpen: () => false } } });
   vm.runInContext(landingSource, context);
   const rail = { pageStars: false, outline: { doc: f.doc, open(target) {

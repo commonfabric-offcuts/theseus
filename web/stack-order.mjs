@@ -598,6 +598,7 @@ export class DossierHeads {
   constructor({ topicId, read, changed = () => {}, current = () => true }) {
     Object.assign(this, { topicId, read, changed, current });
     this.records = new Map(); this.serial = 0; this.readTail = Promise.resolve();
+    this.queued = new Map(); this.reading = false;
     // A reference to TopicViews' terminal knowledge, never another act store.
     this.removals = null;
   }
@@ -606,10 +607,12 @@ export class DossierHeads {
       this.records.delete(root); ++this.serial;
     }
   }
-  sync(messages, removals = this.removals) {
+  sync(messages, removals = this.removals, allowedRoots = null) {
     this.removals = removals;
-    const wanted = new Set([...dossiersOf([...messages.values()]).values()].filter(id => !messages.has(id) && removals?.get(id)?.kind !== 'unsent'));
+    const wanted = new Set([...dossiersOf([...messages.values()]).values()].filter(id => !messages.has(id) &&
+      removals?.get(id)?.kind !== 'unsent' && (!allowedRoots || allowedRoots.has(id))));
     for (const id of this.records.keys()) if (!wanted.has(id)) this.records.delete(id);
+    for (const id of this.queued.keys()) if (!wanted.has(id)) this.queued.delete(id);
     const added = [];
     for (const id of wanted) if (!this.records.has(id)) {
       const record = { state: 'loading', token: ++this.serial };
@@ -617,9 +620,16 @@ export class DossierHeads {
     }
     // At most one request occupies the background lane, leaving room for
     // the change feed. Core admits up to100 named messages in one read.
-    for (let at = 0; at < added.length; at += 100) {
-      const batch = added.slice(at, at + 100);
-      this.readTail = this.readTail.then(() => this.readBatch(batch));
+    for (const [id, record] of added) this.queued.set(id, record);
+    if (!this.reading && this.queued.size) {
+      this.reading = true;
+      this.readTail = Promise.resolve().then(async () => {
+        while (this.queued.size && this.current()) {
+          const batch = [...this.queued].slice(0, 100);
+          for (const [id] of batch) this.queued.delete(id);
+          await this.readBatch(batch);
+        }
+      }).finally(() => { this.reading = false; });
     }
   }
   async readBatch(queued) {

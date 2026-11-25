@@ -24,7 +24,7 @@ function model(s=source) {
  nodes.push(node('a',250),node('b',450),node('c',650));
  const document={activeElement:null,documentElement:{scrollHeight:5000},body:{},querySelectorAll:()=>nodes.filter(e=>!e.hidden),addEventListener:(k,f)=>listen('document',k,f),removeEventListener:(k,f)=>unlisten('document',k,f),caretPositionFromPoint:()=>null};
  const Observer=class {constructor(cb){this.cb=cb;this.observed=new Set();this.disconnected=false;observers.push(this)}observe(n){this.observed.add(n)}unobserve(n){this.observed.delete(n)}disconnect(){this.observed.clear();this.disconnected=true}takeRecords(){return []}};
- const context=vm.createContext({window:win,document,innerWidth:600,innerHeight:800,Node:{DOCUMENT_POSITION_FOLLOWING:4,TEXT_NODE:3},inline:null,registry:{},retired:null,topicUnavailable:false,authorityReviewPending:()=>false,entries:()=>nodes,drawn:(l,id)=>nodes.some(n=>n.dataset.id===id&&!n.hidden),typingField:()=>false,views:{messages:new Map()},bootstrap:{actor:'viewer'},messageEntries:new Map(),topic:{id:'isolated-topic'},stackState:()=>({stacks:[]}),cardIn:e=>e,reveal:()=>{},button:(text,activate)=>({activate,style:{},setAttribute:()=>{}}),$:id=>({messages:list,main,'new-message-sheet':home})[id],opened:e=>e,ResizeObserver:Observer,MutationObserver:Observer,requestAnimationFrame:f=>{frames.set(++serial,f);return serial},cancelAnimationFrame:id=>frames.delete(id)});
+ const context=vm.createContext({windowReadSerial:0,window:win,document,innerWidth:600,innerHeight:800,Node:{DOCUMENT_POSITION_FOLLOWING:4,TEXT_NODE:3},inline:null,registry:{},retired:null,topicUnavailable:false,authorityReviewPending:()=>false,entries:()=>nodes,drawn:(l,id)=>nodes.some(n=>n.dataset.id===id&&!n.hidden),typingField:()=>false,views:{messages:new Map()},bootstrap:{actor:'viewer'},messageEntries:new Map(),topic:{id:'isolated-topic'},stackState:()=>({stacks:[]}),cardIn:e=>e,reveal:()=>{},button:(text,activate)=>({activate,style:{},setAttribute:()=>{}}),$:id=>({messages:list,main,'new-message-sheet':home})[id],opened:e=>e,ResizeObserver:Observer,MutationObserver:Observer,requestAnimationFrame:f=>{frames.set(++serial,f);return serial},cancelAnimationFrame:id=>frames.delete(id)});
  vm.runInContext(cut(s)+`;globalThis.api785={captureListAnchor,recordListArrivals,restoreListAnchor,keepListAnchor,watchListAnchor,rememberListAnchor,paintNewAbove,offers:newAbove,pill:()=>newAboveButton,stop:()=>anchorWatch.stop(),settle:(records=[])=>anchorWatch.mutations.cb(records),act:()=>[...[]],state:()=>({anchorActing,anchorDepth,anchorHold})};`,context);
  // Real model arrivals populate the same accepted-record and entry maps used
  // by the product repaint producer. A test-only ownership token grants nothing.
@@ -67,6 +67,29 @@ test('item 785 real source observers reject unrelated layout, accept deliberate 
  m.dispatch('document','wheel');m.flush();m.win.scrollY+=120;const wanted=m.win.scrollY;m.api.settle();assert.equal(m.win.scrollY,wanted,'own deliberate scroll supersedes old anchor');
  // All event callbacks are capture-owned; invoking here is a model control, never native proof.
  for(const callback of m.listeners)callback();assert.ok(m.frames.size);m.api.stop();assert.ok(m.observers.every(o=>o.disconnected));assert.equal(m.frames.size,0);assert.equal(m.listeners.size,standing);
+});
+test('1247 full capture eviction arrival restore retires every detached hold reference while keeping the surviving anchor',()=>{
+ const m=model(),gone=m.nodes.slice(1),anchor=m.nodes[0],before=anchor.getBoundingClientRect().top;
+ for(const entry of m.nodes){m.context.views.messages.set(entry.dataset.id,{id:entry.dataset.id,seq:Number(entry.dataset.seq),topic_id:'isolated-topic',author_id:'outside'});m.context.messageEntries.set(entry.dataset.id,entry);}
+ Object.assign(m.context,{windowEvictions:new Set(),coldArrivals:null,dropCardDocuments(){},dropCardImages(){},cardScroll:null,cardObserver:null,middleObserver:null,
+  halfShown:new Set(),atMiddle:new Set(),openedIds:new Set(),cardReplies:null,messageChanges:null,questionStates:null,visitNew:null,reader:null,messageEdit:null,forgetStackMessages(){},stackFeed:null});
+ Object.assign(m.context.views,{windowRoots:new Set(),windowHints:new Map()});
+ Object.assign(m.context.registry,{cards:new Map(),current:null,sessions:new Map()});
+ for(const entry of gone)entry.remove=()=>{entry.isConnected=false;m.nodes.splice(m.nodes.indexOf(entry),1);};
+ vm.runInContext(source.slice(source.indexOf('function queueWindowEvictions'),source.indexOf('async function readWindowGap')),m.context);
+ m.api.keepListAnchor(()=>{
+  m.arrive(80);
+  for(const entry of gone)m.context.views.messages.delete(entry.dataset.id);
+  m.context.queueWindowEvictions(gone.map(entry=>entry.dataset.id));m.context.releaseWindowReferences();
+ });
+ const held=m.api.state().anchorHold;
+ assert.ok(held,'the real outer finally retains the valid arrival hold');assert.equal(held.anchor,anchor);assert.equal(anchor.getBoundingClientRect().top,before);
+ for(const key of ['cards','held','cardSet','backward','present'])for(const entry of held[key]??[])assert.equal(gone.includes(entry),false,key+' drops retired cards');
+ for(const key of ['tops','arrivals','arrivalOwners','arrivalLayout'])for(const entry of held[key]?.keys()??[])assert.equal(gone.includes(entry),false,key+' drops retired cards');
+ assert.equal(gone.includes(held.last),false,'last drops retired card');assert.equal(gone.includes(held.control),false,'control drops retired card');
+ const arrival=[...held.arrivalOwners.keys()][0];arrival.h+=40;anchor.y+=40;m.list.h+=40;
+ // The retained owner still compensates a later size change through the same restore path.
+ m.api.restoreListAnchor(held);assert.equal(anchor.getBoundingClientRect().top,before);
 });
 test('item 785 applied source mutants are caught and byte restored with restored controls',()=>{
  const dir=mkdtempSync(join(tmpdir(),'reading785-local-')),path=join(dir,'app.mjs'),history=[];
