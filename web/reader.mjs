@@ -27,6 +27,7 @@ import { paintRemoval } from './message-removal.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { overhang } from './lit-field.mjs';
 import { coverSheet, coverKey, coverSummary, payloadPill } from './dossier-cover.mjs';
+import { paintReleaseCard, disposeReleaseCard } from './release-card.mjs';
 import { pointerLight, observePointerLight } from './pointer-light.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
@@ -579,6 +580,10 @@ export class Reader {
       notebook: source?.source_ref?.kind === 'memory',
       displayRules: source?.source_ref?.kind === 'message' ? this.callbacks.displayRules?.() ?? [] : [],
       images: page ? pageImages(source, attachment => this.callbacks.pageImage(attachment, source.source_ref)) : null });
+    paintReleaseCard(this.sourceBody, source, { mount: node => {
+      const parent = this.sourceBody.parentElement ?? this.sourceBody.parentNode;
+      if (parent) parent.insertBefore(node, this.sourceBody);
+    } });
     this.placeEnd();
   }
 
@@ -1238,6 +1243,7 @@ export class Reader {
     if (pane) pane.className = (source && this.callbacks.paneClass?.(source)) || 'reading-pane';
   }
   hideUnavailableSource() {
+    disposeReleaseCard(this.sourceBody);
     this.expandReply();
     this.disarm(); this.sourceBody.replaceChildren(); this.$('source-attachments').replaceChildren();
     this.$('reader-title').textContent = 'Source unavailable';
