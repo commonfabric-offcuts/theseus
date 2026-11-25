@@ -5977,5 +5977,21 @@
         "web/app.mjs"
       ]
     }
+  },
+  "tests/ui_send_receipt_sequence_1261.test.mjs": {
+    "06b51e7edb441935247b84895d71c81c774c6dd3cc21a694ee57429e6f59d0cb": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
+  },
+  "tests/ui_send_room_1275.test.mjs": {
+    "9aabc603da98cb5c8e5cce1ecef6d28dfda28cc2c0606e563e4413df36e4e735": {
+      "scope": "repository",
+      "inputs": [
+        "web/app.mjs"
+      ]
+    }
   }
 }
