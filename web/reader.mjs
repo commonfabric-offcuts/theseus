@@ -1359,7 +1359,7 @@ export class Reader {
       // before awaiting its journal or network; later receipts only paint status.
       const early = !stay && Boolean(this.callbacks.pending);
       const sending = this.callbacks.send(editor, { stay: early || returnToCard || stay });
-      if (this.editor === editor && editor.draft !== draft) { this.drawEditor(); this.field.focus(); }
+      if (this.editor === editor && editor.draft !== draft) { this.drawEditor(); this.field.focus(); this.callbacks.settled?.(editor, editor.submissions?.find(item => item.status === 'preparing' && !item.detached)); }
       const version = editor.localVersion, cycle = editor.clientCycleId, notice = this.noticeVersion;
       // An ordinary send can hand off to its retained pending card after
       // local keeping. Explicit stay and surfaces without that owner keep

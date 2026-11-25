@@ -536,7 +536,7 @@ export class InlineComposer {
     const draft = editor.draft;
     try {
       const sent = this.callbacks.send(editor, p);
-      if (this.admits(p, editor) && editor.draft !== draft) { this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.paintChoice(); this.field.focus(); }
+      if (this.admits(p, editor) && editor.draft !== draft) { this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.paintChoice(); this.field.focus(); this.callbacks.settled?.(editor, editor.submissions?.find(item => item.status === 'preparing' && !item.detached)); }
       const version = editor.localVersion, cycle = editor.clientCycleId, noticeVersion = this.noticeVersion;
       const completion = { p, editor, opening, version, cycle, noticeVersion,
         item: editor.submissions?.find(item => item.status === 'preparing' && !item.detached) };

@@ -8,6 +8,7 @@ import {EditorRegistry} from '../web/app-session.mjs';
 import {RecoveryJournal} from '../web/journal.mjs';
 import {Reader} from '../web/reader.mjs';
 import * as pending from '../web/pending-sends.mjs';
+import {timingCall} from '../web/action-timing.mjs';
 import {miniDocument} from './fixtures/mini_dom.mjs';
 const app=readFileSync(new URL('../web/app.mjs',import.meta.url),'utf8');
 const copy=value=>structuredClone(value), pin={authority_id:'a',authority_epoch:'e',continuity:'initial'};
@@ -45,7 +46,7 @@ function fixture(t,{kind='message',sourceTopic='t',sourceWhisper=false,sendWhisp
  const parent={id:'parent',topic_id:sourceTopic,author_id:'source-author',body:source.body,whisper:sourceWhisper};
  const explicitParent={id:'override',topic_id:'t',author_id:'explicit-author',body:'Explicit words',whisper:false};
  const messages=new Map([['parent',parent],['override',explicitParent]]),topic={id:'t'};
- const c=vm.createContext({document:d.doc,window:d.doc.defaultView,registry,bootstrap:{actor_kind:'human'},topic,views:{messages:new Map()},messageEntries:new Map(),listAccessEpoch:0,retired:false,topicUnavailable:false,authorityReviewPending:()=>false,roomy:null,
+ const c=vm.createContext({timingCall,document:d.doc,window:d.doc.defaultView,registry,bootstrap:{actor_kind:'human'},topic,views:{messages:new Map()},messageEntries:new Map(),listAccessEpoch:0,retired:false,topicUnavailable:false,authorityReviewPending:()=>false,roomy:null,
   $:id=>({messages:d.host,'new-message-sheet':d.end})[id],feedMessages:()=>messages,displayActor:id=>id,displayRules:()=>[],drawn:()=>false,run:job=>job(),status:e=>errors.push(e),restoredSendViews:new WeakSet(),inline:null,cardReplies:null,cardIn:n=>n,
   stackFeed:{stackFor:id=>['parent','override'].includes(id)?{id:'stack'}:null},stackState:()=>({sections:new Map([['stack',{isConnected:true,querySelector:()=>d.replies}]])}),...pending});
  for(const name of ['pendingSendCard','restorePendingSendPlace','pendingSendTarget','focusPendingSend','handoffReaderSend','paintSubmittedWriting'])vm.runInContext(actual(name),c,{filename:'actual-app:'+name});
