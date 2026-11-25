@@ -43,6 +43,22 @@ const earlierRows = new WeakMap();
 const foldHeaders = new WeakMap();
 const coverTools = new WeakMap();
 
+// Retiring a passive window releases layout references as well as card DOM.
+// Canonical fold/place facts return with their records; this makes no act.
+export function forgetStackMessages(list, retained) {
+  const state = states.get(list); if (!state) return;
+  for (const name of ['kept', 'unreadKept', 'peeked', 'earlier', 'whole', 'waiting', 'filled', 'apart', 'sourceRoots', 'writing', 'folded', 'starred', 'coordination', 'coordinationHere', 'below']) {
+    const set = state[name]; if (set) for (const id of set) if (!retained.has(id)) set.delete(id);
+  }
+  for (const name of ['levels', 'savedLevels', 'here', 'sections', 'checking', 'held']) {
+    const map = state[name]; if (map) for (const id of map.keys()) if (!retained.has(id)) map.delete(id);
+  }
+  for (const node of state.scrolled.keys()) if (!node.isConnected) state.scrolled.delete(node);
+  state.stacks = state.stacks.filter(stack => retained.has(stack.head.id)).map(stack => ({ ...stack,
+    replies: stack.replies.filter(item => retained.has(item.id)) }));
+  state.filling = null;
+}
+
 // Every message entry in the list, in the page's order: each stack's head,
 // then its replies, folded ones included.
 export const entries = list => [...list.querySelectorAll(ENTRIES)];
