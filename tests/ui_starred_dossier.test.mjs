@@ -41,7 +41,7 @@ const gate655 = () => {
 function opening655(present) {
   const ref = { kind: 'message', id: 'source' }, source = { instance_id: 'i', source_ref: ref, topic_id: 't' };
   const registry = Object.create(EditorRegistry.prototype);
-  Object.assign(registry, { generation: 0, disposed: false, bootstrap: { instance_id: 'i', actor: 'reader' }, activity() {},
+  Object.assign(registry, { generation: 0, disposed: false, bootstrap: { instance_id: 'i', actor: 'reader' }, runtime: { current: { authority_id: 'fixture', authority_epoch: 'epoch', continuity: 'initial' } }, activity() {},
     cleanup: { foreground: () => ({ read: work => work({}), release() {} }) },
     keepBeforeStep: async () => {}, api: { view: async name => name === 'source' ? source : { submissions: [], destination_available: true } },
     validateState() {}, setPending() {}, register: async () => ({ read() {} }),

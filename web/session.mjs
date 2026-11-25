@@ -466,7 +466,8 @@ export class EditorSession {
     if (previous) {
       return this.sends.get(previous.id) ?? this.start(previous, options, true);
     }
-    const item = this.editor.beginPrepare({ prepareOperationId: this.id(), sendOperationId: this.id(), submissionId: this.id() });
+    const item = this.editor.beginPrepare({ prepareOperationId: this.id(), sendOperationId: this.id(), submissionId: this.id(),
+      replySource: options.replySource });
     item.authority = authorityPair(this.authority);
     // The page hears of the reply once it is under way, so it is never shown in doubt.
     const sending = this.start(item, options);

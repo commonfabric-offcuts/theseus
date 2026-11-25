@@ -4,7 +4,7 @@ import { EditorSession, RuntimeAuthority } from './session.mjs';
 import { RecoveryCleanup, eligible } from './cleanup.mjs';
 import { Uploads } from './uploads.mjs';
 import { writingValue, imageValues } from './writing-comparison.mjs';
-import { uploadWork, readableUploads, copyNeedsImageReview, refusedCopyAtDraft, copyChoiceKey, currentImages } from './upload-state.mjs';
+import { uploadWork, readableUploads, copyNeedsImageReview, refusedCopyAtDraft, copyChoiceKey, currentImages, samePin } from './upload-state.mjs';
 
 const copy = value => structuredClone(value);
 // Every field of a writing but where its caret sits, empty; and a reply's words as such a writing: its body, quotes
@@ -128,6 +128,7 @@ export class EditorRegistry {
     if (this.cardOpenings.has(id)) return this.cardOpenings.get(id);
     const foreground = this.cleanup.foreground();
     const load = async () => {
+      const sourceAuthority = copy(this.runtime.current);
       const [source, state] = await foreground.read(options => pairedReads([
         this.api.view('source', sourceRef, options),
         this.api.view('editor_state', { source_ref: sourceRef, topic_id: topic.id, limit: this.pendingPageSize, unsent: true }, options),
@@ -141,7 +142,7 @@ export class EditorRegistry {
       const reply = await this.register(context, state.draft);
       if (this.disposed) return null;
       reply.unavailable = !state.destination_available; reply.read(sourceRef);
-      const p = { surface: 'card', source, topic: copy(topic), editors: { reply }, mode: 'reply',
+      const p = { surface: 'card', source, sourceAuthority, topic: copy(topic), editors: { reply }, mode: 'reply',
         destinationAvailable: state.destination_available, hidden: false };
       this.cards.set(id, p); this.activity(); return p;
     };
@@ -328,6 +329,7 @@ export class EditorRegistry {
     try {
     await this.keepBeforeStep(this.interactive);
     if (this.cards?.size) await this.keepEditorsLocal([...this.cards.values()].flatMap(p => Object.values(p.editors)));
+    const sourceAuthority = copy(this.runtime.current);
     const [sourceAnswer, state] = await foreground.read(options => pairedReads([
       this.api.view('source', sourceRef, options),
       this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize, unsent: true }, options),
@@ -370,7 +372,7 @@ export class EditorRegistry {
     if (!sourceUnavailable) { reply.read(sourceRef); note.read(sourceRef); }
     const source = sourceUnavailable ? { instance_id: this.bootstrap.instance_id, source_ref: copy(sourceRef),
       topic_id: topicId ?? null, title: 'Source unavailable', body: '', attachments: [] } : sourceAnswer;
-    const presentation = { token, source, sourceUnavailable, destinationAvailable: state.destination_available,
+    const presentation = { token, source, sourceAuthority, sourceUnavailable, destinationAvailable: state.destination_available,
       editors: { reply, note }, mode, opener, mark: state.mark ?? null, replyCard, fromCardReply };
     this.pendingOpen = null;
     this.current = presentation; await this.present(presentation);
@@ -442,8 +444,21 @@ export class EditorRegistry {
   send(editor, options = {}) {
     if (options.presentation && !this.isCurrent(options.presentation, editor)) throw Error('Return to this writing before sending.');
     if (editor.unavailable) throw Error('The source or destination is unavailable. Your writing is kept on this device.');
+    const presentation = options.presentation ?? this.interactive, session = this.sessionFor(editor);
+    const source = presentation?.source;
+    // Source kind alone does not say whether Core will derive a reply. Keep
+    // these validated facts with A before later writing/navigation can move.
+    const replySource = source?.source_ref?.kind === 'message' && !source.error &&
+      source.instance_id === editor.context.instanceId && same(source.source_ref, editor.sourceRef) &&
+      typeof source.topic_id === 'string' && source.topic_id && typeof source.whisper === 'boolean' &&
+      !source.withheld && !presentation.sourceUnavailable && !presentation.availabilityUnconfirmed &&
+      presentation.destinationAvailable === true && this.isCurrent(presentation, editor) &&
+      samePin(presentation.sourceAuthority, session.authority) && samePin(session.authority, this.runtime.current)
+      ? { sourceRef: copy(source.source_ref), topicId: source.topic_id, whisper: source.whisper,
+        destinationId: editor.context.topicId,
+        authority: { authority_id: session.authority.authority_id, authority_epoch: session.authority.authority_epoch } } : null;
     this.cancelSave(editor);
-    return this.sessionFor(editor).send({ ...options, presentation: options.presentation ?? this.interactive });
+    return session.send({ ...options, presentation, replySource });
   }
 
   // Move text to the existing topic composer, keeping the destination before
