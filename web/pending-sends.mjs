@@ -41,7 +41,12 @@ export function keepPendingSendPlace(host, paint, { current = () => true,
       same.focus({ preventScroll: true });
     }
     const delta = top(after) - before;
-    if (Number.isFinite(delta) && delta !== 0) { if (restore) restore(after, before); else scroll(delta); }
+    // The restore owner also settles temporary room. An inner list hold can
+    // make the measured delta zero while leaving that room installed.
+    if (Number.isFinite(delta)) {
+      if (restore) restore(after, before);
+      else if (delta !== 0) scroll(delta);
+    }
   }
   return result;
 }
