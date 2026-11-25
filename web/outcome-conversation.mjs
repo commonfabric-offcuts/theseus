@@ -1,6 +1,7 @@
 // Shared reply destinations, asks and saved writing. The conversation is an
 // ordinary topic page (835); Core still owns its coordinator and routing rules.
 import { WRITING_FIELDS, noWriting } from './editor.mjs';
+import { terminalQuestion } from './question-state.mjs';
 
 const element = (doc, tag, props = {}, ...children) => {
   const node = doc.createElement(tag);
@@ -54,8 +55,10 @@ export function paintAbout(card, message, reader, open, doc = document) {
 
 // The small "Asks you" label after the author's name, on a card whose ask waits on the reader.
 export function paintAsksYou(author, message, waits, reader, doc = document) {
-  author.querySelector(':scope > .asks-you')?.remove();
-  if (!(waits ?? []).some(wait => wait.on === reader && wait.ask_message_id === message?.id)) return;
+  const previous = author.querySelector(':scope > .asks-you');
+  if (message?.withdrawal || message?.removal || terminalQuestion(message?.question) ||
+      !(waits ?? []).some(wait => wait.on === reader && wait.ask_message_id === message?.id)) { previous?.remove(); return; }
+  if (previous) return;
   const label = element(doc, 'span', { className: 'topic-state mine asks-you', textContent: 'Asks you' });
   author.insertBefore(label, author.querySelector(':scope > .message-time'));
 }
