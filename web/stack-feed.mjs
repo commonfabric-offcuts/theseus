@@ -17,7 +17,7 @@ import { unstarDossier } from './dossier-unstar.mjs';
 // stacks are drawn again whenever an answer changes what they show. Explicit
 // dossier levels and individual message folds are separate personal Core acts.
 import { cardIn } from './fold.mjs';
-import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn, paintHeadReading } from './reply-stacks.mjs';
+import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn, repaintStackReading } from './reply-stacks.mjs';
 import { moveOf, keyOf, joinShown, joinOf, foldStep, laterActs, positionOf, placeOf, sideOf, headOf, stackCover, dossierOf } from './stack-order.mjs';
 import { noteAt } from './press-note.mjs';
 import { keyAction, writing } from './pane-keys.mjs';
@@ -352,8 +352,23 @@ export class StackFeed {
       const card = cardIn(entry), item = messages.get(card.dataset.id);
       if (item) { this.paintStar(card.querySelector(':scope > .message-author'), item); this.paintFoldedThumb(card, item); }
     }
+    this.readingMembers = new Set(messages.keys());
     this.redrawn();
     this.moreChanged();
+  }
+  // A read-only paint must not hide an admission/retirement or current key,
+  // place, join or head change. Current records and renderer preflight decide.
+  updateReading(ids) {
+    if (!this.list.isConnected) return;
+    const messages = this.messages(), before = this.arrangeMessages;
+    this.arrangeMessages = messages;
+    try {
+      if (!this.readingMembers || this.readingMembers.size !== messages.size ||
+          [...messages.keys()].some(id => !this.readingMembers.has(id))) return this.arrange();
+      let painted;
+      this.hold(() => { painted = repaintStackReading(this.list, ids, this.shownMessages()); });
+      if (!painted) return this.arrange();
+    } finally { this.arrangeMessages = before; }
   }
   // A 👍 on a folded message's row (item 390), before "Folded": the same
   // thumbs-up as the bar's 👍, pressed once given, with the count once anyone
@@ -385,7 +400,7 @@ export class StackFeed {
   // Giving a thumb can only retire New marks. Refresh the affected dossier's
   // existing marks without gathering/arranging all loaded messages.
   paintReactionReading(card) {
-    paintHeadReading(card, this.messages(), this.unread, this.nameOf);
+    this.updateReading([card.dataset.id]);
   }
   // The message a control in a card acts on: its card's. Only the card names
   // its message (data-id), so what finds a message's card finds that alone.
