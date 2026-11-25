@@ -112,3 +112,22 @@ passive use; native action/traffic timing and geometry remain separate proof.
 1242 follow-up: offer retirement shares the actual read owner admission checks: focused visible document, active read owner, available authority/topic, visible feed, non-inert main and no review/unread landing. Observer retirement additionally waits for feed layout and no Reader source. Shown sets still update when reading is refused; no extra card geometry is added.
 
 1242 accepted-visibility repair: cardsSeen only updates observer sets and invokes noteRead. The existing feed-reading pass retires offered IDs only after its current onScreen measurement accepts the current connected message entry. It reuses that existing measurement and read-range construction; a queued true observer event cannot clear a now-offscreen offer. This is local reading-signal retirement, not proof that Core recorded a read receipt.
+
+## One anchor and indexed visibility (1245)
+
+Capture keeps ordered card identities but saves geometry only for the chosen
+anchor. Existing selection, writing, acted-card, text-range and older-loading
+owners retain their semantics. A text range still belongs to that chosen card.
+When the anchor vanishes, the first surviving following card puts its top at
+the saved anchor position. If no following card survives, the nearest surviving
+preceding card puts its bottom there (Warp25939). This deliberately replaces
+785's old successor-own-pixel expectation. A replacement is measured only
+when restoration chooses it. Existing retirement/access/scroll and actual
+arrival ownership fences remain. This does not add a lasting geometry cache.
+
+Drawn lookup uses an ID index of the current arranged stacks. Replacing the
+stacks replaces that index, including1247 eviction before another arrange.
+It keeps the old first-match and unknown-ID rules and all view/level/writing/
+kept/unread decisions. Index values refer only to the current stack records;
+no old body cache survives a replacement. Selection and retained arrival-layout
+observation are separate owners, not claimed to be zero-measurement here.
