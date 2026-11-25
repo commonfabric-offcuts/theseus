@@ -154,7 +154,7 @@ export function coverSheet(doc, cover, context, previous = null) {
   if (refresh) {
     // The final content row owns the corner; no heading or extra row is needed.
     refresh.style.gridRow = String(Math.max(1, sheet.children.length));
-    sheet.append(remember(refresh, ['refresh', coverKey(cover, context)]));
+    sheet.append(remember(refresh, ['control', coverKey(cover, context)]));
   }
   const request = coverRequestLine(doc, cover, ctx);
   if (request) sheet.append(remember(request, ['request', coverKey(cover, context)]));
