@@ -8770,3 +8770,67 @@ for (const canonicalFirst of [false,true]) test(`1249 actual app reconciles the 
   assert.equal(entries(f.get('messages')).filter(entry=>entry.dataset.id===message.id).length,1);
   assert.equal(f.document.activeElement,canonical);assert.equal(editor.submissions[0].snapshot.body,'**Exact local words**');
 });
+
+for (const canonicalFirst of [false,true]) for (const focused of [false,true,'button']) for (const folded of [false,true]) test(`1249 composed dossier tail and canonical move/blur (${canonicalFirst?'page':'receipt'} first, ${focused==='button'?'outside button':focused?'link focus':'outside writing'}, ${folded?'folded':'open'} parent)`,async()=>{
+  const f=fixture();
+  const port=Object.getPrototypeOf(f.get('messages')),closest=port.closest;
+  Object.defineProperties(port,{nextElementSibling:{get(){const a=this.parent?.children??[];return a[a.indexOf(this)+1]??null;}},previousElementSibling:{get(){const a=this.parent?.children??[];return a[a.indexOf(this)-1]??null;}}});
+  port.closest=function(selector){if(selector==='[data-pending-send]'){for(let at=this;at;at=at.parent)if(at.dataset?.pendingSend!==undefined)return at;return null;}return closest.call(this,selector);};
+  await f.initialize();await drain();
+  Object.assign(f.bootstrap.authority,{authority_id:'a',authority_epoch:'e'});
+  const editor=f.editor,session=f.registry.sessionFor(editor);
+  Object.assign(editor.context,{instanceId:f.bootstrap.instance_id,actor:f.bootstrap.actor});f.registry.sessionFor=()=>({...session,underWay:()=>true});
+  const old=[{id:'early1249',seq:1,body:'Early source'},{id:'tail1249',seq:2,body:'Later reply',reply_to:'early1249'},
+    {id:'other1249',seq:3,body:'Next dossier'}].map(item=>({...item,topic_id:'t1',author_id:'someone',acts:{folded,fold_revision:folded?1:0},stack_position:levelPosition858(item.id==='other1249'?item.id:'early1249')}));
+  for(const item of old)f.views.messages.set(item.id,item);f.views.newest=3;f.views.line={seq:3};f.views.held=true;f.views.olderCursor=null;f.paintViews('messages');await drain();
+  const item={id:'tail-local1249',sendOperationId:'tail-send1249',presentPending:true,topicId:'t1',sourceRef:{kind:'topic',id:'wrong'},authority:structuredClone(f.bootstrap.authority),status:'preparing',snapshot:{body:'**Frozen A** [link](https://example.test/)',reply_to:'early1249',attachments:[]}};
+  editor.submissions.push(item);f.runObservation('paintSubmittedWriting()');
+  const local=f.get('messages').querySelector('[data-pending-send]'),link=local.querySelector('a'),folder=entryIn(f,'early1249').closest('.reply-stack');
+  assert.equal(local.parentElement,folder.querySelector(':scope > .stack-replies'),'first pending paint must use dossier tail');
+  assert.equal(entryIn(f,'tail1249').nextElementSibling,local,'replying to early source appends after later canonical reply');
+  assert.ok(f.get('messages').querySelector('[data-line]'),'red New line is present outside the dossier');
+  f.document.documentElement.scrollHeight=5000;f.runObservation('window.scrollY=2000');local.box={top:2080,bottom:2120,height:40,left:0,right:300,width:300};
+  const outside=f.get('inline-body');outside.tagName=focused==='button'?'BUTTON':'TEXTAREA';if(focused===true)link.focus();else outside.focus();
+  const proto=Object.getPrototypeOf(local),insert=proto.insertBefore;let blurred=0;
+  proto.insertBefore=function(node,before){const loses=local.contains(f.document.activeElement)&&node===local;const result=insert.call(this,node,before);if(node===local)node.box={top:800,bottom:840,height:40,left:0,right:300,width:300};if(loses){blurred++;f.document.activeElement=f.document.body;}return result;};
+  try {
+    const message={id:'confirmed-tail1249',seq:4,topic_id:'t1',author_id:editor.context.actor,author_kind:'human',reply_to:'early1249',body:item.snapshot.body,attachments:[],stack_position:levelPosition858('early1249')};
+    const receipt={instance_id:editor.context.instanceId,operation_id:item.sendOperationId,kind:'message.send',status:'committed',recorded:true,result:{message_id:message.id,seq:4}};
+    if(!canonicalFirst){item.status='confirmed';item.receipt=receipt;}
+    f.views.messages.set(message.id,message);f.views.newest=4;f.paintViews('messages');await drain();
+    if(canonicalFirst){item.status='confirmed';item.receipt=receipt;f.runObservation('paintSubmittedWriting()');}
+    const canonical=entryIn(f,message.id);assert.ok(canonical);assert.equal(canonical.closest('.reply-stack'),folder);
+    assert.equal(canonical.parentElement,folder.querySelector(':scope > .stack-replies'));
+    assert.equal(f.get('messages').querySelector('[data-pending-send]'),null);
+    assert.equal(entries(f.get('messages')).filter(entry=>entry.dataset.id===message.id).length,1);
+    if(focused===true){assert.equal(f.document.activeElement===canonical||canonical.contains(f.document.activeElement),true);if(!canonicalFirst){assert.ok(blurred);assert.equal(canonical,local);assert.equal(canonical.querySelector('a'),link);assert.equal(canonical.getBoundingClientRect().top,80,'composed adoption restores the captured screen place despite BODY blur');}}
+    else {assert.equal(f.document.activeElement,outside,'confirmation must preserve outside focus');if(focused==='button'&&!canonicalFirst)assert.equal(canonical.getBoundingClientRect().top,80,'a visible pending card holds place with outside button focus');}
+  } finally {proto.insertBefore=insert;}
+});
+
+for (const change of ['unchanged','writing','navigation','access','authority','retired','canonical']) test(`1254 actual app Reader handoff keeps locally before close and fences ${change}`,async()=>{
+  const f=fixture();await f.initialize();await drain();Object.assign(f.bootstrap.authority,{authority_id:'a',authority_epoch:'e'});
+  const editor=f.editor,session=f.registry.sessionFor(editor);f.registry.sessionFor=()=>({...session,underWay:()=>true});Object.assign(editor.context,{instanceId:f.bootstrap.instance_id,actor:f.bootstrap.actor});
+  const item={id:'reader-local1254',sendOperationId:'reader-send1254',presentPending:true,topicId:'t1',authority:structuredClone(f.bootstrap.authority),status:'preparing',snapshot:{body:'Exact A',attachments:[]}};
+  editor.submissions.push(item);f.runObservation('paintSubmittedWriting()');
+  const card=f.get('messages').querySelector('[data-pending-send]');assert.ok(card);
+  const p={surface:'reader',editors:{reply:editor}},kept=defer();let closed=0;
+  Object.assign(f.registry,{current:p,generation:1,activity(){},keepLocal:()=>kept.promise,close:EditorRegistry.prototype.close,closed(){closed++;},isCurrent:where=>where===f.registry.current&&!f.registry.pendingOpen&&!f.registry.closing});
+  const version=editor.localVersion,owns=()=>editor.localVersion===version;
+  const task=f.reader.callbacks.pending(p,editor,item,()=>owns()&&f.registry.current===p,owns);
+  assert.equal(closed,0,'Reader cannot close before the local keep');
+  if(change==='writing'){editor.draft.body='Later B';editor.localVersion++;}
+  if(change==='navigation'){f.registry.generation++;f.registry.pendingOpen={};}
+  if(change==='access')f.runObservation('++listAccessEpoch');
+  if(change==='authority')f.registry.runtime.current={authority_id:'changed',authority_epoch:'e'};
+  if(change==='retired')f.runObservation('retired = true');
+  let confirmed=null;
+  if(change==='canonical'){
+    item.status='confirmed';item.receipt={instance_id:editor.context.instanceId,operation_id:item.sendOperationId,kind:'message.send',status:'committed',recorded:true,result:{message_id:'reader-canonical1254',seq:1}};
+    f.views.messages.set('reader-canonical1254',{id:'reader-canonical1254',topic_id:'t1',seq:1,author_id:editor.context.actor,author_kind:'human',body:item.snapshot.body,attachments:[]});f.views.newest=1;f.paintViews('messages');await drain();confirmed=entryIn(f,'reader-canonical1254');assert.ok(confirmed);assert.equal(f.get('messages').querySelector('[data-pending-send]'),null);
+  }
+  const success=change==='unchanged'||change==='canonical';
+  kept.resolve();assert.equal(await task,success);assert.equal(closed,success?1:0);
+  if(success){assert.equal(f.registry.current,null);assert.equal(f.document.activeElement,confirmed??card,'a canonical arrival during local keep retains the intended focus target');}
+  else {assert.equal(f.registry.current,p);if(change==='writing')assert.equal(editor.draft.body,'Later B');}
+});

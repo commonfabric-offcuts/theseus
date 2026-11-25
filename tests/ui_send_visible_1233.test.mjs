@@ -120,3 +120,38 @@ test('1233 pencil closes after pending handoff before unresolved public confirma
   assert.equal(editor.draft.body, ''); wait.resolve({ status: 'prepared' }); await done;
   assert.equal(editor.submissions[0].snapshot.body, 'Exact pending words');
 });
+
+for (const fromCard of [false,true]) for (const outcome of ['unknown','refused','local failure']) test(`1249 actual Reader/registry/session keeps A before closing (${fromCard?'card-to-Reader':'direct Reader'}, ${outcome})`,async t=>{
+  const editor=makeEditor();editor.edit({body:'**Exact retained A**',attachments:[{id:'image-1'}]});image(editor);
+  const doc=miniDocument(),host=doc.createElement('div'),old=globalThis.document;globalThis.document=doc;t.after(()=>globalThis.document=old);
+  const make=doc.createElement;doc.createElement=tag=>{const n=make(tag);n.ownerDocument=doc;Object.defineProperties(n,{parentElement:{get(){return this.parent;}},nextElementSibling:{get(){const a=this.parent?.children??[];return a[a.indexOf(this)+1]??null;}},childNodes:{get(){return this.children;}}});return n;};host.ownerDocument=doc;
+  const rows=new Map(),network=deferred(),entered=deferred(),kept=deferred(),errors=[];t.after(()=>network.resolve());let localFailure=outcome==='local failure',commands=0,closed=0,serial=0;
+  const journal=new RecoveryJournal({put:async row=>{if(localFailure)throw Error('local keep failed');rows.set(row.id,copy(row));kept.resolve();},get:async id=>copy(rows.get(id))},'reader-tab');
+  const authority={authority_id:'authority',authority_epoch:'epoch',continuity:'initial'};
+  const sent=[];const api={command:async envelope=>{
+    commands++;sent.push(envelope);entered.resolve();await network.promise;
+    let result;
+    if(envelope.kind==='draft.save')result={draft_id:'draft',generation:'A',draft_revision:1};
+    else if(envelope.kind==='submission.prepare')result={submission_id:envelope.args.submission_id,send_operation_id:envelope.args.send_operation_id,next_draft:{id:'draft',generation:'B',revision:2}};
+    else {if(outcome==='unknown')throw Error('network result unavailable');return {instance_id:context.instanceId,operation_id:envelope.operation_id,kind:envelope.kind,status:'rejected',recorded:true,error:{code:'FORBIDDEN',message:'refused'}};}
+    return {instance_id:context.instanceId,operation_id:envelope.operation_id,kind:envelope.kind,status:'committed',recorded:true,result};
+  }};
+  const p={surface:'reader',fromCardReply:fromCard,editors:{reply:editor},mode:'reply'};
+  const registry=new EditorRegistry({api,journal,bootstrap:{instance_id:context.instanceId,actor:context.actor,authority},closed:()=>{closed++;}});
+  const session=new EditorSession(editor,{api,journal,authority,runtime:registry.runtime,id:()=>`reader-op-${++serial}`,changed:()=>paintPendingSends(host,[editor],{topicId:'topic',underway:()=>true})});
+  registry.sessions.set(editor.key,session);registry.current=p;
+  const ui={sessions:p.editors,editor,presentation:p,viewToken:1,mode:'reply',disarm(){},admits:()=>registry.isCurrent(p,editor),writes:()=>true,names:()=>[],kindOf:()=>null,answering:()=>({}),compose:{holdSend:()=>false,panel:null},naming:{sheet:{open:false}},field:{focus(){}},drawEditor(){},
+    callbacks:{send:(e,options)=>registry.send(e,{...options,presentation:p}),error:error=>errors.push(error.message),pending:async(_p,e,item,current,owns)=>{
+      assert.ok(host.querySelector('[data-pending-send]'));assert.equal(item.snapshot.body,'**Exact retained A**');assert.equal(current(),true);
+      return registry.close(p,{current:owns});
+    }}};
+  const sending=Reader.prototype.send.call(ui,false);
+  if(localFailure){await new Promise(resolve=>setImmediate(resolve));assert.equal(closed,0);assert.equal(registry.current,p);assert.equal(commands,0);assert.ok(errors.length);localFailure=false;await registry.persistLocal(editor);}
+  else {await entered.promise;await new Promise(resolve=>setImmediate(resolve));assert.equal(closed,1,'Reader closes while the first server command is unresolved');assert.equal(registry.current,null);}
+  const saved=await journal.own(editor.key),item=editor.submissions[0];assert.equal(saved.snapshot.submissions[0].snapshot.body,'**Exact retained A**');
+  assert.equal(saved.snapshot.uploadState.entries[0].owner.kind,'submission');assert.equal(saved.snapshot.uploadState.entries[0].owner.id,item.id);
+  assert.ok(host.querySelector('[data-pending-send]'));network.resolve();await sending;
+  if(outcome==='refused'){assert.equal(item.status,'refused');assert.equal(editor.draft.body,'**Exact retained A**');}
+  else if(outcome==='unknown')assert.equal(item.status,'prepared');
+  assert.equal(item.snapshot.attachments[0].id,'image-1');assert.equal(sent.filter(e=>e.kind==='message.send').length,outcome==='local failure'?0:1,'an unknown/refused result cannot create another send');
+});

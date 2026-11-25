@@ -238,8 +238,10 @@ test('1247 pending reply placement survives window pressure; actual adoption han
   const oldDocument = globalThis.document; globalThis.document = doc;
   try {
     const parent = r.list.querySelector('[data-id=m2]');
-    paintPendingSends(r.list, [editor], { topicId: 't', parent: () => parent });
+    const destination = parent.closest('.reply-stack').querySelector(':scope > .stack-replies');
+    paintPendingSends(r.list, [editor], { topicId: 't', target: () => destination });
     const local = r.list.querySelector('[data-pending-send]'), words = local.querySelector('.message-preview');
+    assert.equal(local.parentElement, destination, 'local reply uses its retained dossier destination');
     const image = doc.createElement('img'); local.append(image);
     const entries = new Map([['m1', r.list.querySelector('[data-id=m1]')], ['m2', parent]]);
     const env = { windowTargets: new Set(), document: doc, messageEntries: entries, halfShown: new Set(), atMiddle: new Set(), pressHold: { down: false },
@@ -255,6 +257,7 @@ test('1247 pending reply placement survives window pressure; actual adoption han
     views.evicted = ids => retirement.queueWindowEvictions(ids);
     const initial = page(1, 300); initial.items[1].reply_to = 'm1'; views.messagesPage(initial, { initial: true });
     assert.ok(options().pins.has('m2'), 'pending reply keeps its admitted placement parent and containing dossier');
+    assert.ok(options().pins.has('m1'), 'pending reply also protects the actual displayed section head');
     views.messagesPage(page(301, 330), { live: true, cursor: 300 });
     retirement.releaseWindowReferences();
     assert.ok(views.messages.has('m2')); assert.ok(views.messages.has('m1')); assert.equal(views.messages.size, 300);

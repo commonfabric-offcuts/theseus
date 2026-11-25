@@ -453,6 +453,31 @@ function restorePendingSendPlace(card, top) {
   const moved = holdRoom($('messages'), card, top, () => card.getBoundingClientRect().top, true);
   if (moved) window.scrollBy({ top: moved, behavior: 'instant' });
 }
+function pendingSendTarget(ref) {
+  if (ref?.kind !== 'message') return null;
+  const list = $('messages'), state = stackState(list);
+  const stack = stackFeed?.stackFor(ref.id);
+  const section = stack && state.sections.get(stack.id);
+  // stackFor includes folded/earlier/source heads absent from messageEntries.
+  return section?.isConnected ? section.querySelector(':scope > .stack-replies') : null;
+}
+function focusPendingSend(item) {
+  const canonical = item.status === 'confirmed' && messageEntries.get(item.receipt?.result?.message_id);
+  const card = pendingSendCard(item.id) ?? (canonical ? cardIn(canonical) : null);
+  if (card) { card.tabIndex = -1; card.scrollIntoView({ block: 'nearest', behavior: 'instant' }); card.focus({ preventScroll: true }); }
+}
+async function handoffReaderSend(p, editor, item, current, owns) {
+  const access = listAccessEpoch, destination = topic;
+  const available = () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending() &&
+    topic === destination && listAccessEpoch === access && !item.detached && !editor.unavailable && !editor.conflict && !editor.authorityRecovery &&
+    item.authority?.authority_id === registry.runtime.current.authority_id && item.authority?.authority_epoch === registry.runtime.current.authority_epoch;
+  if (!current() || !available() || !pendingSendCard(item.id)) return false;
+  // close keeps both registered editors locally; its predicate fences input
+  // and Reader state that could change during that keep. No command is awaited.
+  if (!await registry.close(p, { current: () => owns() && available() })) return false;
+  if (!registry.current && !registry.pendingOpen && available() && owns(false)) focusPendingSend(item);
+  return true;
+}
 function paintSubmittedWriting() {
   if (!registry || !views || !topic) return;
   const editors = [...registry.sessions.values()].map(session => session.editor);
@@ -472,7 +497,7 @@ function paintSubmittedWriting() {
     nameOf: displayActor, displayRules: displayRules(), end: $('new-message-sheet'),
     readImage: (editor, item, attachment) => registry.sessionFor(editor).uploads.previewSubmission(item, attachment),
     underway: (editor, item) => registry.sessionFor(editor).underWay(item.id),
-    parent: ref => ref?.kind === 'message' ? messageEntries.get(ref.id) : null,
+    target: pendingSendTarget,
     placed: id => Boolean(id && messageEntries.get(id)?.isConnected && drawn($('messages'), id)),
     check: (editor, item) => run(async () => {
       if (item.status !== 'confirmed') await registry.checkConfirmation(editor);
@@ -1491,7 +1516,6 @@ function paintViews(kind, reactionId = null) {
   const paint = () => keepListAnchor(() => {
   if (kind === 'messages' && views.windowOptions) { releaseWindowReferences(); syncDossierHeads(); }
   // Newest first, so where each new card goes is at or after where the one before it went.
-  let adoptedFocus = null;
   const renderedMessages = kind === 'messages' ? feedMessages() : null;
   if (kind === 'messages') for (const [id, entry] of messageEntries) if (!renderedMessages.has(id)) {
     dropCardDocuments(entry); dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
@@ -1505,7 +1529,6 @@ function paintViews(kind, reactionId = null) {
         topicId: topic.id, authority: registry.runtime.current,
         current: () => !retired && !registry.disposed && !topicUnavailable && !authorityReviewPending(),
       });
-      if (adoption?.refocus) adoptedFocus = adoption;
       const ref = { kind: 'message', id: item.id };
       // The revision a click or keypress may clear is the one the card shows.
       // A reply can live in the card: its controls must not be inside a
@@ -1586,7 +1609,6 @@ function paintViews(kind, reactionId = null) {
   }
   if (kind === 'messages') {
     paintMessageContext(); syncCardReplies(); paintSubmittedWriting();
-    if (adoptedFocus && !adoptedFocus.active?.isConnected) adoptedFocus.card.focus({ preventScroll: true });
   }
   });
   if (kind === 'messages') keepPendingSendPlace($('messages'), paint, {
@@ -1622,10 +1644,13 @@ function topicWindowOptions() {
   const held = anchorHold?.anchor?.closest?.('[data-id]')?.dataset.id;
   if (held) pins.add(held);
   for (const session of registry?.sessions.values() ?? []) for (const submission of session.editor.submissions) {
-    if (!pendingSendCard(submission.id)) continue;
+    const pending = pendingSendCard(submission.id);
+    if (!pending) continue;
     // A local reply can sit inside its parent's dossier. Retiring that
     // placement would disconnect its independent writing/image owner.
     if (submission.snapshot?.reply_to) pins.add(submission.snapshot.reply_to);
+    const sectionHead = pending.closest?.('.reply-stack')?.dataset.stack;
+    if (sectionHead) pins.add(sectionHead);
     if (submission.status === 'confirmed') pins.add(submission.receipt.result.message_id);
   }
   return { pins, budget: Math.max(0, 300 - external.size), anchor: held ?? listActAnchor?.id ?? visible[0] ?? null };
@@ -3868,10 +3893,7 @@ async function initialize() {
     status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, savedAt: editor => registry.savedTime(editor), needsReview, reviewState,
     send: (editor, p) => registry.send(editor, { presentation: p, stay: true }),
     pending: (_p, _editor, item) => Boolean(pendingSendCard(item.id)),
-    pendingFocus: item => {
-      const card = pendingSendCard(item.id);
-      if (card) { card.tabIndex = -1; card.scrollIntoView({ block: 'nearest', behavior: 'instant' }); card.focus({ preventScroll: true }); }
-    },
+    pendingFocus: focusPendingSend,
     sent: (p, result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current),
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
     renderPending: () => paintReview(),
@@ -3903,6 +3925,7 @@ async function initialize() {
     // A note that could not be saved says so in the Reader, beside its writing.
     saveNote: editor => registry.saveNote(editor).catch(error => { reader.notice(error); return null; }),
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
+    pending: handoffReaderSend,
     sent: (p, result, current) => cardReplies?.readerSent(p, result, current),
     close: async (_sessions, reason) => {
       const p = reader.presentation;

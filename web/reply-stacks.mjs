@@ -68,7 +68,9 @@ export function forgetStackMessages(list, retained) {
   for (const name of ['kept', 'unreadKept', 'peeked', 'earlier', 'whole', 'waiting', 'filled', 'apart', 'sourceRoots', 'writing', 'folded', 'starred', 'coordination', 'coordinationHere', 'below', 'earlierRows', 'contextRows']) {
     const set = state[name]; if (set) for (const id of set) if (!retained.has(id)) set.delete(id);
   }
-  for (const name of ['levels', 'savedLevels', 'here', 'sections', 'checking', 'held']) {
+  // Sections still own their DOM until arrange moves surviving children and
+  // removes obsolete sections. Dropping this map entry first strands the DOM.
+  for (const name of ['levels', 'savedLevels', 'here', 'checking', 'held']) {
     const map = state[name]; if (map) for (const id of map.keys()) if (!retained.has(id)) map.delete(id);
   }
   for (const node of state.scrolled.keys()) if (!node.isConnected) state.scrolled.delete(node);
@@ -769,7 +771,7 @@ export function paintFoldedNames(list, messages, state = stackState(list)) {
   const visit = nodes => {
     let previous = null;
     for (const entry of nodes) {
-      if (entry.hidden || (!state.showCoordination && entry.dataset.coordination === 'agents' && entry.dataset.coordinationRevealed !== 'true')) continue;
+      if (!entry || entry.hidden || (!state.showCoordination && entry.dataset.coordination === 'agents' && entry.dataset.coordinationRevealed !== 'true')) continue;
       if (entry.classList.contains('reply-stack')) {
         const head = entry.querySelector(':scope > [data-id]');
         visit([...(state.only || entry.dataset.headOpen === 'true' ? [head] : []), ...entry.querySelector(':scope > .stack-replies').children]);

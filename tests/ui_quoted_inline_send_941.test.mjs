@@ -22,7 +22,7 @@ function fixture({ fromCard = true } = {}) {
   return { reader, editor, p, resolve, calls };
 }
 
-test('941 quoted inline-origin Reader waits for confirmed publication and finishes the card', async () => {
+test('941 fallback without a pending-card owner waits for confirmed publication and finishes the card', async () => {
   const f = fixture(), sending = f.reader.send(false);
   assert.equal(f.calls[0][1].stay, true, 'preparation must retain the inline-origin Reader');
   assert.equal(f.calls.length, 1);
@@ -30,7 +30,7 @@ test('941 quoted inline-origin Reader waits for confirmed publication and finish
   f.resolve({ status: 'confirmed' }); await sending;
   assert.equal(f.calls[1][0], 'sent'); assert.equal(f.calls[1][1], f.p); assert.equal(f.calls[1][3], true);
 });
-for (const status of ['preparing', 'prepared', 'refused', 'unknown']) test(`941 ${status} retains the inline-origin Reader`, async () => {
+for (const status of ['preparing', 'prepared', 'refused', 'unknown']) test(`941 fallback without a pending-card owner: ${status} retains the Reader`, async () => {
   const f = fixture(), sending = f.reader.send(false); f.resolve({ status }); await sending;
   assert.equal(f.calls[0][1].stay, true); assert.equal(f.calls.length, 1);
 });
@@ -99,4 +99,21 @@ for (const [label, change] of Object.entries({
 test('941 refused keeping leaves the Reader and card alone', async () => {
   const f = closing(), done = f.owner.readerSent(f.p, {}, () => true); f.release(false); await done;
   assert.equal(f.row.ui.root.hidden, false); assert.equal(f.landed.length, 0);
+});
+
+// Successor contract: a reachable pending card allows ordinary Reader Send to
+// leave after local keeping. Legacy no-handoff surfaces above retain recovery.
+const turn = () => new Promise(resolve=>setImmediate(resolve));
+for (const fromCard of [false,true]) for (const stay of [false,true]) test(`1249 Reader pending handoff (${fromCard?'card origin':'direct'}, ${stay?'explicit stay':'ordinary Send'})`,async t=>{
+  const f=fixture({fromCard});t.after(()=>f.resolve({status:'prepared'}));let keep,closed=false;
+  const kept=new Promise(resolve=>keep=resolve);
+  f.reader.callbacks.pending=async(p,editor,item,current,owns)=>{assert.equal(item.snapshot.quotes[0].excerpt,'The selected passage');assert.equal(current(),true);await kept;if(!owns())return false;closed=true;return true;};
+  const sending=f.reader.send(stay);assert.equal(f.calls[0][1].stay,true);
+  assert.equal(closed,false);keep();await turn();assert.equal(closed,!stay,'only local keep is awaited, never publication');
+  f.resolve({status:'prepared'});await sending;assert.equal(f.calls.length,1);
+});
+for (const [label,change] of Object.entries({writing:f=>f.editor.edit({body:'Later B'}),opening:f=>f.reader.viewToken++,mode:f=>f.reader.mode='note',image:f=>f.editor.imageReservation={}})) test(`1249 pending Reader keep cannot close newer ${label}`,async()=>{
+  const f=fixture();let keep,closed=false;const kept=new Promise(resolve=>keep=resolve);
+  f.reader.callbacks.pending=async(_p,_editor,_item,_current,owns)=>{await kept;if(!owns())return false;closed=true;return true;};
+  const sending=f.reader.send(false);change(f);keep();await turn();assert.equal(closed,false);f.resolve({status:'confirmed'});await sending;assert.equal(f.calls.length,1);
 });
