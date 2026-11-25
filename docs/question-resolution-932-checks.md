@@ -177,3 +177,15 @@ transaction. This branch does not replace 928's `topic_state.py` change.
 Existing thumb clearing remains the default for both old and new plain asks.
 Resolution and supersession are distinct from explicit go-ahead decisions and
 withdrawal. Target/stage-owned decisions keep their existing authority.
+
+## 1239 presentation change
+
+1239 removes Resolved/Superseded labels from cards and Reader origin. The
+1237 composition and 932 owner checks now assert absence, author/mark content,
+retained terminal facts and active waiting/Resolve behavior. The native file
+is adapted to expect the resolved pill to disappear and both terminal sources
+to open without labels; its old successor-label click is deliberately removed.
+Waiting cover click, Enter/tap resolution, held-read wait removal, retained
+words and Core closure/no-answer checks remain. This adapted native file is
+prepared, not executed here; the historical native results above keep their
+original source and behavior. Native timing remains separately measured.
