@@ -39,6 +39,7 @@ from .wake_health import WakeHealth, WAKE_HEALTH_SCHEMA
 from .health import Health, HEALTH_SCHEMA, LIGHT_KEY
 from . import delivery as _delivery
 from .releases import Releases, JUDGMENT_SCHEMA, RELEASE_SCHEMA, write_judgment, write_release
+from .release_cards import ReleaseCards
 from .outcome_light import OutcomeLight
 from .whispers import WHISPER_SCHEMA, redact_topic
 from .topic_preview import latest_by_topic
@@ -208,7 +209,7 @@ from .current_rule import CurrentRule
 from .hosted_recovery import HostedRecovery
 
 
-class Store(ActionPerformance, CurrentRule, PieceClock, HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, OutcomeColors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
+class Store(ReleaseCards, ActionPerformance, CurrentRule, PieceClock, HostedRecovery, WorkspaceLinks, MentionReach, RailDimming, Onboarding, Assessments, HostedControl, Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, OutcomeColors, Responsibility, Sources, WakeHealth, Health, Releases, Checks, OutcomeKind, OutcomeEnd,
             OutcomeLight, StandingConversation, Pipeline, Reactions, OutlineOrder, Stacks, Covers, CoverRefresh, DossierMove, AskCover, Blocking, MessageEdit, Invites, Tools, Withdrawal, RefreshDelivery, Questions, AnswerDelivery, Removal, HostedSeats):
     def __init__(self, db_path, expected_instance_id, *, expected_binding, machine=None, tools=None):
         self.path = Path(db_path).resolve()
@@ -520,7 +521,7 @@ class Store(ActionPerformance, CurrentRule, PieceClock, HostedRecovery, Workspac
             kind = self._actor(db, actor)["kind"]
             if view_name == "capabilities":
                 from .dossier_positions import FORMAT
-                return {"read_formats": {"dossier_positions": [FORMAT]}, "instance_id": self.instance_id, "limits": dict(LIMITS), "runtime": runtime,
+                return {"read_formats": {"dossier_positions": [FORMAT], "release_cards": ["release-card-v1"]}, "instance_id": self.instance_id, "limits": dict(LIMITS), "runtime": runtime,
                         "authority": self._authority.facts(fence.record), "runner": self._runner_facts(db),
                         "attention": {"after": self._addressed_after(db, actor)}, "actor_kind": kind}
             if view_name == "operation":

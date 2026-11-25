@@ -883,6 +883,7 @@ class WhisperCLICase(verbs.AgentVerbCase):
 # Every view, and how a whisper is kept from anyone outside it (spec §6). A new
 # view is classified here before it ships; until then this audit fails.
 VIEW_PATHS = {
+    "release_card": "current metadata index; _source/_message_access checks message visibility before any typed words, with shared exposure and removal boundary",
     "current_rule": "outcome membership before current or exact-operation policy history; stored public source references contain no whisper words",
     "work_context": "readable outcome/piece/topic scope before bounded rule, stage, check and source metadata; no message words are selected",
     "workspace_links": "outcome owner/team scope; separate link rows contain no message words or whisper references",
