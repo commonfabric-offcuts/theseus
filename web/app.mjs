@@ -4381,7 +4381,7 @@ async function initialize() {
   // message in the Reader; the address then names the page alone, as any does.
   // This run's first marks read establishes what its reading act may clear.
   // The older pages begin only after that baseline, as on a card already shown.
-  writeTopicOnArrival({ route, topic, registry, shell, current: () => !retired && landingSerial === arrivalNavigation });
+  writeTopicOnArrival({ route, topic, registry, shell, field: inline.field, current: () => !retired && landingSerial === arrivalNavigation });
   if (['topic-rename', 'topic-settings'].includes(route.act) && consumeMenuRoute(route)) run(() => runTopicMenuAction(topic, route.act.slice(6)));
   if (atUnread) run(() => firstReading.then(landOnUnread));
   freshness.invalidate('dossier_move', 0); freshness.request();
