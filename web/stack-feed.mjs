@@ -2,6 +2,7 @@ import { stackMenuItems, STARRED_FOLD_REASON } from './stack-menu-items.mjs';
 import { archiveReadConfirmed } from './archive-new.mjs';
 import { unstarDossier } from './dossier-unstar.mjs';
 import { openSplitSources } from './dossier-splits.mjs';
+import { openDossierJoin } from './dossier-join.mjs';
 // What a person does to reply stacks on a topic page or a Conversation
 // (docs/reply-stacks.md), and the keys and menu items that do it: star a
 // message, fold a message to one line and unfold it, rename a stack, move it,
@@ -809,11 +810,46 @@ export class StackFeed {
     this.remember(() => { items.forEach((item, index) => this.act('stack.place', item, { key: before[index] })); this.arrange(); });
     this.arrange(); this.say('Position reset, for you only');
   }
+  // Resolve the exact visible neighbor without changing placement or joining.
+  // A new visit retires this feed; a redraw/removal cannot retain its old entry.
+  joinChoice(entry, way) {
+    if (this.gone || !entry?.isConnected || !this.list.isConnected || !drawn(this.list, entry.dataset.id)) return null;
+    const found = stackOf(this.list, entry);
+    if (!found) return null;
+    const side = this.sideOf(found), target = joinOf(side.stacks, side.index, way);
+    if (side.index < 0 || !target) return null;
+    const from = found.stack;
+    // A proposal must not materialize or merge stand-ins into the feed.
+    const root = stack => {
+      const position = positionOf(stack), id = position?.root_id ?? stack.id;
+      return this.messages().get(id) ?? this.standIns.get(id) ?? { id, acts: { join_revision: position?.join_revision ?? 0 } };
+    };
+    const source = root(from), destination = root(target);
+    const topic = this.messages().get(entry.dataset.id)?.topic_id;
+    if (!source || !destination || !topic || from.head.topic_id !== topic || target.head.topic_id !== topic) return null;
+    const ids = new Set([source.id, destination.id]);
+    if ([...ids].some(id => this.pending.get(id)?.some(mark => 'joined' in mark)) ||
+        [...this.doubts.values()].some(act => act.kind === 'stack.join' && ids.has(act.item.id))) return null;
+    const authority = this.authority(), acts = this.actsOf(source.id, source);
+    const revision = this.messages().has(source.id) ? acts.join_revision ?? 0 : Math.max(acts.join_revision ?? 0, positionOf(from)?.join_revision ?? 0);
+    const names = [from, target].map(stack => headOf(stack, { preview: messagePreview }).name || 'Unnamed dossier');
+    return { from: names[0], into: names[1], token: JSON.stringify([this.instanceId, topic, authority.authority_id, authority.authority_epoch,
+      entry.dataset.id, source.id, from.id, dossierOf(from), destination.id, target.id, dossierOf(target),
+      Boolean(positionOf(from)?.below), revision, acts.joined?.into ?? null, ...names]) };
+  }
+  join(entry, way) {
+    const choice = this.joinChoice(entry, way);
+    if (!choice) { this.say('No current neighboring dossier to join. Read this dossier again.'); return; }
+    return openDossierJoin({ anchor: cardIn(entry), choice, current: () => this.joinChoice(entry, way),
+      commit: now => this.joinConfirmed(entry, way, now), say: words => this.say(words), doc: this.doc });
+  }
+  // The named choice delegates to the existing join owner, after rechecking.
   // A join from the keys, ⋯ or the phone's sheet shows where it went
   // (joinShown): the stack it goes into is drawn open, and the keys stay on the
   // message acted on, brought into view with its join line. ⌘Z puts back how
   // far that stack was folded too. A join from anyone else opens nothing.
-  join(entry, way) {
+  joinConfirmed(entry, way, choice) {
+    if (!choice || this.joinChoice(entry, way)?.token !== choice.token) return;
     const found = stackOf(this.list, entry);
     if (!found) return;
     const side = this.sideOf(found), shows = joinShown(side.stacks, side.index, way, entry.dataset.id);
