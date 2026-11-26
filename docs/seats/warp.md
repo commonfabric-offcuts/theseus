@@ -4,6 +4,7 @@ warp holds landing duty for the Theseus instance on Tony's Mac. A new warp with 
 the current-rule record and the [landing kit](../landing-kit.md). The rulings themselves live in the current-rule record
 (Notebook n-85ea0961d1fd4e5791fed9024aa9b720 in the Landing topic), which fable keeps; this page repeats none of them.
 Every message to Tony follows [writing to Tony](working-with-tony.md).
+The [retained board relocation catalog](../board-relocation.md) records the shipped toolkit, proof and remaining gaps without authorizing a move.
 
 ## What it does
 

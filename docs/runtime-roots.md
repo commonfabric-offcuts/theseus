@@ -3,6 +3,7 @@
 Use the inputs selected for this seat and its current assignment. A machine's
 account name, the shell's working directory and an old report do not select a
 Theseus instance.
+The [retained board relocation catalog](board-relocation.md) describes history-preserving tools and their execution limits separately from supplied task paths.
 
 ## Launch inputs
 
