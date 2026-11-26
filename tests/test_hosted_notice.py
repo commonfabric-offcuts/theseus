@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
 import unittest
 
 from aim_next import hosted_notice
@@ -117,6 +121,44 @@ class NoticeCase(unittest.TestCase):
         self.assertIn("You are Theseus actor agent-x.", text)
         self.assertIn("Your CLI: /usr/bin/python3 -I /abs/bin/aim-next --profile /abs/agent-x.json", text.splitlines())
         self.assertIn("never rebind", text)
+
+    def test_displayed_cli_executes_with_exact_paths_through_a_real_shell(self):
+        with tempfile.TemporaryDirectory(prefix="theseus-1320-") as temporary:
+            root = Path(temporary)
+            deployments = [root / "first deployment", root / "第二 'root' $CLI1320_LITERAL $(printf expanded) `printf expanded` ; [*?]"]
+            cwd = root / "unrelated working directory"
+            cwd.mkdir()
+            for deployment in deployments:
+                (deployment / "bin").mkdir(parents=True)
+                script = deployment / "bin" / "aim-next"
+                script.write_text("import json,sys\nprint(json.dumps({'argv':sys.argv,'isolated':sys.flags.isolated}))\n")
+            environment = dict(os.environ, CLI1320_LITERAL="EXPANDED-WOULD-BE-WRONG")
+            for index, deployment in enumerate(deployments):
+                cli = deployment / "bin" / "aim-next"
+                other = deployments[1 - index]
+                profile = other / "profile 'quoted' $CLI1320_LITERAL $(printf expanded) ; [*?].json"
+                broker = other / "broker 'quoted' $CLI1320_LITERAL $(printf expanded) ; [*?].sock"
+                for selected_broker in (None, broker):
+                    mode, selected = ("profile", profile) if selected_broker is None else ("broker", broker)
+                    with self.subTest(root=index, mode=mode):
+                        text = hosted_notice.developer_instructions("agent-x", str(cli), str(profile),
+                                                                  None if selected_broker is None else str(selected_broker))
+                        [line] = [line for line in text.splitlines() if line.startswith("Your CLI: ")]
+                        command = line[len("Your CLI: "):]
+                        result = subprocess.run(["/bin/sh", "-c", command], cwd=cwd, env=environment,
+                                                capture_output=True, text=True, timeout=10)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(result.stderr, "")
+                        observed = json.loads(result.stdout)
+                        self.assertEqual(observed, {"argv": [str(cli), "--" + mode, str(selected)], "isolated": 1})
+                        print(json.dumps({"case": "1320 real shell", "root": index, "mode": mode,
+                                          "command": command, "observed": observed}, ensure_ascii=False))
+
+    def test_simple_paths_keep_the_existing_profile_and_broker_commands(self):
+        self.assertEqual(hosted_notice.cli_command("/abs/bin/aim-next", "/abs/agent-x.json"),
+                         "/usr/bin/python3 -I /abs/bin/aim-next --profile /abs/agent-x.json")
+        self.assertEqual(hosted_notice.cli_command("/abs/bin/aim-next", "/abs/agent-x.json", "/abs/core.sock"),
+                         "/usr/bin/python3 -I /abs/bin/aim-next --broker /abs/core.sock")
 
     def test_developer_instructions_say_a_persons_thumb_on_an_ask_answers_it_yes(self):
         words = " ".join(hosted_notice.developer_instructions("agent-x", "aim-next", "/abs/agent-x.json").split())
