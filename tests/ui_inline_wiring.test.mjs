@@ -3873,7 +3873,10 @@ test('B3 More keeps one cover sheet per dossier with no duplicate pills through 
 // at its head is a reply, a card of its own before 550, and its words show, as each reply kept in view shows, while
 // the stack is folded: unread or read. The negative: a stack headed by its own first message (m40) folds it to its
 // tab, as before.
-test('folded, a stack gathered under a first message not loaded shows its head\'s words, unread or read; a first message heading its stack folds to its tab', async () => {
+const unreadDisclosureOf = stack => stack.children.find(node => node.classList.contains('stack-replies'))
+  ?.children.find(node => node.classList.contains('stack-unread-disclosure'));
+
+test('folded, a stack gathered under a first message not loaded shows its head\'s words, unread or read; a first message heading its stack folds to its tab and unread replies wait for disclosure', async () => {
   const { f } = await readingPage();
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
@@ -3890,7 +3893,13 @@ test('folded, a stack gathered under a first message not loaded shows its head\'
   const look = id => [section(id)?.dataset.stack, section(id)?.dataset.fold, section(id)?.dataset.headOpen];
   assert.deepEqual([look('m2'), look('m20'), look('m40')], [['m2', 'folded', 'true'], ['m20', 'folded', 'true'], ['m40', 'folded', 'false']],
     'folded, each gathered stack shows its head\'s card whole, unread or read; the stack headed by its own first message shows its tab alone');
-  assert.deepEqual([2, 3, 4, 5].map(seq => entryIn(f, 'm' + seq).hidden), [false, false, false, false], 'every unread reply in view, its head among them');
+  const gatheredReplies = () => [2, 3, 4, 5].map(seq => entryIn(f, 'm' + seq).hidden);
+  assert.deepEqual(gatheredReplies(), [false, true, true, false], 'the loaded head and latest reply show');
+  const newReplies = unreadDisclosureOf(section('m2'));
+  assert.equal(newReplies.textContent, '3 new');
+  newReplies.onclick();
+  await settle();
+  assert.deepEqual(gatheredReplies(), [false, false, false, false], 'the disclosure adds the other unread replies');
   // A press on the head's words does what it does on any card (opens the Reader), as it did on that reply's own card
   // before 550; a press on its tab opens the dossier. The negative: a head folded to its tab opens the dossier wherever
   // it is pressed.
@@ -4921,7 +4930,7 @@ test('a covered dossier keeps its first sheet above every message through an edi
   assert.equal(f.runObservation('latestReply907'), latest.id, 'Reply opens the latest message in this dossier');
 });
 
-test('on the conversation page replies stack under the message they answer, as in any topic, and its own marks reach every stacked message', async () => {
+test('on the conversation page replies stack under the message they answer, as in any topic, and its own marks reach every stacked message while closed replies are disclosed', async () => {
   const { f, painted, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED, folded: ['m1'] });
   assert.ok(stackOf('m2'), 'a reply on the conversation page is in a reply stack');
   const stack = stackOf('m1');
@@ -4932,10 +4941,9 @@ test('on the conversation page replies stack under the message they answer, as i
   assert.equal(tools.className, 'stack-tools');
   assert.deepEqual([head.dataset.id, replies.children.map(child => child.dataset.id ?? child.className)], ['m1', ['m2', 'm3', 'm4', 'm5']],
     'the message on top, its replies under it oldest first, as a chat reads, with folded replies kept in their positions');
-  // Folded, a read newest reply keeps its immediate parent as compact context.
-  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, false],
-    'read asks and unsettled items do not override latest, unread and immediate context');
-  assert.equal(entryIn(f, 'm2').dataset.folded, 'true');
+  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, true],
+    'a closed dossier keeps the read latest reply, and read asks and unsettled items stay hidden');
+  assert.equal(unreadDisclosureOf(stack), undefined);
   assert.equal(toggle.getAttribute('aria-expanded'), 'true');
   assert.equal(toggle.className, 'stack-toggle');
   assert.equal(painted.tags.size, 0, 'the retired item-tag painter is never called');
@@ -4967,7 +4975,7 @@ test('on the conversation page a link to a message folded in a stack opens its s
     'the address opens the stack and the Reader on the message, from its card');
 });
 
-test('on the conversation page More messages brings a stack\'s first message: the replies gather under it, and its tags and what it keeps in view follow', async () => {
+test('on the conversation page More messages brings a stack\'s first message: the replies gather under it, and its tags and closed disclosure follow', async () => {
   const all = conversationMessages(), first = all[0];
   const { f, painted, stackOf } = await conversationPage(all.slice(1), { waits: ASKED, folded: ['m2'], legacyPositions: true });
   // Its parent not loaded, the ask heads nothing and stands alone; m2 heads its own replies.
@@ -4980,8 +4988,8 @@ test('on the conversation page More messages brings a stack\'s first message: th
   // it names m2 and m4 as separate dossiers; m1 therefore starts a new view.
   f.runObservation("stackState(document.getElementById('messages')).levels.set('m1', 'folded')");
   f.paintViews('messages'); await settle();
-  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, false], 'only the newest and its immediate context show');
-  assert.equal(entryIn(f, 'm2').dataset.folded, 'true');
+  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, true], 'only the newest read reply shows');
+  assert.equal(unreadDisclosureOf(stack), undefined);
   assert.equal(entryIn(f, 'm1').dataset.item, undefined, 'More paints no retired Only new marker');
   assert.equal(painted.about.get('m1').item.id, 'm1', 'More keeps ordinary source-link context');
 
@@ -4998,13 +5006,20 @@ test('on the conversation page More messages brings a stack\'s first message: th
   current.f.paintViews('messages'); await settle();
   assert.equal(current.stackOf('m1').dataset.fold, 'folded', 'the canonical dossier keeps its chosen fold when its first message loads');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => current.stackOf(id) === current.stackOf('m1')), [true, true, true, true]);
-  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(current.f, id).hidden), [false, true, true, false]);
-  assert.equal(entryIn(current.f, 'm2').dataset.folded, 'true');
+  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(current.f, id).hidden), [false, true, true, true]);
+  assert.equal(unreadDisclosureOf(current.stackOf('m1')), undefined);
   assert.equal(current.painted.about.get('m1').item.id, 'm1');
 });
 
-test('on the conversation page a reply folded in its stack is never reported read, as in any topic', async () => {
-  const { f } = await conversationPage(conversationMessages(), { waits: ASKED, folded: ['m1'] });
+test('on the conversation page a folded context reply is never reported read after disclosure', async () => {
+  const list = conversationMessages();
+  list.find(message => message.id === 'm5').unread = true;
+  const { f, stackOf } = await conversationPage(list, { waits: ASKED, folded: ['m1'] });
+  assert.equal(entryIn(f, 'm2').hidden, true);
+  const disclosure = unreadDisclosureOf(stackOf('m1'));
+  assert.equal(disclosure.textContent, '1 new');
+  disclosure.onclick();
+  await settle();
   const ranges = () => f.calls.filter(c => c.kind === 'topic.read_through').map(c => [c.envelope.args.from_seq, c.envelope.args.seq]);
   // On screen, as a browser sees it: every entry shown, and none folded away.
   const [observer] = f.observers;
