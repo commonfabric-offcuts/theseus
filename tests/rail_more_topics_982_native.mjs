@@ -43,7 +43,7 @@ try{
   // before pressing a control, as a person does, rather than clicking a
   // clipped button whose own DOM rectangle still exists.
   const reveal=async()=>{
-   const point=await outcome.locator('.ol-own').evaluate(a=>{const h=a.querySelector('.ol-topic-list'),p=h.querySelector('[data-rail-fold=peek]'),box=h.getBoundingClientRect();return{x:box.left+30,y:p?p.getBoundingClientRect().top-20:box.top+10};});
+   const point=await outcome.locator('.ol-own').evaluate(a=>{const h=a.querySelector('.ol-topic-list'),p=h.querySelector('[data-rail-fold=peek]'),box=h.getBoundingClientRect();return{x:box.left+30,y:p?p.getBoundingClientRect().top+8:box.top+10};});
    await page.mouse.move(point.x,point.y);
    await page.waitForFunction(workspace=>{const a=document.querySelector(`.ol-outcome[data-workspace-id="${workspace}"] .ol-own`),h=a?.querySelector('.ol-topic-list');return h&&getComputedStyle(h).maskImage==='none'&&h.clientHeight>=h.scrollHeight-1;},workspace,{timeout:5000});
   };
