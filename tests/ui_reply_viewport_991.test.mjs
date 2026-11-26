@@ -10,9 +10,11 @@ test('991 resize waits for layout, then reveals footer and Send with an8px gap',
  f.state.boxBottom=770;f.state.sendBottom=814;f.pump();assert.equal(f.state.sendBottom,422);assert.deepEqual(f.moves,[{who:'window',by:392}]);
  assert.deepEqual([f.field.value,f.field.selectionStart,f.field.selectionEnd],['Keep this writing.',3,7]);
 }));
-test('991 a same-height visual pan and a second shrink both re-settle',()=>fixture({},f=>{
+test('991 an inline reply stays put on a same-height visual pan and re-settles on a second shrink',()=>fixture({},f=>{
  f.focus();f.emit('resize',{height:430,offsetTop:60});f.pump();assert.equal(f.state.sendBottom,482);
- f.emit('scroll',{offsetTop:0});f.pump();assert.equal(f.state.sendBottom,422);
+ const beforePan=f.moves.length;
+ f.emit('scroll',{offsetTop:0});f.pump();
+ assert.equal(f.moves.length,beforePan);assert.equal(f.state.sendBottom,482);
  f.emit('resize',{height:350});f.pump();assert.equal(f.state.sendBottom,342);
 }));
 test('991 writing growth while the viewport stays reduced keeps the act visible',()=>fixture({},f=>{
