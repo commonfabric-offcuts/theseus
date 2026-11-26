@@ -6563,6 +6563,77 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     return got;
   };
 
+  await check('reading stacks one trackpad burst counts as one action across a vertical sample', async () => {
+    const topic = 'one-trackpad-burst';
+    const ids = await seed(topic, [
+      ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Dossier root.', divergence_reason: 'Independent trackpad fixture.' }],
+      ...['one', 'two', 'last'].map(key =>
+        [key, { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Swipe card ' + key + '.', reply_without_quote: 'Testing the gesture on this card.' }]),
+    ]);
+    const p = await open(topic, 'laptop', topic, ids.root, HEARD_WHEELS);
+    try {
+      await fullyOpen(p, 'laptop', ids);
+      const began = await foldsSent(p);
+      const tail = Array.from({ length: 8 }, () => [30, 0]);
+      const heard = await trackpad(p, card(ids.one), [...SWIPE_RIGHT, [0, -8], ...tail]);
+      await until(() => p.evaluate('window.fetchesOut === 0'), 'fold commands settled');
+      assert.equal(await foldsSent(p) - began, 1, 'one wheel burst issued one command');
+      assert.ok(heard.every(sample => sample.prevented === (sample.y === 0)), JSON.stringify(heard));
+      assert.equal(await foldOf(topic, ids.one), true, 'the message stays folded');
+      assert.equal(await foldOf(topic, ids.two), false, 'the neighbor is unchanged');
+      const row = card(ids.one) + ' > .message-folded > .folded-words';
+      await trackpad(p, row, SWIPE_RIGHT.map(([x, y]) => [-x, y]));
+      await until(async () => !await foldOf(topic, ids.one), 'a distinct gesture unfolds the message');
+      await until(() => p.evaluate('window.fetchesOut === 0'), 'unfold command settled');
+      assert.equal(await foldsSent(p) - began, 2, 'the next wheel burst issued one command');
+      const title = `#messages .reply-stack[data-stack="${ids.root}"] .stack-head`;
+      const archiveCount = () => p.evaluate("window.sent.filter(kind => kind === 'stack.aside').length");
+      const beforeArchive = await archiveCount();
+      await trackpad(p, title, [...SWIPE_RIGHT, [0, -8], ...tail]);
+      await until(async () => (await actsOf(topic, ids.root))?.aside > 0, 'the dossier is archived');
+      await until(() => p.evaluate('window.fetchesOut === 0'), 'archive command settled');
+      assert.equal(await archiveCount() - beforeArchive, 1, 'one wheel burst issued one archive');
+      assert.equal(await foldsSent(p) - began, 2, 'the archive issued no message fold');
+      assert.deepEqual(p.errors, []);
+    } finally {
+      await p.close();
+    }
+  });
+
+  if (engine === 'chrome') await check('reading stacks one finger swipe at each phone width counts as one action', async () => {
+    for (const width of [320, 375, 390]) {
+      const topic = 'one-finger-swipe-' + width;
+      const ids = await seed(topic, [
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Dossier root.', divergence_reason: 'Independent swipe fixture.' }],
+        ...['one', 'two', 'last'].map(key =>
+          [key, { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Swipe card ' + key + '.', reply_without_quote: 'Testing the gesture on this card.' }]),
+      ]);
+      const p = await open(topic, 'phone', topic, ids.root);
+      try {
+        await p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+        assert.equal(await p.evaluate('innerWidth'), width);
+        await fullyOpen(p, 'phone', ids);
+        const wait = () => until(() => p.evaluate('window.fetchesOut === 0'), 'gesture commands settled');
+        const prior = await foldsSent(p);
+        await fingerDrag(p, words(ids.one), 20, 150);
+        await until(() => foldOf(topic, ids.one), 'the message folds');
+        await wait();
+        assert.equal(await foldsSent(p) - prior, 1, 'one right swipe issues one fold at ' + width);
+        assert.equal(await foldOf(topic, ids.two), false);
+        assert.equal(await readerOn(p), null);
+        const line = card(ids.one) + ' > .message-folded > .folded-words';
+        await fingerDrag(p, line, 150, 20);
+        await until(async () => !await foldOf(topic, ids.one), 'the message unfolds');
+        await wait();
+        assert.equal(await foldsSent(p) - prior, 2, 'the next, distinct swipe issues one unfold at ' + width);
+        assert.equal(await readerOn(p), null);
+        assert.deepEqual(p.errors, []);
+      } finally {
+        await p.close();
+      }
+    }
+  });
+
   // Item 377: a person's reply to a message, or their thumbs-up on it, folds it for them in Core, as their Fold would.
   await check('reading stacks replying to a message or a thumbs-up on it folds it for the person, on every device; a starred one stays whole, the Reader keeps showing it whole, the feed keeps its place and the keys, and ⌘Z leaves it folded', async () => {
     const topic = 'stack-fold-answered';
@@ -6923,6 +6994,56 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     if (device === 'phone' && !(await lit(p)).includes(id)) { await tap(p, selector); await until(async () => (await lit(p)).includes(id), `phone: the first tap lights ${id}`); }
     await press(p, device, selector);
   };
+
+  await check('reading stacks thumb and fold close only the same empty inline reply', async () => {
+    for (const device of ['laptop', 'phone']) {
+      const topic = 'close-empty-reply-' + device;
+      const ids = await seed(topic, [
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Dossier root.', read: true, divergence_reason: 'Independent inline reply fixture.' }],
+        ...['thumb', 'fold', 'space', 'last'].map(key =>
+          [key, { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Card for ' + key + '.', reply_without_quote: 'Testing the inline reply on this card.' }]),
+      ]);
+      const p = await open(topic, device, topic, ids.root);
+      const field = id => '#reply-' + id + '-writing-body';
+      const visible = id => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(field(id))})?.getClientRects().length)`);
+      const startReply = async id => {
+        const target = words(id);
+        await centre(p, target);
+        if (device === 'phone') {
+          if (!(await lit(p)).includes(id)) {
+            await tap(p, target, 'center');
+            await until(async () => (await lit(p)).includes(id), 'the touch lit the intended card');
+          }
+          await act('reply');
+        } else await press(p, device, target);
+        await until(() => visible(id), device + ': card reply is visible');
+      };
+      const act = async name => {
+        const control = '.message-bar [data-act=' + name + ']';
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(control)})?.getClientRects().length)`), 'action is visible');
+        await press(p, device, control);
+      };
+      try {
+        await fullyOpen(p, device, ids);
+        await startReply(ids.thumb);
+        await act('thumb');
+        await until(async () => await thumbedBy(ids.thumb) && !await visible(ids.thumb), device + ': committed thumb closes empty reply');
+        await startReply(ids.fold);
+        await act('fold');
+        await until(async () => await foldOf(topic, ids.fold) && !await visible(ids.fold), device + ': committed fold closes empty reply');
+        await until(async () => (await folded(p, ids.fold)).row, device + ': saved fold is visible');
+        await startReply(ids.space);
+        await p.send('Input.insertText', { text: '  ' });
+        await act('thumb');
+        await until(() => thumbedBy(ids.space), device + ': thumb with writing is recorded');
+        assert.equal(await visible(ids.space), true, device + ': whitespace protects the open reply');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(field(ids.space))}).value`), '  ');
+        assert.deepEqual(p.errors, []);
+      } finally {
+        await p.close();
+      }
+    }
+  });
 
   // Tony's 5418: a message shown whole in a dossier keeps its agent name's pill as it had it before item 471, the same
   // computed corner, fill, border and padding as the base drew; a folded row keeps 471's plain name.

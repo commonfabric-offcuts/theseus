@@ -1,3 +1,4 @@
+import { wheelSwipe } from '../web/message-fold-swipe.mjs';
 import * as uploadState931 from '../web/upload-state.mjs';
 // Exercises actual app/inline-adapter functions below the native browser. Only
 // imports and auto-start are replaced; no product function body is copied.
@@ -8839,4 +8840,22 @@ for (const change of ['unchanged','writing','navigation','access','authority','r
   kept.resolve();assert.equal(await task,success);assert.equal(closed,success?1:0);
   if(success){assert.equal(f.registry.current,null);assert.equal(f.document.activeElement,confirmed??card,'a canonical arrival during local keep retains the intended focus target');}
   else {assert.equal(f.registry.current,p);if(change==='writing')assert.equal(editor.draft.body,'Later B');}
+});
+
+
+test('a consumed Reader swipe keeps its latch over the feed and leaves vertical scroll to the browser', () => {
+  const doc = {}, reader = { ownerDocument: doc }, feed = { ownerDocument: doc };
+  const acts = [];
+  const send = (surface, x, y, timeStamp) => {
+    let prevented = false;
+    wheelSwipe(surface, { deltaX: x, deltaY: y, timeStamp, deltaMode: 0,
+      preventDefault() { prevented = true; } }, () => across => acts.push([surface, across]));
+    return prevented;
+  };
+  assert.equal(send(reader, -85, 0, 16), true);
+  assert.equal(send(feed, 0, 12, 32), false);
+  assert.equal(send(feed, 85, 0, 48), true);
+  assert.deepEqual(acts, [[reader, -85]]);
+  assert.equal(send(feed, 85, 0, 350), true);
+  assert.deepEqual(acts, [[reader, -85], [feed, 85]]);
 });

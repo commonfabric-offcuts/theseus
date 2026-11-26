@@ -203,6 +203,45 @@ try {
         }
         row.samples.push(result); return result;
       };
+      const lowerAt = await field.evaluate(el => {
+        const at = el.value.indexOf('line30') + 'line30 stable words.'.length;
+        el.setSelectionRange(at, at);
+        el.closest('.notebook-sheet-page').scrollTop = 100;
+        return at;
+      });
+      const lower = await sample('lower-half-start');
+      assert.equal(lower.paint.status, 'measured', 'a native caret is needed for this trace');
+      const middle = (lower.exposed.top + lower.exposed.bottom) / 2;
+      assert.ok(lower.paint.caret.top > middle && lower.paint.caret.bottom < lower.exposed.bottom - 24, JSON.stringify(lower.paint));
+      const begin = await page.evaluate(() => window.caret1074Events.length);
+      const insertedLower = ' type a line';
+      await page.keyboard.type(' type', { delay: 45 });
+      await page.keyboard.type(' a line');
+      await frames();
+      const lowerEvents = await page.evaluate(begin => window.caret1074Events.slice(begin), begin);
+      const afterLower = await sample('lower-half-typed');
+      row.lowerHalf = { before: lower.pageTop, after: afterLower.pageTop, caret: lower.paint.caret, events: lowerEvents };
+      row.checks.push({name:'Lower-half typing keeps page position before save', passed:
+        afterLower.pageTop === lower.pageTop && lowerEvents.every(event => event.pageTop === lower.pageTop) &&
+        lowerEvents.filter(event => event.type === 'input' && event.stage === 'event' && event.trusted).length === insertedLower.length &&
+        afterLower.selection[0] === lowerAt + insertedLower.length && afterLower.focused});
+      await page.keyboard.press('Escape');
+      await field.waitFor({ state: 'detached' });
+      await page.waitForFunction(() => document.querySelector('.notebook-sheet .notebook-save-dot')?.dataset.save === 'saved');
+      await drain();
+      const lowerSaved = await control({ method: 'agent_view', actor: facts.actor, name: 'memory_current', args: { item_id: item } });
+      row.lowerHalf.savedPageTop = await host.evaluate(el => el.scrollTop);
+      row.checks.push({ name: 'Lower-half typing saved the exact card and preserved its neighbor', passed:
+        cardText(parseDeck(lowerSaved.body).cards[0]) === (lower.text.slice(0, lowerAt) + insertedLower + lower.text.slice(lowerAt)).trimEnd() &&
+        cardText(parseDeck(lowerSaved.body).cards[1]) === 'Neighbor\nKeep this neighbor.' });
+      await host.locator('.deck-card[data-index="0"] .deck-title').click();
+      await field.waitFor();
+      await field.evaluate(el => {
+        el.style.caretColor = 'rgb(255,0,255)';
+        const at = el.value.indexOf('line04') + 'line04 stable words.'.length;
+        el.setSelectionRange(at, at);
+        el.closest('.notebook-sheet-page').scrollTop = 0;
+      });
       let prior = await sample('initial');
       assert.equal(prior.paint.status, 'measured', 'Instrumentation uncertainty: initial full native caret extent unresolved; no product red');
       let expected = prior.text, expectedAt = prior.selection[0];

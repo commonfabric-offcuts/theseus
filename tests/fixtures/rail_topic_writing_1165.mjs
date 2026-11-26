@@ -45,7 +45,7 @@ export function railTopicWritingFixture({ OutlineRail, Shell, InlineComposer, To
     navigateTarget: route => {
       opened.push(structuredClone(route));
       win.location.href = new URL(routeHref(route), win.location.href).href;
-      arrivals.push(arrival({ route, topic: { id: route.id }, registry, shell, current: () => true, win }));
+      arrivals.push(arrival({ route, topic: { id: route.id }, registry, shell, field, current: () => true, win }));
     } });
   const rail = Object.assign(Object.create(OutlineRail.prototype), { doc, run: 1,
     handles: { api, bootstrap, navigationCurrent: () => { const choice = navigationChoice; return () => choice === navigationChoice; } },
