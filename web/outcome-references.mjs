@@ -26,16 +26,14 @@ export class OutcomeReferences {
     more.onclick = () => this.load(true);
     viewPreference?.listen(() => this.paint());
     if (menuHandles) {
-      this.menuEvents = new AbortController();
       this.menus = new OutlineMenus({
         doc: list.ownerDocument, list, message,
         get handles() { return menuHandles(); },
-      }, { signal: this.menuEvents.signal });
+      });
     }
   }
   dispose() {
-    this.menus?.reset();
-    this.menuEvents?.abort();
+    this.menus?.dispose();
   }
   paint() {
     const ids = new Set(this.items.map(item => item.id));

@@ -20,7 +20,16 @@ function fixture(t, { pageMax, create, painted, menuHandles } = {}) {
     setAttribute(name, value) { (this.attributes ??= {})[name] = value; } removeAttribute(name) { delete this.attributes?.[name]; }
     focus() { globalThis.document.activeElement = this; }
   }
-  globalThis.document = { createElement: () => new Element(), activeElement: null, addEventListener() {}, querySelector() { return null; }, getSelection() { return { isCollapsed: true }; } }; t.after(() => globalThis.document = previous);
+  const menuListeners = new Map();
+  globalThis.document = {
+    createElement: () => new Element(), activeElement: null, querySelector() { return null; },
+    getSelection() { return { isCollapsed: true }; },
+    addEventListener(type, listener) { menuListeners.set(type, listener); },
+    removeEventListener(type, listener) {
+      assert.equal(menuListeners.get(type), listener);
+      menuListeners.delete(type);
+    },
+  }; t.after(() => globalThis.document = previous);
   const nodes = Object.fromEntries(['host', 'list', 'more', 'message'].map(k => [k, new Element()]));
   nodes.list.ownerDocument = globalThis.document;
   nodes.host.hidden = true; nodes.message.hidden = true;
@@ -31,7 +40,7 @@ function fixture(t, { pageMax, create, painted, menuHandles } = {}) {
     read: args => { calls.push(args); const next = queue.shift(); return typeof next === 'function' ? next() : Promise.resolve(next); },
     open: (...args) => opened.push(args), denied: error => error.status === 403, seen: items => seen.push(items.map(x => x.id)), ...(painted ? { painted } : {}) });
   const titles = () => nodes.list.children.map(row => row.textContent);
-  return { ...nodes, queue, calls, opened, seen, item, answer, references, titles };
+  return { ...nodes, queue, calls, opened, seen, item, answer, references, titles, menuListeners };
 }
 
 test('the outcome Notebook is listed by title in order, and each title opens its exact revision', async t => {
@@ -283,5 +292,7 @@ test('the outcome Notebook page chip confirms its own source and anchors the exi
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(shown.length, 1, 'a changed owner scope exposes no actions');
   assert.match(f.message.textContent, /could not be confirmed/);
+  assert.deepEqual([...f.menuListeners.keys()], ['pointerdown', 'keydown']);
   f.references.dispose();
+  assert.equal(f.menuListeners.size, 0, 'retirement removes both document listeners');
 });

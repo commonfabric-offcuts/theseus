@@ -44,13 +44,23 @@ export function menuDoor(root, locate, open, { doc = root.ownerDocument, clock =
 }
 
 export class OutlineMenus {
-  constructor(outline, { show = openMessageMenu, copy = copyText, signal } = {}) {
+  constructor(outline, { show = openMessageMenu, copy = copyText } = {}) {
     Object.assign(this, { outline, show, copy }); this.serial = 0; this.commands = new RailMenuCommands();
     this.cancelDoor = menuDoor(outline.list, target => this.row(target), (row, at) => this.open(row, at));
-    outline.doc.addEventListener('pointerdown', event => {
+    this.dismissPointer = event => {
       if (this.pending && !this.pending.contains(event.target)) { ++this.serial; this.pending = null; }
-    }, { capture: true, signal });
-    outline.doc.addEventListener('keydown', event => { if (this.pending && event.key === 'Escape') { ++this.serial; this.pending = null; } }, { capture: true, signal });
+    };
+    this.dismissKey = event => {
+      if (this.pending && event.key === 'Escape') { ++this.serial; this.pending = null; }
+    };
+    outline.doc.addEventListener('pointerdown', this.dismissPointer, true);
+    outline.doc.addEventListener('keydown', this.dismissKey, true);
+  }
+  dispose() {
+    this.reset();
+    const { doc } = this.outline;
+    doc.removeEventListener?.('pointerdown', this.dismissPointer, true);
+    doc.removeEventListener?.('keydown', this.dismissKey, true);
   }
   row(target) {
     if (!this.outline.handles || target.closest?.('[inert], input, textarea, select, [contenteditable]')) return null;
