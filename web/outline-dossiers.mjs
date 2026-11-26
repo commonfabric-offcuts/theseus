@@ -73,7 +73,7 @@ export class OutlineDossiers {
         // token. An answer elsewhere cannot validate a refused old session.
         if (sessionRefused(attemptOf(pending.error)) && this.outline.handles.api?.token === pending.token) continue;
         this.cancelRecovery(state);
-        // Applied 1295 fault: suppress the admitted recovery read.
+        this.load(state, pending.more, pending.current);
       }
     });
   }
