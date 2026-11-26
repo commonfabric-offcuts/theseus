@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "slice": "topic_unread-fixed-frontier-warm",
+  "view": "topic_unread",
+  "args": {"topic_id": "target"},
+  "caller": "web/app.mjs readUnread through TopicViews.readUnread, Api.view and checkedView",
+  "source_owner": "aim_next/delivery.py _view_topic_unread/_new_line/_oldest_unread",
+  "frontier": {"subscription_pending": 25, "direct_pending": 5, "marks": 0},
+  "blocks": 9,
+  "warmups": 2,
+  "limit": 1.5,
+  "deferred": ["growing pending backlog", "marks strata", "other views and argument shapes", "cold/fresh-clone strata", "whole actions", "full-history/native retention"]
+}
