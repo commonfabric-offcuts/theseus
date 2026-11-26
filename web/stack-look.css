@@ -422,6 +422,7 @@
 .stack-earlier{align-self:flex-start;display:inline-flex;align-items:center;min-height:2.75rem;margin:0 0 var(--stack-sheet-gap);padding:0 .85rem 0 .7rem;
   border:0;border-radius:var(--stack-r-sheet);background:transparent;color:var(--stack-folder-ink);font-size:.82rem;font-weight:600;text-align:left;cursor:pointer}
 .stack-earlier::before{content:"";flex:none;width:.4rem;height:.4rem;margin-right:.6rem;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg)}
+.stack-unread-disclosure[aria-expanded=true]::before{transform:rotate(45deg)}
 .stack-earlier>.stack-fresh{white-space:pre}
 .stack-earlier:hover{background:var(--stack-folder-deep)}
 .stack-earlier:focus-visible{outline:2px solid var(--stack-ring);outline-offset:1px}

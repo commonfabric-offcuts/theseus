@@ -427,6 +427,8 @@ for (const history of [100, 30000]) {
     fillFrom(list);
     load(history - 10, history - 6, { cursor: history - 5 });
     assert.ok(state.filled.has(unrelated) && drawn(list, unrelated));
+    assert.equal(drawn(list, unreadId), false);
+    list.querySelector('.stack-unread-disclosure').onclick();
     assert.ok(drawn(list, unreadId) && !state.folded.has(unreadId));
     unread.clear(); draw();
     assert.ok(drawn(list, unreadId), 'reading retains the row until explicit recollapse');
@@ -442,6 +444,9 @@ for (const history of [100, 30000]) {
     assert.deepEqual({ reads, received, records: views.messages.size }, before);
     load(history + 1, history + 1, { live: true, cursor: history });
     assert.ok(drawn(list, newId) && !state.folded.has(newId));
+    assert.equal(drawn(list, parent), false, 'closed disclosure hides context');
+    unread.add(newId); draw();
+    list.querySelector('.stack-unread-disclosure').onclick();
     assert.ok(drawn(list, parent) && state.contextRows.has(parent));
     assert.equal(drawn(list, grandparent), false, 'context stops after one loaded effective edge');
     assert.equal(drawn(list, unrelated), false, 'a live arrival does not re-expose filled history');

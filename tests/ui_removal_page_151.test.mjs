@@ -246,10 +246,15 @@ test('151 page compact: earlier-message rows retain retraction through reveal', 
   assert.deepEqual([...f.messages].map(([id, item]) => [id, item.acts ?? {}]), before, 'D3_ACT: reveal records no fold');
 });
 
-test('151 page compact: the automatically shown parent reply line retains retraction', t => {
+test('151 page compact: revealing the unread reply’s parent retains retraction', t => {
   const f = renderFixture(t, [message('root', 1), message('parent', 2, { reply_to: 'root', body: 'Context parent original', removal: act }),
     message('new-reply', 3, { reply_to: 'parent', author_id: 'other', unread: true })], { unread: item => item.id === 'new-reply' });
   f.state.levels.set('root', 'folded');
+  f.arrange();
+  assert.equal(f.entry('parent').hidden, true);
+  const disclosure = f.state.sections.get('root').querySelector('.stack-unread-disclosure');
+  assert.equal(disclosure.textContent, '1 new');
+  disclosure.onclick();
   for (let paint = 0; paint < 2; ++paint) {
     f.arrange();
     assert.ok(f.state.contextRows.has('parent'), 'SETUP: actual new-reply context owner selected its parent');

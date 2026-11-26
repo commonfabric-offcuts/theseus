@@ -264,20 +264,20 @@ export function earlierOf(stack, level, { held = null } = {}) {
 // Missing-root branch heads stay reachable independently of history reveal.
 function replySelection(stack, options) {
   const { level = 'folded', kept = () => false, writing = () => false, newReply = () => false,
-    revealed = () => true, earlier = false, held = null } = options;
+    revealed = () => true, earlier = false, held = null, newOpen = null } = options;
   const all = stack.replies, latest = newestReply(stack);
   const earliest = earlierOf(stack, level, { held }), earlierIds = new Set(earliest.map(item => item.id));
   const selected = new Set(), context = new Set();
   for (const item of all) {
     if (writing(item) || item.yours?.note === true || stack.filled?.has(item.id) && revealed(item) ||
         (level === 'open' && (earlier || !earlierIds.has(item.id))) ||
-        (level === 'folded' && (actsOf(item).starred === true || kept(item) ||
-          item.seq === latest || stack.branches?.has(item.id)))) selected.add(item.id);
+        (level === 'folded' && (actsOf(item).starred === true || item.seq === latest ||
+          (newOpen === null ? kept(item) || stack.branches?.has(item.id) : newOpen && newReply(item))))) selected.add(item.id);
   }
-  if (level === 'folded') {
+  if (level === 'folded' && newOpen !== false) {
     const loaded = new Set(all.map(item => item.id));
     for (const reply of all) {
-      if (!selected.has(reply.id) || !(newReply(reply) || reply.seq === latest)) continue;
+      if (!selected.has(reply.id) || !(newReply(reply) || newOpen === null && reply.seq === latest)) continue;
       const parent = stack.parents?.get(reply.id);
       if (loaded.has(parent) && !selected.has(parent)) context.add(parent);
     }
@@ -314,8 +314,8 @@ const messages = n => (n === 1 ? 'message' : 'messages');
 // earlier: true } in its place. A first message shown whole by a landing
 // (headWhole, 875) is omitted from that row's count and press target, without
 // moving the held boundary for the newest seven.
-export function rowsOf(stack, { level = 'folded', kept, writing = () => false, unread = () => false, newReply = unread, revealed, peeked = () => false, earlier = false, held = null, headWhole = false } = {}) {
-  const { selected, context, earliest, earlierIds } = replySelection(stack, { level, kept, writing, newReply, revealed, earlier, held });
+export function rowsOf(stack, { level = 'folded', kept, writing = () => false, unread = () => false, newReply = unread, revealed, peeked = () => false, earlier = false, held = null, headWhole = false, newOpen = null } = {}) {
+  const { selected, context, earliest, earlierIds } = replySelection(stack, { level, kept, writing, newReply, revealed, earlier, held, newOpen });
   const rows = [], all = stack.replies;
   const hiddenEarlier = earliest.filter(item => !writing(item) && item.yours?.note !== true && (!headWhole || item !== stack.head));
   if (hiddenEarlier.length && !earlier) rows.push({ kind: 'earlier', items: hiddenEarlier, words: `${hiddenEarlier.length} earlier ${(headWhole ? replies : messages)(hiddenEarlier.length)}`, fresh: hiddenEarlier.filter(unread).length });
