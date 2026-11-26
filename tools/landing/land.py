@@ -84,6 +84,7 @@ try:
         assert hashlib.sha256((Path(guard['checkout'])/relative).read_bytes()).hexdigest()==digest
     sys.path.insert(0,guard['checkout'])
     from tools import deploy as deployment, releases, train
+    admission_options = decisions.admission_options(KIND, deployment.admit, JUDGMENT)
     # LANDED ON READS (Tony, Nov 23 6:42), item 1182: the installed guard predates live's file classification, under which
     # live's PLANNING_PATHS (aim_next/judgment.py at BASE) are planning inputs, not deploy-tool files, and Core freezes a
     # piece that changes only them as ordinary. The installed guard's guarded list is read through live's rule for this
@@ -172,7 +173,7 @@ try:
     pre=git('commit-tree',TREE,'-p',BASE,'-p',SOURCE,'-F',str(OUT/'PRE-MERGE-MESSAGE.txt')).strip()
     save('PRE-MERGE.json',{'candidate':pre,'tree':TREE,'parents':[BASE,SOURCE],'message':str(OUT/'PRE-MERGE-MESSAGE.txt')})
     run(['git','-C',str(LIVE),'-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false','fetch','--no-tags',str(WT),pre])
-    deployment.admit(config, pre, judgment=JUDGMENT)
+    deployment.admit(config, pre, **admission_options)
     save('RUNNER-POLICY-PREMERGE.json',host_policy)
     print('RUNNER POLICY',host_policy['kind'],host_policy['reason'],flush=True)
     if PREFLIGHT:

@@ -26,7 +26,7 @@ class Seat(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.kit = self.root / 'clone' / 'tools' / 'landing'
         shutil.copytree(KIT, self.kit, ignore=shutil.ignore_patterns('__pycache__'))
         shutil.copy(ROOT / 'tools' / 'lane_lock.py', self.kit.parent / 'lane_lock.py')
@@ -619,6 +619,96 @@ class RunnerVisible(unittest.TestCase):
             with runner_visible.hold(d):
                 pass
             self.assertTrue((Path(d) / '.runner-hold').exists())
+
+
+class AdmissionCompatibility(unittest.TestCase):
+    def test_ordinary_uses_the_two_argument_deploy_api(self):
+        def admit(config, candidate):
+            return config, candidate
+
+        options = decisions.admission_options('ordinary', admit, None)
+        self.assertEqual(admit('config', A, **options), ('config', A))
+
+    def test_judged_refuses_a_deploy_tool_without_explicit_judgment_support(self):
+        def old_admit(config, candidate, **extra):
+            self.fail('An unrecognized deploy API must never be called for judged work')
+
+        with self.assertRaisesRegex(ValueError, 'does not support judged preflight'):
+            decisions.admission_options('judged-first', old_admit, {'version': 1131})
+
+    def test_supported_judgment_reaches_the_deploy_tool_intact(self):
+        def admit(config, candidate, *, judgment=None):
+            return judgment
+
+        judgment = {'version': 1131}
+        options = decisions.admission_options('judged-first', admit, judgment)
+        self.assertIs(admit(None, A, **options), judgment)
+        with self.assertRaisesRegex(ValueError, 'needs its deterministic judgment'):
+            decisions.admission_options('judged-first', admit, None)
+        with self.assertRaisesRegex(ValueError, 'cannot carry a judgment'):
+            decisions.admission_options('ordinary', admit, judgment)
+
+
+class BackupAndRehearsal(Seat):
+    def test_fresh_instance_backup_and_rehearsal_use_the_configured_seat(self):
+        from aim_next import Store, initialize
+        from aim_next.profile import write_profile
+
+        live = Path(self.settings['live'])
+        for part in ('aim_next', 'bin', 'web'):
+            shutil.copytree(ROOT / part, live / part, ignore=shutil.ignore_patterns('__pycache__'), dirs_exist_ok=True)
+        git = ['git', '-C', str(live)]
+        subprocess.run(git + ['init', '-q'], check=True)
+        subprocess.run(git + ['add', '.'], check=True)
+        subprocess.run(git + ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.com', '-c',
+                              'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'Fixture'], check=True)
+        head = subprocess.check_output(git + ['rev-parse', 'HEAD'], text=True).strip()
+
+        instance = Path(self.settings['instance']).resolve()
+        database = instance / 'data.sqlite3'
+        instance.mkdir(mode=0o700)
+        binding = initialize(database, 'landing-fixture', [{'id': 'tester', 'kind': 'human'}],
+                             authority_path=instance / 'authority.json')['binding']
+        profile = instance / 'tester.json'
+        write_profile(profile, str(database), 'landing-fixture', 'tester', binding=binding)
+        board = Store(database, 'landing-fixture', expected_binding=binding)
+        board.record_release({'release': 1, 'commit': head, 'deployed_at': '2026-11-26T10:00:00+00:00',
+                              'items': [], 'source': 'deploy'})
+        cli = [sys.executable, '-I', '-B', str(live / 'bin' / 'aim-next'), '--profile', str(profile)]
+        def call(*args):
+            result = subprocess.run(cli + list(args), capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return result.stdout.split()
+
+        workspace = call('new-outcome', '--title', 'Fixture outcome')[2]
+        older = call('start', workspace, '--title', 'First', 'First root')
+        newer = call('start', workspace, '--title', 'Second', 'Second root')
+        self.settings['profile'] = str(profile)
+        self.write_config()
+        (Path(self.settings['coordinator']) / 'deploy-trains.json').write_text(
+            json.dumps({'instance': str(instance), 'server_profile': profile.name}))
+        folder = self.folder()
+        (folder / 'SPEC.json').write_text(json.dumps({'base': head, 'release': 2, 'items': [1]}))
+        self.assertFalse((instance / 'backups').exists())
+        saved = self.run_kit('backup_live.py', folder)
+        self.assertEqual(saved.returncode, 0, saved.stderr)
+        backup = json.loads(saved.stdout)['bundle_path']
+        self.assertEqual((instance / 'backups').stat().st_mode & 0o777, 0o700)
+        self.assertTrue(json.loads((folder / 'BACKUP-VERIFIED.json').read_text())['verified'])
+
+        for name, selected, expected in [('default', None, newer[-1]), ('selected', older[1], older[-1])]:
+            with self.subTest(name=name):
+                if selected:
+                    self.settings['rehearsal_topic'] = selected
+                    self.write_config()
+                out = folder / name
+                proof = self.run_kit('realdata_proof.py', backup, out, '--rehearse', live)
+                output = json.loads((out / 'RESULT.json').read_text())
+                diagnostic = '\n'.join(path.read_text() for path in sorted((out / 'runs').glob('*.stderr')))
+                self.assertEqual(proof.returncode, 0, proof.stdout + proof.stderr + diagnostic + repr(output.get('error')))
+                result = output['versions']['rehearse']
+                self.assertTrue(result['passed'])
+                self.assertEqual(result['read']['answer']['stack_root'], expected)
 
 
 if __name__ == '__main__':

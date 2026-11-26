@@ -21,6 +21,10 @@ if len(sys.argv) != 5 or sys.argv[3] != '--rehearse':
     raise SystemExit('usage: realdata_proof.py BACKUP_DIR OUT_DIR --rehearse WORKTREE')
 BACKUP, OUT, REHEARSE = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[4])
 SCRATCH = Path(config.get('scratch')) / ('realdata-%d' % int(time.time()))
+# The board's own landing seat reads the rehearsed copy; a board without a 'warp' actor has no binding for it.
+ACTOR = config.get('seat') or 'warp'
+# The topic whose newest root the stack read checks; unset, the newest root anywhere on the copy.
+TOPIC = config.get('rehearsal_topic')
 
 
 def exclusive(path, data, mode=0o600):
@@ -93,7 +97,7 @@ def snapshot(db_path, integrity=False, columns=None):
                                                         for c in names if c not in kept}}
         broken = db.execute('PRAGMA foreign_key_check').fetchall()
         value = {'schema_version': meta.get('schema_version'), 'commit_seq': meta.get('commit_seq'), 'rows': rows,
-                 'acts_sequence': db.execute("SELECT seq FROM sqlite_sequence WHERE name='message_acts'").fetchone()[0],
+                 'acts_sequence': db.execute("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='message_acts'), 0)").fetchone()[0],
                  'acts_table_sql_sha256': hashlib.sha256(db.execute(
                      "SELECT sql FROM sqlite_master WHERE name='message_acts'").fetchone()[0].encode()).hexdigest(),
                  'broken_references': len(broken), 'broken_sample': [list(r) for r in broken[:5]], 'columns': shape}
@@ -139,14 +143,17 @@ print(json.dumps({'binding': binding, 'replaced': before}))
 READ = r'''
 import json, sqlite3, sys
 from aim_next.store import Store
-db, instance, binding = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
+db, instance, binding, actor, topic = sys.argv[1], sys.argv[2], json.loads(sys.argv[3]), sys.argv[4], sys.argv[5]
 store = Store(db, instance, expected_binding=binding)
-deliveries = store.view('warp', 'deliveries', {'limit': 50})
-# The newest root in the Landing topic that this copy holds, whatever the backup's moment.
+deliveries = store.view(actor, 'deliveries', {'limit': 50})
+# The newest root in the chosen topic (or anywhere, when none is chosen) that this copy holds, whatever the backup's moment.
 with sqlite3.connect('file:%s?mode=ro' % db, uri=True) as conn:
-    topic = 't-fa1c00ed929b4b62971e1664558ecc6d'
-    root = conn.execute('SELECT id FROM messages WHERE topic_id=? AND reply_to IS NULL ORDER BY rowid DESC LIMIT 1', (topic,)).fetchone()[0]
-stack = store.view('warp', 'stack_positions', {'topic_id': topic, 'message_ids': [root]})
+    if topic:
+        row = conn.execute('SELECT id, topic_id FROM messages WHERE topic_id=? AND reply_to IS NULL ORDER BY rowid DESC LIMIT 1', (topic,)).fetchone()
+    else:
+        row = conn.execute('SELECT id, topic_id FROM messages WHERE reply_to IS NULL ORDER BY rowid DESC LIMIT 1').fetchone()
+    root, topic = row
+stack = store.view(actor, 'stack_positions', {'topic_id': topic, 'message_ids': [root]})
 position = (stack.get('items') or [{}])[0].get('stack_position') or {}
 print(json.dumps({'deliveries_ok': 'error' not in deliveries, 'deliveries_read': len(deliveries.get('items') or []),
                   'request_deliveries_read': sum(1 for item in deliveries.get('items') or [] if item.get('request')),
@@ -177,12 +184,12 @@ def child(wt, home, code, argv, tag):
 def serve(wt, home, copy, instance, binding):
     """The candidate's own server process on the upgraded copy, as 07-server and 10-verify meet it: started on a
     loopback port the OS picks, its ready line awaited, / and /api/bootstrap read, then stopped with SIGTERM. The
-    server makes no outbound call. It runs as warp through a scratch profile bound to the copy's scratch authority."""
+    server makes no outbound call. It runs as the configured seat through a profile bound to the copy's scratch authority."""
     import select, signal, urllib.error, urllib.request
     profile = home / 'serve-profile.json'
     fd = os.open(str(profile), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, 'w') as stream:
-        json.dump({'v': 2, 'instance_id': instance, 'actor_id': 'warp', 'db_path': str(copy),
+        json.dump({'v': 2, 'instance_id': instance, 'actor_id': ACTOR, 'db_path': str(copy),
                    'authority_path': binding['authority_path'], 'authority_id': binding['authority_id'],
                    'authority_epoch': binding['authority_epoch']}, stream)
     env = {'PATH': '/usr/bin:/bin:/usr/sbin:/sbin', 'HOME': str(home / 'home'), 'TMPDIR': str(home / 'tmp')}
@@ -274,7 +281,7 @@ try:
     # The new code opens the upgraded store as the server will and reads what 858 changed: request deliveries
     # (refresh_requests under message_acts) and a dossier's stack position (the level). Only counts and keys are
     # printed, never message words.
-    entry['read'] = child(REHEARSE, home, READ, [str(copy), instance, json.dumps(binding)], 'rehearse-read')
+    entry['read'] = child(REHEARSE, home, READ, [str(copy), instance, json.dumps(binding), ACTOR, TOPIC or ''], 'rehearse-read')
     read = entry['read']['answer'] or {}
     entry['serve'] = serve(REHEARSE, home, copy, instance, binding)
     answer = entry['up']['answer'] or {}
