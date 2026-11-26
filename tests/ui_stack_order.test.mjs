@@ -6,7 +6,7 @@
 // (tests/stack_native.mjs) press the real keys on the real page.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder, positionOf, earlierOf, RECENT, starredDossiers, dossierOf, reheaded } from '../web/stack-order.mjs';
+import { gather, ordered, rowsOf, headOf, lineUnder, moveOf, joinOf, joinShown, readingOrder, foldStep, keyOf, shown, rowFolded, laterActs, LEVELS, sideOf, shownOrder, pageOf, stepTarget, positionOf, earlierOf, RECENT, starredDossiers, dossierOf, reheaded } from '../web/stack-order.mjs';
 
 const message = (seq, extra = {}) => ({ id: 'm' + seq, seq, author_id: 'agent-a', body: `Message ${seq}\nmore`, ...extra });
 const ids = items => items.map(item => item.id);
@@ -775,4 +775,19 @@ test('item 731 Core order wins over replies and old places, including an unloade
   assert.deepEqual(stacksOf([a,reply]).map(stack => stack.dossier), ['m10','m1'], 'partial pages keep the same root key');
   const fresh = message(31, { stack_position: at(21, 'm31') });
   assert.deepEqual(stacksOf([a,b,reply,fresh]).map(stack => stack.dossier), ['m31','m10','m1']);
+});
+
+test('Reader steps across archived dossiers in the same stable starred-first order as their rows', () => {
+  const stacks = stacksOf([message(1), message(2), message(3), message(4)]);
+  const archived = new Set(['m1', 'm2', 'm3']);
+  const starred = new Set(['m1', 'm2']);
+  const view = { below: stack => archived.has(stack.id), hidden: () => false,
+    archivedStarred: stack => starred.has(stack.id), asideShown: true };
+  assert.deepEqual(ids(shownOrder(stacks, view)), ['m4', 'm2', 'm1', 'm3']);
+  const page = pageOf(stacks, view);
+  assert.deepEqual(ids(page.all), ['m4', 'm2', 'm1', 'm3']);
+  assert.deepEqual(ids(page.order), ids(page.all));
+  const at = page.order.findIndex(item => item.id === 'm1');
+  assert.equal(stepTarget(page.order[at + 1], page).id, 'm3');
+  assert.equal(stepTarget(page.order[at - 1], page).id, 'm2');
 });

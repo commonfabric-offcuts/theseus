@@ -37,9 +37,8 @@ change:
   Done only the owner's own 👍 or word gives (item 624). The topic's.
 - `aside` (stack.aside): the reader moved the dossier this message is the first
   message of below More, as far as a message (`through`), or brought it back
-  (none). Theirs alone. A dossier holding a message they starred stays above
-  More for them: the move is refused (HELD_BY_STAR), and a star made in a
-  dossier below More brings it back in the same act (item 635).
+  (none). Theirs alone. Stars and archive membership are independent; the
+  page places loaded starred dossiers at the top of Archive.
 
 A personal row belongs to its reader (`owner` is their id); a shared row has the
 empty owner. An act's revision counts its rows for that message, kind and owner,
@@ -153,9 +152,7 @@ PLACE_BOUND = 1e15
 JOIN_DEPTH = 10000
 # A minted name is this many words, from the fewest to the most (item 479).
 MINT_WORDS = (2, 5)
-# Why a dossier holding a message the reader starred is not moved below More for them (item 635): the way out is to unstar.
-HELD_BY_STAR = ("STARRED_IN_DOSSIER", "This dossier has a message you starred: unstar it to archive it")
-# What an act stands at before anyone has made it.
+
 NONE = {"aside": {"through": None}, "star": {"starred": False}, "deal": {"dealt": False}, "fold": {"folded": False}, "place": {"key": None}, "name": {"name": ""}, "join": {"into": None},
         "cover": cover_values.EMPTY_COVER, "level": {"level": None}}
 EMPTY = {"aside": None, "aside_revision": 0, "starred": False, "star_revision": 0, "dealt": False, "deal_revision": 0, "folded": False, "fold_revision": 0,
@@ -667,7 +664,7 @@ def stack_positions(db, actor, items, *, context=None):
                                "cover": acts["cover"], "cover_revision": acts["cover_revision"],
                                "cover_read_seq": acts.get("cover_read_seq", 0),
                                "cover_refresh_revision": acts["cover_refresh_revision"],
-                               "below": through is not None and not starred and (others is None or others <= through),
+                               "below": through is not None and (others is None or others <= through),
                                "at": {"messages": latest, "acts": acts_at[topic]}}
         result[item["id"]] = positions[root]
     return result
@@ -720,7 +717,7 @@ class Stacks:
     def _clear_archive_new(self, db, actor, message, through):
         """Read this actor's visible dossier through Archive's observed boundary.
 
-        Called only after all aside/root/access/star/revision fences, within
+        Called only after all aside/root/access/revision fences, within
         the command transaction. Reuse the delivery and mark owners so counts,
         wake eligibility and change records agree. No topic-wide read range,
         other reader, or later message is consumed. The receipt is counts only.
@@ -764,9 +761,6 @@ class Stacks:
         if kind == "aside":
             if value["through"] is not None and value["through"] > _seen_seq(db, actor, message["topic_id"]):
                 raise Refusal("INVALID_ARGUMENT", "The observed sequence is ahead of this topic")
-            # A dossier holding a message the reader starred stays above More for them (item 635).
-            if value["through"] is not None and starred_in(db, actor, message["topic_id"], StackRoots(db, actor)).get(message["id"]):
-                raise Refusal(*HELD_BY_STAR)
         personal = kind in PERSONAL
         if not personal:
             # A reached, archived or completed outcome's topics are kept to read: its stacks keep their names and joins.
@@ -807,19 +801,14 @@ class Stacks:
         # The newest act in the topic its reader had heard of before this one: a page that read the topic's places at
         # that act or later knows that only its own act came since (docs/reply-stacks.md, item 426).
         before = _seen_acts(db, actor, message["topic_id"])
-        back = self._brought_back(db, actor, message) if kind == "star" and value["starred"] else None
-        version = self._record_act(db, kind, message, owner, actor, value, revision, tell=back is None)
-        if back:
-            # The star and the dossier back above More are one act: one transaction, its reader told once, at the last row.
-            version = self._record_act(db, "aside", back["root"], actor, actor, {"through": None}, back["aside_revision"], order=False)
-            result["brought_back"] = {"root_id": back["root"]["id"], "aside_revision": back["aside_revision"]}
+        version = self._record_act(db, kind, message, owner, actor, value, revision)
         return dict(result, **value, **{expected_name: revision, "changed": True, "acts_version": version, "acts_before": before}), [
             {"kind": "acts", "id": message["topic_id"], "version": version}]
 
     def _brought_back(self, db, actor, message):
-        """{root, aside_revision} when message, about to be starred by actor, is in a dossier actor moved below More:
-        the star brings it back above More for them (item 635), as their own Bring back would, at its next revision.
-        None for a dossier they have not moved; another reader's move is theirs and stays."""
+        """Find the retained aside and its next revision for a visible unread edit.
+        None for a dossier this reader has not moved.
+        """
         root = StackRoots(db, actor).root(message["id"])
         if (self._act_value(db, root, "aside", actor) or NONE["aside"])["through"] is None:
             return None

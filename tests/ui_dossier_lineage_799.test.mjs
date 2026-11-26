@@ -37,7 +37,7 @@ function assertHeads(state) {
   assert.equal(all.length,new Set(all.map(item=>item.id)).size,'no repeated roots or branches');
   for(const stack of state.stacks) {
     assert.equal(stack.id,stack.dossier,'actual original heads each anonymous dossier');
-    if (stack.head.stack_position.starred.length) assert.equal(state.below.has(stack.id),false,'reader stars always above More');
+    assert.equal(state.below.has(stack.id), stack.head.stack_position.below);
   }
 }
 test('799 anonymous actual30 reply-star and original-star heads, retained join/move, split and explicit unstar', async()=>{
@@ -46,8 +46,8 @@ test('799 anonymous actual30 reply-star and original-star heads, retained join/m
     const root = name==='after_join'||name==='after_join_unstar'||name==='after_remote_reply' ? data.destination : data.root;
     const stack=state.stacks.find(stack=>stack.dossier===root);
     assert.ok(stack, name+': canonical dossier exists');
-    if(name==='before_remote_star'||name==='after_join_unstar')assert.equal(state.below.has(root),true,name+': ordinary unstarred negative remains below More');
-    else assert.equal(state.below.has(root),false,name+': actual star/Bring back/new reply places it above More');
+    const archived = ['before_remote_star', 'after_remote_star', 'after_join', 'after_join_unstar'].includes(name);
+    assert.equal(state.below.has(root), archived, name + ': stars preserve archive membership, visible replies can return it');
     const backlog=state.stacks.find(stack=>stack.dossier===data.backlog_root);
     assert.ok(backlog?.head.acts.starred,'star on unloaded original admitted and shown on actual head');
     assert.equal(state.below.has(data.backlog_root),false);
@@ -65,7 +65,7 @@ test('799 remote star refresh and stale positions cannot reverse it while supple
     return {...after.positions_read,items:after.positions_read.items.filter(row=>args.message_ids.includes(row.message_id))};
   },()=>true);
   assert.equal(views.learnPositions(before.positions_read.items),false,'late old page positions rejected');
-  assert.equal((await draw({...after,items:[...views.messages.values()]})).below.has(data.root),false);
+  assert.equal((await draw({...after,items:[...views.messages.values()]})).below.has(data.root),true);
   assert.deepEqual([views.olderCursor,views.newest,[...views.runs]],frontier);
 });
 test('799 anonymous actual initial30 and each More retain exact frontier and unique admitted root/cards',async()=>{
@@ -82,7 +82,7 @@ test('799 anonymous actual initial30 and each More retain exact frontier and uni
     const all=state.stacks.flatMap(stack=>[stack.head,...stack.replies]);
     assert.equal(all.length,new Set(all.map(item=>item.id)).size);
     for(const stack of state.stacks.filter(stack=>!state.apart.has(stack.id)))assert.equal(stack.id,stack.dossier);
-    for(const stack of state.stacks)if(stack.head.stack_position.starred.length)assert.equal(state.below.has(stack.id),false);
+    for(const stack of state.stacks)assert.equal(state.below.has(stack.id),stack.head.stack_position.below);
     assert.equal([...r.list.descendants()].filter(e=>e.dataset.id).length,r.messages.size);
   }
 });
