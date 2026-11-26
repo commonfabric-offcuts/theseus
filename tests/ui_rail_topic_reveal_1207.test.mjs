@@ -172,3 +172,17 @@ test('a keyboard click on More topics preserves the keyboard hold until focus le
   f.action('click', f.doc.createElement('button'), { detail: 0 });
   assert.equal(f.area.hasAttribute('data-topic-keys'), false);
 });
+
+for (const modifier of ['metaKey', 'ctrlKey', 'shiftKey', 'altKey']) {
+  test(`a ${modifier} press lets the faded link keep its browser action`, t => {
+    const f = fixture(t);
+    const link = f.host.children[7];
+    f.emit(link, 'pointerdown', { pointerType: 'mouse', [modifier]: true });
+    assert.equal(f.revealed(), false);
+    const click = f.action('click', link, { [modifier]: true });
+    assert.equal(click.prevented, false);
+    assert.equal(click.stopped, false);
+    f.emit(link, 'pointerdown', { pointerType: 'mouse' });
+    assert.equal(f.revealed(), true);
+  });
+}
