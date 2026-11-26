@@ -160,7 +160,7 @@ export class OutlineDossiers {
         // Publication can become ineligible while this request is out (for
         // example, its group is folded). Settlement still releases its own
         // slot; an old request must never release a newer run's read.
-        if (mine()) {
+        if (state.busy === reading) {
           state.busy = null; state.box.setAttribute('aria-busy','false');
         }
       }
