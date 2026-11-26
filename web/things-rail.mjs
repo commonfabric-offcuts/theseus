@@ -112,6 +112,10 @@ export function isPreview(url) {
   return parsed.hostname.endsWith('.ts.net') || ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname) || /\/(previews?|mockups?)(\/|$)/i.test(parsed.pathname);
 }
 const shortAddress = url => { try { const u = new URL(url); return (u.host + u.pathname).replace(/\/$/, ''); } catch { return url; } };
+function setWords(node, words) {
+  if (node.textContent !== words) node.textContent = words;
+}
+
 // The previews and pull requests in messages, newest first, each once: the
 // newest message that carries it names where it came from.
 export function thingsIn(messages) {
@@ -501,9 +505,12 @@ export class ThingsRail {
       notebookMayWrite: notes.value?.reader_may_write === true, notebookNext: notes.value?.next ?? null,
       messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)),
       tools: toolsRead.value === null ? [] : toolsRead.value ?? (toolsRead.error ? undefined : []) });
-    this.drawnOnce = true; this.holder.removeAttribute('aria-busy');
-    this.message.hidden = this.retry.hidden = !failed.length;
-    if (failed.length) this.message.textContent = 'Some of this could not be read just now; what shows is what was read last.';
+    this.drawnOnce = true;
+    if (this.holder.hasAttribute('aria-busy')) this.holder.removeAttribute('aria-busy');
+    const hideError = failed.length === 0;
+    if (this.message.hidden !== hideError) this.message.hidden = hideError;
+    if (this.retry.hidden !== hideError) this.retry.hidden = hideError;
+    if (failed.length) setWords(this.message, 'Some of this could not be read just now; what shows is what was read last.');
     return !failed.length;
   }
   // The open topic alone, at the version the page last read it at (it says when that moves: topicChanged).
@@ -598,12 +605,17 @@ export class ThingsRail {
     for (const [key] of SECTIONS) {
       const part = this.sections.get(key), section = shown[key];
       if (section === undefined) continue; // not read this time: what showed stays
-      const appears = part.details.hidden && Boolean(section);
-      part.details.hidden = !section;
-      if (!section) { part.drawn = null; part.body.replaceChildren(); continue; }
+      const hidden = !section;
+      const appears = part.details.hidden && !hidden;
+      if (part.details.hidden !== hidden) part.details.hidden = hidden;
+      if (hidden) {
+        part.drawn = null;
+        if (part.body.firstChild) part.body.replaceChildren();
+        continue;
+      }
       // An empty Notebook kept for its pencil is not something the place refers to.
       if (section.key !== 'note-none') any = true;
-      part.sum.textContent = section.sum;
+      setWords(part.sum, section.sum);
       if (part.drawn !== section.key) {
         part.drawn = section.key;
         part.body.replaceChildren(section.node());
@@ -622,8 +634,8 @@ export class ThingsRail {
       if (!this.doc.activeElement || this.doc.activeElement === this.doc.body) builtFrom.focus();
     }
     this.links?.restoreFocus(linkFocus);
-    this.nothing.hidden = any;
-    this.nothing.textContent = 'This topic refers to nothing yet.';
+    if (this.nothing.hidden !== any) this.nothing.hidden = any;
+    setWords(this.nothing, 'This topic refers to nothing yet.');
   }
   pipelineRows({ now, next, builds }, saved = []) {
     const titles = new Map((now.items ?? []).map(item => [item.number, item.title]));
