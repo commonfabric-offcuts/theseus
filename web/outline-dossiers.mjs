@@ -134,7 +134,7 @@ export class OutlineDossiers {
       this.outline.doc?.visibilityState !== 'hidden' && handles.topicReadAllowed?.() !== false;
     state.box.setAttribute('aria-busy','true');
     // Defer the read to a microtask so busy is set before sync can run again.
-    state.busy = Promise.resolve().then(async () => {
+    const reading = state.busy = Promise.resolve().then(async () => {
       let accepted = false;
       try {
         let cursor = more ? state.next : null, stars = more ? [...state.stars] : [], next;
@@ -157,7 +157,10 @@ export class OutlineDossiers {
         this.paint(state);
         this.waitForContact(state, error, more, recoveryCurrent, token);
       } finally {
-        if (mine()) {
+        // Publication can become ineligible while this request is out (for
+        // example, its group is folded). Settlement still releases its own
+        // slot; an old request must never release a newer run's read.
+        if (state.busy === reading) {
           state.busy = null; state.box.setAttribute('aria-busy','false');
         }
       }

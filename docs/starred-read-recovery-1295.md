@@ -20,6 +20,10 @@ paint after those conditions change. Other diagnostic, malformed, forbidden
 and authority failures keep their existing explicit notices. Unrelated outages
 are never described as releases.
 
+Settlement releases a read's own busy slot by its promise identity, separately
+from publication eligibility. Hiding after recovery begins cannot strand Retry
+after a same-run reveal, and an old completion cannot release a newer run's slot.
+
 The same owner serves dossier and Notebook-page groups reached by pointer,
 keyboard, touch or focus in the outline. Retry and More use their existing
 callbacks. Recovery keeps another control's focus; if the focused Retry is

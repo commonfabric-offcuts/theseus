@@ -141,6 +141,17 @@ for (const hiding of ['group', 'parent', 'document', 'removed', 'topic access'])
     assert.equal(f.calls.length, 3); assert.equal(f.state.stars[0].dossier.id, 'd7');
   });
 
+test('1295 an old recovery settling cannot release a newer run\'s busy owner', async t => {
+  const f = fixture(t); f.jobs.push(offline); await f.load(); let oldAnswer, newAnswer;
+  f.jobs.push(() => new Promise(yes => { oldAnswer = yes; })); answered(); await flush();
+  f.subject.begin();
+  f.jobs.push(() => new Promise(yes => { newAnswer = yes; })); const next = f.load(); await flush();
+  const busy = f.state.busy; oldAnswer(page([star(99)])); await flush();
+  assert.equal(f.state.busy, busy); assert.deepEqual(f.state.stars, []);
+  newAnswer(page([star(7)])); await next;
+  assert.equal(f.state.busy, null); assert.equal(f.state.stars[0].dossier.id, 'd7');
+});
+
 test('1295 pointer/key/touch Retry callback and More keep their existing owners; a focused Retry returns to the topic', async t => {
   const f = fixture(t); f.jobs.push(offline); await f.load();
   const retry = f.box.querySelector('[data-retry]'); assert.ok(retry); retry.focus();
