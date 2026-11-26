@@ -208,3 +208,28 @@ def verify(root):
     assert [m["id"] for m in answer["items"]] == [m["id"] for m in target[-30:]]
     assert [m["body"] for m in answer["items"]] == [m["body"] for m in target[-30:]]
     return {"messages": len(actual), "target": len(target), "dossiers": len(roots), "frontier": [m["id"] for m in target[-30:]], "verified": True}
+
+
+def verify_unread(root):
+    """One fixed-frontier stratum; id/seq come from the independent ledger.
+
+    Time and commit are canonical offline snapshot metadata, not ledger-derived.
+    The normal full fixture verification still holds before this extra oracle.
+    """
+    verify(root)
+    store, ledger = open_seed(root)
+    target = [m for m in ledger["messages"] if m["topic_id"] == "target"]
+    first = target[-30]
+    with sqlite3.connect(str(store.path)) as db:
+        pending = dict(db.execute(
+            "SELECT g.kind,count(*) FROM deliveries d JOIN delivery_groups g ON g.id=d.group_id "
+            "WHERE g.recipient_id='reader' AND g.active=1 AND d.topic_id='target' "
+            "AND d.state='pending' GROUP BY g.kind").fetchall())
+        assert pending == {"subscription": 25, "direct": 5}, "Unread pending frontier changed: %r" % pending
+        assert db.execute("SELECT count(*) FROM message_marks WHERE actor_id='reader'").fetchone() == (0,), "Unread marks changed"
+        sent_ms = db.execute("SELECT sent_ms FROM messages WHERE id=?", (first["id"],)).fetchone()[0]
+        commit = int(db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()[0])
+    expected = {"instance_id": ledger["instance_id"], "topic_id": "target", "commit_seq": commit,
+                "oldest_unread": {"id": first["id"], "seq": first["seq"], "sent_ms": sent_ms}}
+    assert store.view("reader", "topic_unread", {"topic_id": "target"}) == expected, "Unread frontier differs from ledger"
+    return expected

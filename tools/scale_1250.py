@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""First1250 slice: verified seeds and one complete topic_messages view."""
+"""Verified scale seeds and one declared warm page-view stratum."""
 import argparse
 import contextlib
 import json
@@ -13,15 +13,17 @@ from unittest import mock
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(REPO), str(REPO / "tests")]
-from fixtures.scale_1250 import Seed, open_seed, verify
+from fixtures.scale_1250 import Seed, open_seed, verify, verify_unread
 from aim_next import Store
 from aim_next import store as core
 from aim_next.server import create_server
 
 ARGS = {"topic_id": "target", "direction": "before", "limit": 30}
+VIEW_ARGS = {"topic_messages": ARGS, "topic_unread": {"topic_id": "target"}}
 
 
-def diagnostic(root):
+def diagnostic(root, view="topic_messages"):
+    args = VIEW_ARGS[view]
     store, ledger = open_seed(root)
     original, steps, statements = core._connect, [0], []
     def connect(*args, **kwargs):
@@ -30,11 +32,11 @@ def diagnostic(root):
         db.set_trace_callback(lambda sql: statements.append({"sql": sql, "at_step": steps[0]}))
         return db, runtime
     with mock.patch.object(core, "_connect", connect):
-        answer = store.view("reader", "topic_messages", ARGS)
+        answer = store.view("reader", view, args)
     assert "error" not in answer, answer
     for n, statement in enumerate(statements):
         statement["vm_steps"] = (statements[n + 1]["at_step"] if n + 1 < len(statements) else steps[0]) - statement["at_step"]
-    return {"view": "topic_messages", "args": ARGS, "target_count": ledger["count"], "vm_steps": steps[0],
+    return {"view": view, "args": args, "target_count": ledger["count"], "vm_steps": steps[0],
             "statements": statements, "scope": "Instrumented diagnostic; not uninstrumented request latency"}
 
 
@@ -57,21 +59,25 @@ def served(root):
         assert not thread.is_alive(), "Owned fixture server did not finish"
 
 
-def run(root, node):
+def run(root, node, view="topic_messages"):
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
     small, large = Seed(root / "small", 100), Seed(root / "large", 30000)
     correctness = {name: verify(root / name) for name in ("small", "large")}
+    unread = {name: verify_unread(root / name) for name in ("small", "large")} if view == "topic_unread" else None
     setup_seconds = time.monotonic() - started
-    diagnostics = {name: diagnostic(root / name) for name in ("small", "large")}
+    diagnostics = {name: diagnostic(root / name, view=view) for name in ("small", "large")}
     (root / "diagnostics.json").write_text(json.dumps(diagnostics, indent=2))
     with served(small.root) as a, served(large.root) as b:
-        config = {"small": a, "large": b, "args": ARGS, "stratum": "warm", "scope": "topic_messages/before30 only"}
+        if unread is not None:
+            a["expected_unread"], b["expected_unread"] = unread["small"], unread["large"]
+        config = {"small": a, "large": b, "view": view, "args": VIEW_ARGS[view], "stratum": "warm",
+                  "scope": "topic_messages/before30 only" if view == "topic_messages" else "topic_unread/fixed-frontier only"}
         (root / "requests.json").write_text(json.dumps(config, indent=2))
         result = subprocess.run([node, str(REPO / "tools/scale_1250.mjs"), str(root / "requests.json"), str(root / "timing.json")])
-    report = {"setup_seconds": setup_seconds, "correctness": correctness, "timing_exit": result.returncode,
-              "scope": "Warm first-view slice. Other views, cold/clone strata, whole actions and native retention are separate successors."}
+    report = {"view": view, "setup_seconds": setup_seconds, "correctness": correctness, "unread_expected": unread, "timing_exit": result.returncode,
+              "scope": "One declared warm-view stratum. Other views, cold/clone strata, whole actions and native retention are separate successors."}
     (root / "report.json").write_text(json.dumps(report, indent=2))
     return result.returncode
 
@@ -82,12 +88,14 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--count", type=int, default=30000)
     parser.add_argument("--node", default="/opt/homebrew/bin/node")
+    parser.add_argument("--view", choices=sorted(VIEW_ARGS), default="topic_messages")
     args = parser.parse_args()
     if args.mode == "run":
-        return run(args.out, args.node)
+        return run(args.out, args.node, view=args.view)
     if args.mode == "seed":
         Seed(args.out, args.count)
-    answer = diagnostic(args.out) if args.mode == "diagnose" else verify(args.out)
+    answer = diagnostic(args.out, view=args.view) if args.mode == "diagnose" else (
+        verify_unread(args.out) if args.view == "topic_unread" else verify(args.out))
     print(json.dumps(answer, indent=2))
     return 0
 
