@@ -826,7 +826,9 @@ function unhead(entry) {
 // its first words, and that it is folded (stack-look.css hides the rest of the
 // card). folded false takes the row away and the card reads whole. A head's
 // row goes after its title row, which stays first.
-function paintFolded(entry, item, folded, { nameOf, doc }) {
+function paintFolded(entry, item, folded, { nameOf, doc, context }) {
+  if (context) entry.dataset.stackContext = 'true';
+  else delete entry.dataset.stackContext;
   const card = cardIn(entry);
   if (!folded) { foldedRows.get(card)?.remove(); if (card.dataset.folded) card.dataset.folded = 'false'; return; }
   let row = foldedRows.get(card);
@@ -1161,7 +1163,7 @@ export function repaintStackReading(list, ids, messages) {
     for (const [id, entry] of byId) {
       const item = messages.get(id);
       if (!heads || id !== stack.id) unhead(entry);
-      paintFolded(entry, item, state.folded.has(id), { nameOf, doc });
+      paintFolded(entry, item, state.folded.has(id), { nameOf, doc, context: state.contextRows.has(id) });
       paintEarlier(entry, item, state.earlierRows.has(id), { nameOf, doc });
       paintFoldHeader(entry, doc);
     }
@@ -1303,7 +1305,7 @@ export function arrangeStacks(list, messages, options = {}) {
   const heads = new Set(stacks.filter(stack => stack.replies.length && !state.only).map(stack => stack.id));
   for (const [id, entry] of byId) if (!heads.has(id)) unhead(entry);
   // Every message the reader folded is its one-line row, in a stack or on its own, a stack's first message too.
-  for (const [id, entry] of byId) if (messages.get(id)) paintFolded(entry, messages.get(id), state.folded.has(id), { nameOf, doc });
+  for (const [id, entry] of byId) if (messages.get(id)) paintFolded(entry, messages.get(id), state.folded.has(id), { nameOf, doc, context: state.contextRows.has(id) });
   // An open dossier's earlier messages, once their row is opened, read as rows (item 476).
   for (const [id, entry] of byId) if (messages.get(id)) paintEarlier(entry, messages.get(id), state.earlierRows.has(id), { nameOf, doc });
   for (const entry of byId.values()) paintFoldHeader(entry, doc);
