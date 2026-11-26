@@ -1580,6 +1580,15 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 
 .notebook-card-action{opacity:0;pointer-events:none}:where(.deck-pointing) .deck-card:hover .notebook-card-action,.deck-card[aria-current=true] .notebook-card-action,.notebook-card-action:focus{opacity:1;pointer-events:auto}
 
+/* On phones only the overflow button shares the title's line. */
+@media(max-width:760px){
+  .deck-card:has(>.notebook-card-actions)>.deck-title{grid-column:1/-1;padding-inline-end:2.75rem}
+  .notebook-card-actions{grid-column:1/-1;grid-row:auto;max-width:none}
+  .notebook-card-actions>.deck-menu{position:absolute;inset-block-start:.75rem;inset-inline-end:.95rem}
+  .deck-card:not([aria-current=true]):not(:focus-within) .notebook-card-action{display:none}
+  .deck-card:focus-within .notebook-card-action{opacity:1;pointer-events:auto}
+}
+
 /*1159: the page title is its own quiet, keyboard-reachable editing control.*/
 .notebook-title-edit{display:inline-block;max-width:100%;vertical-align:middle;overflow:hidden;text-overflow:ellipsis}.notebook-title-edit[aria-disabled=false]{cursor:pointer}.notebook-title-edit:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 @media(max-width:760px){.notebook-title-edit{min-width:44px;min-height:44px;line-height:44px}}
