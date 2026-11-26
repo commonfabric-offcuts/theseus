@@ -29,3 +29,27 @@ The original ten-path plan and forecasts remain retained. A measured red is
 reported as red and its demonstrated SQL/summary cause routes to1251; a usable
 measuring tool is distinct from a passing live bound. No production owner,
 check/release/landing tool, schema or permission policy changes in this slice.
+
+## Warm unread view (1294)
+
+`run --view topic_unread --out NEW_ABSOLUTE_DIR` measures the actual New-line
+read used by `TopicViews.readUnread` after commits. Its argument is exactly
+`{topic_id: "target"}`. The same public-command fixtures hold 30 unread
+messages (25 subscription plus five named direct deliveries) and no marks, while
+acknowledged target history grows from 100 to 30000 messages. Both sides have
+300 workspace dossiers. This is one fixed-frontier warm stratum.
+
+Before timing, derive oldest-unread id/seq independently from the fixture
+ledger's last 30 messages. Compare the full response to that frontier plus
+canonical message time and commit metadata read offline. Those metadata are
+authoritative snapshot checks, not independent derived ledger claims. Each
+measured request passes the actual Api decoder, checkedView and
+TopicViews.readUnread; retain its complete small envelope and fail on a wrong
+frontier or malformed/different topic, instance, commit or time.
+
+The adopted nine alternating pairs, two excluded warmups per side, 1.5 median
+ratio, raw failures/tails and separate instrumented VM/SQL diagnostics remain.
+The original before/30 default stays available and its evidence stays labeled.
+This does not measure a growing pending backlog, marks, cold processes, complete
+actions or native/DOM retention. A measured product red is retained and needs a
+separate named repair. Parent 1291 keeps those remaining strata.
