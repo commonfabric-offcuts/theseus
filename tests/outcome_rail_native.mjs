@@ -541,19 +541,22 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await p.key('Escape');
       await until(() => p.evaluate('!document.getElementById("ol-new-topic-w1")'), at + ': Escape closes the line');
       assert.deepEqual(await drawer(p), { open: true, backdrop: true, inert: true, expanded: 'true', focus: 'ol-pencil-w1' }, at + ': the drawer stays open, the focus on the pencil');
-      if (width === 390) {
-        // Again, and Return starts the topic: it opens first on the page, the drawer folded.
-        await tap(p, '#ol-pencil-w1'); await tapped();
-        assert.deepEqual(await line(), { shown: true, focused: true, open: true, active: 'ol-new-topic-w1', underRow: true }, at + ': the line again');
-        const title = 'Started from the drawer ' + theme;
-        await p.send('Input.insertText', { text: title }); await p.key('Enter');
-        await until(() => p.evaluate(`document.body.dataset.ready==="true" && new URL(location.href).searchParams.has("topic") && document.querySelector("#topic-title").textContent===${JSON.stringify(title)}`).catch(() => false), at + ': the new topic opens');
-        const id = await p.evaluate('new URL(location.href).searchParams.get("topic")');
-        assert.equal((await view('topic', { topic_id: id })).topic.workspace_id, 'w1', at + ': the topic is in the outcome whose pencil was tapped');
-        const after = await top(p);
-        assert.deepEqual([(await drawer(p)).open, after.rail, after.main[0]], [false, [], 'topic-header'], at + ': with the rail folded and the new topic first');
-        await shot(p, 'rail-new-topic-started-' + theme);
-      }
+      // Again, and Return starts the topic: it opens first on the page, the drawer folded.
+      await tap(p, '#ol-pencil-w1'); await tapped();
+      assert.deepEqual(await line(), { shown: true, focused: true, open: true, active: 'ol-new-topic-w1', underRow: true }, at + ': the line again');
+      const title = 'Started from the drawer ' + width + ' ' + theme;
+      await p.send('Input.insertText', { text: title }); await p.key('Enter');
+      await until(() => p.evaluate(`document.body.dataset.ready==="true" && new URL(location.href).searchParams.has("topic") && document.querySelector("#topic-title").textContent===${JSON.stringify(title)}`).catch(() => false), at + ': the new topic opens');
+      const id = await p.evaluate('new URL(location.href).searchParams.get("topic")');
+      assert.equal((await view('topic', { topic_id: id })).topic.workspace_id, 'w1', at + ': the topic is in the outcome whose pencil was tapped');
+      const after = await top(p);
+      assert.deepEqual([(await drawer(p)).open, after.rail, after.main[0]], [false, [], 'topic-header'], at + ': with the rail folded and the new topic first');
+      await until(() => p.evaluate(`document.activeElement?.id === 'inline-writing-body' &&
+        document.activeElement.closest('#main') && !document.activeElement.closest('dialog[open], [inert]')`), at + ': the in-page editor has the caret');
+      assert.equal(await p.evaluate("document.querySelectorAll('dialog[open]').length"), 0);
+      await shot(p, 'rail-new-topic-started-' + width + '-' + theme);
+      await tap(p, '#new-message');
+      await until(() => p.evaluate("document.getElementById('new-message-sheet').open"), at + ': explicit New message still opens its sheet');
       assert.deepEqual(p.errors, []); await p.close();
     }
   });
