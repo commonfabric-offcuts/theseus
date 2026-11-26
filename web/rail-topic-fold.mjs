@@ -3,6 +3,7 @@
 export const TOPICS_AT_REST = 7;
 const REST_MS = 250, REST_DISTANCE = 6;
 const MODIFIERS = new Set(['Alt', 'Control', 'Meta', 'Shift']);
+const plainPrimary = event => event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 const addListener = (target, type, fn, options) => target?.addEventListener?.(type, fn, options);
 
 export class RailTopicFold {
@@ -22,14 +23,15 @@ export class RailTopicFold {
     const reveal = () => { this.cancelRest(); area.setAttribute('data-topic-revealed', ''); };
     this.down = event => {
       this.pending = null;
-      if (event.button !== 0 || !folded() || !atPeek(event)) return;
+      // A modified click must hit the same projected link at pointerup.
+      if (!plainPrimary(event) || !folded() || !atPeek(event)) return;
       this.openingPress = true;
       if (event.pointerType === 'touch') this.pending = event.target.closest('a[data-topic-id]');
       reveal();
     };
     this.click = event => {
       const link = this.pending; this.pending = null;
-      if (!link || event.detail === 0 || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey ||
+      if (!link || event.detail === 0 || !plainPrimary(event) ||
           !link.contains(event.target)) return;
       event.preventDefault(); event.stopPropagation();
       link.focus({ preventScroll: true });
