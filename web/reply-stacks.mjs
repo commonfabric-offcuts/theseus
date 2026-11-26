@@ -23,7 +23,7 @@ import { keepOnEscape } from './keep-on-escape.mjs';
 // the earlier ones, which shows them as rows for this visit (item 476): a way
 // of showing it, kept by the page alone, never recorded.
 import { cardIn, opened } from './fold.mjs';
-import { gather, visibleStacks, withDossierHeads, dossiersOf, reheaded, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf, stackCover, starredDossiers, dossierOf } from './stack-order.mjs';
+import { archiveOrder, gather, visibleStacks, withDossierHeads, dossiersOf, reheaded, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf, stackCover, starredDossiers, dossierOf } from './stack-order.mjs';
 import { ownWithdrawnQuestion } from './question-withdrawal.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { paintRemoval } from './message-removal.mjs';
@@ -262,11 +262,12 @@ export function setLevel(state, stack, level, { save = false } = {}) {
 // is its own view: More's button goes, every New item shows wherever it sits,
 // put aside or not, and hidden agent coordination stays hidden (aim.css,
 // stack-look.css).
+const archivedStarred = (state, stack) => state.starred?.has(dossierOf(stack)) === true;
 const coordinationRevealed = (state, stack) => [stack.head, ...stack.replies].some(item => state.coordinationHere.has(item.id) || item.yours?.note === true);
 export function shownView(state) {
   // shelved: the archive shelf is drawn beside the page, holding what More would show, so More does not open the feed.
   const only = state.only ?? null, shelved = Boolean(state.shelved), asideShown = Boolean(state.moreOpen && !shelved || only);
-  return { below: stack => state.below.has(stack.id), only, asideShown, shelved,
+  return { below: stack => state.below.has(stack.id), archivedStarred: stack => archivedStarred(state, stack), only, asideShown, shelved,
     hidden: stack => (state.below.has(stack.id) && !asideShown) || (!state.showCoordination && state.coordination.has(stack.id) && !coordinationRevealed(state, stack)) };
 }
 export const shownStacks = state => shownOrder(state.stacks, shownView(state));
@@ -1215,7 +1216,7 @@ export function repaintStackReading(list, ids, messages) {
   state.on?.coordinationCount?.(state.coordination.size, coordinationNews);
   if (ready.some(({ stack }) => state.below.has(stack.id))) state.on?.archived?.(state.stacks
     .filter(stack => state.below.has(stack.id) && (state.showCoordination || !state.coordination.has(stack.id)))
-    .map(stack => ({ stack, section: state.sections.get(stack.id), starred: state.starred.has(dossierOf(stack)) })));
+    .map(stack => ({ stack, section: state.sections.get(stack.id), starred: archivedStarred(state, stack) })));
   for (const [box, position] of state.scrolled) {
     if (!list.contains(box)) { state.scrolled.delete(box); continue; }
     if (!moved.some(node => node.contains(box))) continue;
@@ -1292,7 +1293,7 @@ export function arrangeStacks(list, messages, options = {}) {
   list.dataset.showCoordination = String(state.showCoordination);
   const coordinationNews = stacks.some(stack => state.coordination.has(stack.id) && [stack.head, ...stack.replies].some(unread));
   state.on?.coordinationCount?.(state.coordination.size, coordinationNews);
-  const top = [...waiting, ...withdrawn.values()], aside = [], starredAside = [], live = new Set(), moved = [], context = { state, keep, unread, nameOf, colorOf, doc, moved };
+  const top = [...waiting, ...withdrawn.values()], archived = [], live = new Set(), moved = [], context = { state, keep, unread, nameOf, colorOf, doc, moved };
   state.below = new Set();
   for (const stack of stacks) {
     const head = byId.get(stack.id);
@@ -1300,15 +1301,14 @@ export function arrangeStacks(list, messages, options = {}) {
     // An agent coordination dossier moves below More like any other.
     const below = drawnBelow(stack, item => { const mark = state.here.get(item.id); return mark?.pending ? placeOf(positionOf(stack)) : mark?.place ?? null; });
     if (below) state.below.add(stack.id);
-    const destination = below ? (state.starred.has(dossierOf(stack)) ? starredAside : aside) : top;
     live.add(stack.id);
     if (!state.sections.has(stack.id)) state.sections.set(stack.id, makeStack(doc, stack.id));
     const section = state.sections.get(stack.id);
     paintStack(section, stack, byId, context);
     section.dataset.coordinationRevealed = String(coordinationRevealed(state, stack));
-    destination.push(section);
+    if (below) archived.push(stack); else top.push(section);
   }
-  aside.unshift(...starredAside);
+  const aside = archiveOrder(archived, stack => archivedStarred(state, stack)).map(stack => state.sections.get(stack.id));
   // More counts the dossiers it would show: with Show agent coordination off,
   // agent coordination put aside stays hidden below More too and is not counted.
   const shownAside = aside.filter(node => state.showCoordination || node.dataset.coordination !== 'agents').length;
@@ -1340,7 +1340,7 @@ export function arrangeStacks(list, messages, options = {}) {
   for (const [id, section] of state.sections) if (!live.has(id)) { section.remove(); state.sections.delete(id); }
   // The archive shelf: the dossiers below More, in their order, for the right rail's foot; after reconcile, so the
   // sections it reads its replicas' look from are on the page.
-  state.on?.archived?.(stacks.filter(stack => state.below.has(stack.id) && (state.showCoordination || !state.coordination.has(stack.id))).map(stack => ({ stack, section: state.sections.get(stack.id), starred: state.starred.has(dossierOf(stack)) })));
+  state.on?.archived?.(stacks.filter(stack => state.below.has(stack.id) && (state.showCoordination || !state.coordination.has(stack.id))).map(stack => ({ stack, section: state.sections.get(stack.id), starred: archivedStarred(state, stack) })));
   for (const entry of byId.values()) if (entry.parentElement === list) entry.hidden = false;
   // Only a stack's head carries its row: a message that headed one before a
   // join, or before its replies went, is a card again.

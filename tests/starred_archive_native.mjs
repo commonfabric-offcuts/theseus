@@ -58,6 +58,17 @@ try {
   await wideOrder([starred, plain]);
   await more.click();
   await narrowOrder([starred, plain]);
+  const words = narrow.locator(`${section(starred)} .message-preview`);
+  await words.tap();
+  const reader = narrow.locator('#reader');
+  if (await reader.getAttribute('open') === null) await words.tap();
+  await narrow.locator('#reader[open]').waitFor();
+  await narrow.locator('#source-body').getByText('A starred dossier', { exact: true }).waitFor();
+  await narrow.getByRole('button', { name: 'Next message (below)' }).tap();
+  await narrow.locator('#source-body').getByText('An ordinary dossier', { exact: true }).waitFor();
+  await narrow.getByRole('button', { name: 'Previous message (above)' }).tap();
+  await narrow.locator('#source-body').getByText('A starred dossier', { exact: true }).waitFor();
+  await narrow.locator('#reader-close').tap();
   await wide.screenshot({ path: `${evidence}/wide-starred-first.png` });
   await narrow.screenshot({ path: `${evidence}/phone-starred-first.png`, fullPage: true });
 
@@ -82,7 +93,7 @@ try {
   await wide.locator(section(plain)).waitFor();
   await narrow.locator(section(plain)).waitFor();
   assert.deepEqual(errors, []);
-  console.log('Wide and narrow archive ordering, cross-tab stars, undo, and a newer visible reply passed.');
+  console.log('Wide and narrow archive ordering, Reader arrows, cross-tab stars, undo, and a newer visible reply passed.');
 } finally {
   await browser?.close();
   fixture.stdin.end();
