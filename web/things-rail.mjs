@@ -506,7 +506,7 @@ export class ThingsRail {
       messages, images: [...images.values()].sort((a, b) => (b.sent_ms ?? 0) - (a.sent_ms ?? 0)),
       tools: toolsRead.value === null ? [] : toolsRead.value ?? (toolsRead.error ? undefined : []) });
     this.drawnOnce = true;
-    if (this.holder.hasAttribute('aria-busy')) this.holder.removeAttribute('aria-busy');
+    this.holder.removeAttribute('aria-busy');
     const hideError = failed.length === 0;
     if (this.message.hidden !== hideError) this.message.hidden = hideError;
     if (this.retry.hidden !== hideError) this.retry.hidden = hideError;
