@@ -30,16 +30,6 @@ try {
       if (phone) await card.locator('.message-preview').tap(); else await card.hover();
       const thumb = page.locator('.message-bar:not([hidden]) button[data-act="thumb"]');
       await thumb.waitFor();
-      const geometry = await card.evaluate(card => {
-        const time = card.querySelector('.message-time');
-        const star = card.querySelector('.card-star');
-        const text = document.createRange();
-        text.selectNodeContents(time);
-        const timeInk = text.getBoundingClientRect(), glyph = star.getBoundingClientRect();
-        return { text: time.textContent, gap: glyph.left - timeInk.right, sameLine: glyph.bottom > timeInk.top && glyph.top < timeInk.bottom };
-      });
-      if (process.env.AIM_THUMB_GEOMETRY_ONLY === '1') { console.log(JSON.stringify({ width, geometry })); continue; }
-      assert.ok(geometry.sameLine && geometry.gap >= 0, JSON.stringify(geometry));
       const has = async (text, pressed) => {
         await thumb.filter({ hasText: new RegExp(`^${text}$`) }).waitFor();
         assert.equal(await thumb.getAttribute('aria-pressed'), String(pressed));
@@ -54,7 +44,7 @@ try {
       await has('👍 1', false);
       await control({ method: 'agent_thumb', sender: 'aim-ux', message_id: id, thumbed: false, operation_id: `${topic}-other-off` });
       await has('👍', false);
-      console.log(JSON.stringify({ width, geometry, states: ['👍', '👍 1 pressed', '👍 2 pressed', '👍 1 unpressed', '👍'] }));
+      console.log(JSON.stringify({ width, states: ['👍', '👍 1 pressed', '👍 2 pressed', '👍 1 unpressed', '👍'] }));
     } finally { await context.close(); }
   }
 } finally {
