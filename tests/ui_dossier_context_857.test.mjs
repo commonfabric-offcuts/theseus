@@ -67,7 +67,7 @@ test('857 join parent wins; root and already-visible parent add no extra fold; n
  kept=x=>x.id==='m5';assert.deepEqual(visible(rowsOf(stack,{kept,unread:kept})),[['m5',false]]);
 });
 test('857 actual context row survives reading, peeks without Core, and follows the current parent',()=>{
- const f=fixture();f.state.levels.set('m1','folded');f.draw();
+ const f=fixture();f.state.levels.set('m1','folded');f.draw();f.state.sections.get('m1').querySelector('.stack-unread-disclosure').onclick();
  assert.equal(f.cards.get('m2').hidden,false);assert.equal(f.cards.get('m2').dataset.folded,'true');assert.equal(drawn(f.list,'m2'),true);
  f.read();f.draw();assert.equal(f.cards.get('m2').hidden,false,'reading the child keeps its context');
  assert.equal(foldedClick(f.list,f.cards.get('m2'),{target:f.cards.get('m2')}),true);
@@ -116,7 +116,7 @@ test('857 the actual menu and seven-message window agree with default open',asyn
 test('857 absent parents do not invent context and peeks leave saved folds unchanged',()=>{
  const [missing]=gather([message(1),message(2,'missing',{stack_position:{root_id:'m1'}}),message(3,'m1')]);
  assert.deepEqual(visible(rowsOf(missing,{kept:()=>true,unread:()=>true})),[['m2',false],['m3',false]]);
- const items=sample();items[1].acts={folded:true};const f=fixture(items);f.state.levels.set('m1','folded');f.draw();
+ const items=sample();items[1].acts={folded:true};const f=fixture(items);f.state.levels.set('m1','folded');f.draw();f.state.sections.get('m1').querySelector('.stack-unread-disclosure').onclick();
  foldedClick(f.list,f.cards.get('m2'),{target:f.cards.get('m2')});assert.deepEqual(f.messages.get('m2').acts,{folded:true});assert.equal(f.acts(),0);
 });
 
@@ -127,9 +127,27 @@ test('857 ordinary saved folds and already-visible parents retain their existing
  assert.equal(foldedClick(f.list,f.cards.get('m5'),{target:f.cards.get('m5')}),true);assert.equal(f.acts(),1,'saved fold still goes through its existing owner');
 });
 
-test('857 a read latest reply keeps its immediate parent context on explicit reset',()=>{
+test('857 explicit recollapse hides the context of the read latest reply',()=>{
  const items=sample();items[4].reply_to='m2';
- const f=fixture(items,['m5']);f.state.levels.set('m1','folded');f.draw();assert.equal(f.cards.get('m2').hidden,false);
+ const f=fixture(items,['m5']);f.state.levels.set('m1','folded');f.draw();assert.equal(f.cards.get('m2').hidden,true);
+ f.state.sections.get('m1').querySelector('.stack-unread-disclosure').onclick();
+ assert.equal(f.cards.get('m2').hidden,false);
  f.read();f.draw();assert.equal(f.cards.get('m2').hidden,false);
- setLevel(f.state,f.state.stacks[0],'folded');f.draw();assert.equal(f.cards.get('m5').hidden,false);assert.equal(f.cards.get('m2').hidden,false);assert.ok(f.state.contextRows.has('m2'));
+ setLevel(f.state,f.state.stacks[0],'folded');f.draw();assert.equal(f.cards.get('m5').hidden,false);assert.equal(f.cards.get('m2').hidden,true);assert.equal(f.state.contextRows.has('m2'),false);
+});
+
+test('a closed dossier keeps its starred reply, active writing and saved latest fold', () => {
+  const items = sample();
+  items[1].acts = { starred: true };
+  items[4].acts = { folded: true };
+  const f = fixture(items);
+  f.state.levels.set('m1', 'folded');
+  f.cards.get('m4').setAttribute('data-card-reply', 'true');
+  f.draw();
+  assert.equal(f.cards.get('m2').hidden, false);
+  assert.equal(f.cards.get('m3').hidden, true);
+  assert.equal(f.cards.get('m4').hidden, false);
+  assert.equal(f.cards.get('m5').hidden, false);
+  assert.equal(f.cards.get('m5').dataset.folded, 'true');
+  assert.equal(f.state.sections.get('m1').querySelector('.stack-unread-disclosure').textContent, '1 new');
 });
