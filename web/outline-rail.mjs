@@ -173,7 +173,7 @@ export class OutlineRail {
   // the page's guard (shell.open). read(name, args, readClass): a read for the
   // outline's own lists, through whichever run is up (shell.view).
   // storage: localStorage, or null.
-  constructor({ host, open, read, storage = null, doc = host.ownerDocument }) {
+  constructor({ host, open, read, listen, storage = null, doc = host.ownerDocument }) {
     Object.assign(this, { host, open, read, storage, doc });
     this.handles = null; this.filter = null; this.outcomes = new Map(); this.unlisten = null; this.started = false;
     this.pages = null; this.opened = new Opened(); this.failed = false; this.listRead = false; this.run = 0; this.watch = null; this.watched = null;
@@ -182,6 +182,7 @@ export class OutlineRail {
     this.reload = (dirty = null) => { if (dirty) mergeSidebarDirty(pending, dirty); else full = true; return reload().then(() => result); };
     this.build();
     this.phoneMedia = doc.defaultView.matchMedia('(max-width: 760px)');
+    this.listen = listen;
     this.phoneMedia.addEventListener?.('change', () => this.paint());
     this.dimming = new RailDimming({ host, storage, doc, enabled: () => Boolean(this.handles) });
     this.menus = new OutlineMenus(this);
@@ -520,7 +521,7 @@ export class OutlineRail {
     topics.append(own);
     outcome = { id, item, li, row, disclosure, name, title, standing, waiting: null, topics, own, newTopic, conversation: null, conversationRead: false, rail: null,
       parts: { host, more, retry, message, done, archived } };
-    outcome.fold = new RailTopicFold({ area: own, host, footer, doc });
+    outcome.fold = new RailTopicFold({ area: own, host, footer, doc, listen: this.listen });
     disclosure.onclick = event => {
       if (!plainClick(event)) return;
       event.preventDefault(); event.stopPropagation();

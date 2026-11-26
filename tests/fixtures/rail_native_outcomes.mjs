@@ -99,7 +99,7 @@ export async function archiveRevealOutcomes({browser,control,facts,evidence}){
       row.before=await truth();check('exact two Core dossiers start unarchived',()=>{for(const id of ids)assert.equal(row.before.items.find(i=>i.id===id).stack_position.below,false);});
       const head=page.locator(`#messages .reply-stack[data-stack="${ids[0]}"] .stack-head`).first();await head.waitFor();
       const peek=await area.locator('[data-rail-fold=peek]').boundingBox();assert.ok(peek);
-      await page.mouse.move(peek.x+30,peek.y-10);await page.waitForFunction(workspace=>document.querySelector(`.ol-outcome[data-workspace-id="${workspace}"] .ol-own`)?.hasAttribute('data-topic-revealed'),workspace);
+      await page.mouse.move(peek.x+30,peek.y+8);await page.waitForFunction(workspace=>document.querySelector(`.ol-outcome[data-workspace-id="${workspace}"] .ol-own`)?.hasAttribute('data-topic-revealed'),workspace);
       row.inputStart=await page.evaluate(()=>window.input1215.length);
       const point=await head.boundingBox();assert.ok(point);await page.mouse.move(point.x+point.width/2,point.y+point.height/2);await page.mouse.wheel(0,25);
       // Wait for the browser's native event to reach the page before inspecting it.
