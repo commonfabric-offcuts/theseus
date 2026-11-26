@@ -1,0 +1,168 @@
+{
+  "reason": "Tony FAST27740 preservation only; originals unchanged, no candidate or Build",
+  "files": [
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1146-fold-peek-372-20172",
+      "branch": "refs/heads/page-lane5/1146-fold-peek-372-20172",
+      "base": "ab4d0d826215e7eee013dd4dd09b045a02c8973d",
+      "path": "docs/fold-peek-1146.md",
+      "archive_path": "tree-1/docs/fold-peek-1146.md",
+      "sha256": "c4d6aef1c05da6b65169165263936387effa6c6d195b910546dc7e61c14146d9",
+      "size": 1266
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1146-fold-peek-372-20172",
+      "branch": "refs/heads/page-lane5/1146-fold-peek-372-20172",
+      "base": "ab4d0d826215e7eee013dd4dd09b045a02c8973d",
+      "path": "tests/ui_stack_head_fold_1101.test.mjs",
+      "archive_path": "tree-1/tests/ui_stack_head_fold_1101.test.mjs",
+      "sha256": "63d6ba8f3a2f91ceada1454f7a0514e91c7f96f9c19ac0fbbbe8e4d6827ec7f4",
+      "size": 11691
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1173-inline-reply-scroll-377-20596",
+      "branch": "refs/heads/page-lane5/1173-inline-reply-scroll-377-20596",
+      "base": "dcd9bcab26047aefdb920210d3b06083de2e1a59",
+      "path": "docs/inline-reply-scroll-1173.md",
+      "archive_path": "tree-2/docs/inline-reply-scroll-1173.md",
+      "sha256": "b7235894031b2ab0434c6eb3fb5ca188d6acb4e8d2208934bebb509e3911de31",
+      "size": 3527
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1173-inline-reply-scroll-378-20609",
+      "branch": "refs/heads/page-lane5/1173-inline-reply-scroll-378-20609",
+      "base": "f861feae4aac30a4a41a56b0cfc86df7333e8923",
+      "path": "docs/inline-reply-scroll-1173.md",
+      "archive_path": "tree-3/docs/inline-reply-scroll-1173.md",
+      "sha256": "6017e4f2cccbdf3cb0fac35851b941467622ad39838c0e3892d7352062d49558",
+      "size": 3579
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1173-inline-reply-scroll-378-20609",
+      "branch": "refs/heads/page-lane5/1173-inline-reply-scroll-378-20609",
+      "base": "f861feae4aac30a4a41a56b0cfc86df7333e8923",
+      "path": "tests/fixtures/reply_scroll_1173.mjs",
+      "archive_path": "tree-3/tests/fixtures/reply_scroll_1173.mjs",
+      "sha256": "cb6994f66ec298c8fc9e0f99529167a3d23b2aa5ab23dcc8b9321aa7dd088a3f",
+      "size": 6883
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1173-inline-reply-scroll-378-20609",
+      "branch": "refs/heads/page-lane5/1173-inline-reply-scroll-378-20609",
+      "base": "f861feae4aac30a4a41a56b0cfc86df7333e8923",
+      "path": "tests/ui_inline_reply_scroll_1173.test.mjs",
+      "archive_path": "tree-3/tests/ui_inline_reply_scroll_1173.test.mjs",
+      "sha256": "6e62e8d4fe0e312072d57792d3907b64543294456e0ad8ce2d488a0ace58b803",
+      "size": 1109
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1173-inline-reply-scroll-378-20609",
+      "branch": "refs/heads/page-lane5/1173-inline-reply-scroll-378-20609",
+      "base": "f861feae4aac30a4a41a56b0cfc86df7333e8923",
+      "path": "tests/ui_inline_reply_scroll_controls_1173.test.mjs",
+      "archive_path": "tree-3/tests/ui_inline_reply_scroll_controls_1173.test.mjs",
+      "sha256": "b71f996164e2970438b8819e7ae0e2059bdda2f78fc35191673c00bb7be1fcdc",
+      "size": 2257
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1215-live419-control",
+      "branch": null,
+      "base": "ce13ce60ce08adb63a83ade879cc637a4efbe4d9",
+      "path": "tests/fixtures/rail_native_outcomes.mjs",
+      "archive_path": "tree-4/tests/fixtures/rail_native_outcomes.mjs",
+      "sha256": "bb228191bed55a0b4c614210ab9f6b5f1790478f23f0b3584c6059d15d936d5c",
+      "size": 16081
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1215-live419-control",
+      "branch": null,
+      "base": "ce13ce60ce08adb63a83ade879cc637a4efbe4d9",
+      "path": "tests/notebook_delete_1051_native.mjs",
+      "archive_path": "tree-4/tests/notebook_delete_1051_native.mjs",
+      "sha256": "d31ab82da8b7015679702900cded7b8ac025c0ecaced4b4acd48d6d46b5f5abb",
+      "size": 22816
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1215-live419-control",
+      "branch": null,
+      "base": "ce13ce60ce08adb63a83ade879cc637a4efbe4d9",
+      "path": "tests/rail_more_topics_982_native.mjs",
+      "archive_path": "tree-4/tests/rail_more_topics_982_native.mjs",
+      "sha256": "5fd26a262debcb0de142a3d694a5ff8a6fb67582b98f7a56884183e8de68c78a",
+      "size": 14645
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1215-live420-control",
+      "branch": null,
+      "base": "1e6c6d788ed49c82e75b32b62361e2475cd882c6",
+      "path": "tests/fixtures/rail_native_outcomes.mjs",
+      "archive_path": "tree-5/tests/fixtures/rail_native_outcomes.mjs",
+      "sha256": "e50d94f568b446f4d0f8746e40b7a8bd21e1ba2adbe2fff4496023a026355be2",
+      "size": 16111
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1215-live420-control",
+      "branch": null,
+      "base": "1e6c6d788ed49c82e75b32b62361e2475cd882c6",
+      "path": "tests/notebook_delete_1051_native.mjs",
+      "archive_path": "tree-5/tests/notebook_delete_1051_native.mjs",
+      "sha256": "d31ab82da8b7015679702900cded7b8ac025c0ecaced4b4acd48d6d46b5f5abb",
+      "size": 22816
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-1215-live420-control",
+      "branch": null,
+      "base": "1e6c6d788ed49c82e75b32b62361e2475cd882c6",
+      "path": "tests/rail_more_topics_982_native.mjs",
+      "archive_path": "tree-5/tests/rail_more_topics_982_native.mjs",
+      "sha256": "5fd26a262debcb0de142a3d694a5ff8a6fb67582b98f7a56884183e8de68c78a",
+      "size": 14645
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-control1268-466",
+      "branch": null,
+      "base": "edcfd133e649fb729b4331c358ca96148890b085",
+      "path": "tests/ui_split_menu_1268.test.mjs",
+      "archive_path": "tree-6/tests/ui_split_menu_1268.test.mjs",
+      "sha256": "b59afb7dc3ebe9aa242f7f5767e20024b4181e9cdbaa1854a78b054d2bd90e7a",
+      "size": 8950
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-control1268-466",
+      "branch": null,
+      "base": "edcfd133e649fb729b4331c358ca96148890b085",
+      "path": "tests/ui_split_sources_1268.test.mjs",
+      "archive_path": "tree-6/tests/ui_split_sources_1268.test.mjs",
+      "sha256": "1a2872ec0ed5c5193cd7dc3f31cf34de517daae27af6d2bcb8d6bfaec3eb5973",
+      "size": 16103
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-control1269-468",
+      "branch": null,
+      "base": "214e088648701cc4f346b7e099abf9658ef5a922",
+      "path": "tests/fixtures/join1269.mjs",
+      "archive_path": "tree-7/tests/fixtures/join1269.mjs",
+      "sha256": "71764f1187c7f0c571d3ca8d7267b932f1b134d88488a408cd4e33253a8ffe05",
+      "size": 5053
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-control1269-468",
+      "branch": null,
+      "base": "214e088648701cc4f346b7e099abf9658ef5a922",
+      "path": "tests/ui_deliberate_join_1269.test.mjs",
+      "archive_path": "tree-7/tests/ui_deliberate_join_1269.test.mjs",
+      "sha256": "93c15a8a9ec51cf69a8b7560ad80133bf005bcc059b335ea00b14592a1f3749d",
+      "size": 6888
+    },
+    {
+      "worktree": "/Users/commonfabric/aim-worktrees/page-lane5-control1269-468",
+      "branch": null,
+      "base": "214e088648701cc4f346b7e099abf9658ef5a922",
+      "path": "tests/ui_join_menu_1269.test.mjs",
+      "archive_path": "tree-7/tests/ui_join_menu_1269.test.mjs",
+      "sha256": "03bd6dc4b69ce45ba3e265c089119b843827a0b42e5134c94e72fb24cddbfc15",
+      "size": 4697
+    }
+  ],
+  "excluded": "Historical artifacts/outboxes/profiles/configuration and caches are not published to Git; originals remain on source Mac. Current1304 raw proof is separately included and attached to board27744."
+}

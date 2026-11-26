@@ -1,0 +1,571 @@
+{
+  "head": "41e3e323d2095d6052ccd0a889a5a7d4f2316be6",
+  "branch": "page-lane5/stage1304-472",
+  "base": "0440ece6d0cd23325d7c13317fdc070895294412",
+  "changed_files": [
+    "docs/staging-command-pack-1304.md",
+    "tools/stage_destination.py",
+    "tests/test_stage_destination_1304.py"
+  ],
+  "remote_readback": "41e3e323d2095d6052ccd0a889a5a7d4f2316be6\trefs/heads/page-lane5/stage1304-472",
+  "clean": true,
+  "pause": "Tony FAST27740:1304\u20131319 paused; start nothing new.1319 has no tree/Build/producer.",
+  "policy": "Tony27713/current-rule19 exact /Volumes/secretsky/theseus-move plus UUID E899C601-EF65-4C1E-9F0B-4D90AD6A7ABC; encryption recorded; ownership-ignored transport; strict owner/private LOCAL import.",
+  "repairs": [
+    "certain501-to502 transport blocker",
+    "explicit source-mode private:false classification",
+    "source Node26.12.1/dependencies pin with reported destination version distinction",
+    "explicit unique -X body/CLI cache paths with effective cache receipts",
+    "exact folder/UUID target checks and immutable original operation bytes"
+  ],
+  "physical_attempts": 12,
+  "all_physical_framework_totals": {
+    "framework": 185,
+    "pass": 149,
+    "failure": 5,
+    "error": 2,
+    "skip": 29
+  },
+  "runs": [
+    {
+      "attempt": "baseline-472",
+      "framework": 15,
+      "pass": 0,
+      "failure": 1,
+      "error": 0,
+      "skip": 14,
+      "child": {
+        "pid": 20439,
+        "exit": 1,
+        "argv": [
+          "/usr/bin/python3",
+          "-I",
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ],
+        "source": "/Users/commonfabric/aim-next/tools/stage_destination.py",
+        "end_ms": 1795663608916,
+        "inputs_equal": true,
+        "after": {
+          "tools/stage_destination.py": "7bd4adaff9c62d1fdfbfb542ae05443ab3009b09eafc891cea43951c01fc3fee",
+          "tests/test_stage_destination_1304.py": "2897f8d06f9b0dab4810564505d1d3ad4e4b928f81c17bccf4bdd54e48c70349",
+          "docs/staging-command-pack-1304.md": "451694739f73cb7063c0a18b1142f62730c188f9c200c5e307e04897844863f6"
+        }
+      },
+      "terminal": {
+        "start_ms": 1795663608582,
+        "end_ms": 1795663608948,
+        "wrapper_pid": 20437,
+        "wrapper_exit": 1,
+        "remaining_original_group": []
+      },
+      "effective_cache": null,
+      "compiled_stage_blobs": [],
+      "accepted_stable_source": true
+    },
+    {
+      "attempt": "baseline-final-472",
+      "framework": 16,
+      "pass": 0,
+      "failure": 1,
+      "error": 0,
+      "skip": 15,
+      "child": {
+        "pid": 26805,
+        "exit": 1,
+        "argv": [
+          "/usr/bin/python3",
+          "-I",
+          "-X",
+          "pycache_prefix=/Users/commonfabric/.local/share/theseus/page-lane5/evidence/1304-build/baseline-final-472/body-cache",
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ],
+        "source": "/Users/commonfabric/aim-next/tools/stage_destination.py",
+        "end_ms": 1795664515512,
+        "inputs_equal": true,
+        "after": {
+          "tools/stage_destination.py": "1dc7487e7a079b716b36374209c9878c52ff305bf934c04873caf36d7afe2b82",
+          "tests/test_stage_destination_1304.py": "4b56a53778640904898f64a0fbbea6bc2d196ba84061f730e22cb56022c136e7",
+          "docs/staging-command-pack-1304.md": "5e2b05b660e4cec59f57bd9d6108ddf31ae83a898d88a6fc524e15640c9e542f",
+          "harness/run_check.py": "bec83d429c9a6e056276d039ca018bdd54b2c14cc56040e7171c1f3ddae21ca4",
+          "harness/installed-lane-lock.py": "bbe2bc7bdfb4565f82ff2ce717468841ecf4ddf00664463dbf603de82f0dd0b7"
+        }
+      },
+      "terminal": {
+        "start_ms": 1795664515123,
+        "end_ms": 1795664515541,
+        "wrapper_pid": 26803,
+        "wrapper_exit": 1,
+        "remaining_original_group": []
+      },
+      "effective_cache": {
+        "pycache_prefix": "/Users/commonfabric/.local/share/theseus/page-lane5/evidence/1304-build/baseline-final-472/body-cache",
+        "ignore_environment": 1,
+        "isolated": 1,
+        "executable": "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "argv": [
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ]
+      },
+      "compiled_stage_blobs": [],
+      "accepted_stable_source": true
+    },
+    {
+      "attempt": "explicit-cache-faults",
+      "framework": 16,
+      "pass": 14,
+      "failure": 1,
+      "error": 1,
+      "skip": 0,
+      "child": {
+        "pid": 26408,
+        "exit": 1,
+        "argv": [
+          "/usr/bin/python3",
+          "-I",
+          "-X",
+          "pycache_prefix=/Users/commonfabric/.local/share/theseus/page-lane5/evidence/1304-build/explicit-cache-faults/body-cache",
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ],
+        "source": "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.py",
+        "end_ms": 1795664456840,
+        "inputs_equal": false,
+        "after": {
+          "tools/stage_destination.py": "1dc7487e7a079b716b36374209c9878c52ff305bf934c04873caf36d7afe2b82",
+          "tests/test_stage_destination_1304.py": "4b56a53778640904898f64a0fbbea6bc2d196ba84061f730e22cb56022c136e7",
+          "docs/staging-command-pack-1304.md": "5e2b05b660e4cec59f57bd9d6108ddf31ae83a898d88a6fc524e15640c9e542f",
+          "harness/run_check.py": "bec83d429c9a6e056276d039ca018bdd54b2c14cc56040e7171c1f3ddae21ca4",
+          "harness/installed-lane-lock.py": "bbe2bc7bdfb4565f82ff2ce717468841ecf4ddf00664463dbf603de82f0dd0b7"
+        }
+      },
+      "terminal": {
+        "start_ms": 1795664455591,
+        "end_ms": 1795664456877,
+        "wrapper_pid": 26406,
+        "wrapper_exit": 1,
+        "remaining_original_group": []
+      },
+      "effective_cache": {
+        "pycache_prefix": "/Users/commonfabric/.local/share/theseus/page-lane5/evidence/1304-build/explicit-cache-faults/body-cache",
+        "ignore_environment": 1,
+        "isolated": 1,
+        "executable": "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "argv": [
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ]
+      },
+      "compiled_stage_blobs": [
+        {
+          "path": "body-cache/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.cpython-39.pyc",
+          "sha256": "b8797cc9ae6b7632d9d4edd4f4da30b1d3404061fde4274af4383e4475a0cf97",
+          "size": 15649
+        }
+      ],
+      "accepted_stable_source": false
+    },
+    {
+      "attempt": "explicit-cache-faults-stable",
+      "framework": 16,
+      "pass": 14,
+      "failure": 1,
+      "error": 1,
+      "skip": 0,
+      "child": {
+        "pid": 26786,
+        "exit": 1,
+        "argv": [
+          "/usr/bin/python3",
+          "-I",
+          "-X",
+          "pycache_prefix=/Users/commonfabric/.local/share/theseus/page-lane5/evidence/1304-build/explicit-cache-faults-stable/body-cache",
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ],
+        "source": "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.py",
+        "end_ms": 1795664514226,
+        "inputs_equal": true,
+        "after": {
+          "tools/stage_destination.py": "a02bfe9f0d4cb36a5c508a487b5d67a486a59dc4022ee56291356e3baaab05e1",
+          "tests/test_stage_destination_1304.py": "4b56a53778640904898f64a0fbbea6bc2d196ba84061f730e22cb56022c136e7",
+          "docs/staging-command-pack-1304.md": "5e2b05b660e4cec59f57bd9d6108ddf31ae83a898d88a6fc524e15640c9e542f",
+          "harness/run_check.py": "bec83d429c9a6e056276d039ca018bdd54b2c14cc56040e7171c1f3ddae21ca4",
+          "harness/installed-lane-lock.py": "bbe2bc7bdfb4565f82ff2ce717468841ecf4ddf00664463dbf603de82f0dd0b7"
+        }
+      },
+      "terminal": {
+        "start_ms": 1795664513472,
+        "end_ms": 1795664514255,
+        "wrapper_pid": 26784,
+        "wrapper_exit": 1,
+        "remaining_original_group": []
+      },
+      "effective_cache": {
+        "pycache_prefix": "/Users/commonfabric/.local/share/theseus/page-lane5/evidence/1304-build/explicit-cache-faults-stable/body-cache",
+        "ignore_environment": 1,
+        "isolated": 1,
+        "executable": "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "argv": [
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ]
+      },
+      "compiled_stage_blobs": [
+        {
+          "path": "body-cache/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.cpython-39.pyc",
+          "sha256": "4c7084e109f89126a13121d7a33b3962c8aa34dfa99645e49c449d40ebf82a8c",
+          "size": 15649
+        }
+      ],
+      "accepted_stable_source": true
+    },
+    {
+      "attempt": "explicit-cache-green",
+      "framework": 16,
+      "pass": 16,
+      "failure": 0,
+      "error": 0,
+      "skip": 0,
+      "child": {
+        "pid": 26165,
+        "exit": 0,
+        "argv": [
+          "/usr/bin/python3",
+          "-I",
+          "-X",
+          "pycache_prefix=/Users/commonfabric/.local/share/theseus/page-lane5/evidence/1304-build/explicit-cache-green/body-cache",
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ],
+        "source": "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.py",
+        "end_ms": 1795664420127,
+        "inputs_equal": true,
+        "after": {
+          "tools/stage_destination.py": "1dc7487e7a079b716b36374209c9878c52ff305bf934c04873caf36d7afe2b82",
+          "tests/test_stage_destination_1304.py": "4b56a53778640904898f64a0fbbea6bc2d196ba84061f730e22cb56022c136e7",
+          "docs/staging-command-pack-1304.md": "5e2b05b660e4cec59f57bd9d6108ddf31ae83a898d88a6fc524e15640c9e542f",
+          "harness/run_check.py": "bec83d429c9a6e056276d039ca018bdd54b2c14cc56040e7171c1f3ddae21ca4",
+          "harness/installed-lane-lock.py": "bbe2bc7bdfb4565f82ff2ce717468841ecf4ddf00664463dbf603de82f0dd0b7"
+        }
+      },
+      "terminal": {
+        "start_ms": 1795664419444,
+        "end_ms": 1795664420156,
+        "wrapper_pid": 26163,
+        "wrapper_exit": 0,
+        "remaining_original_group": []
+      },
+      "effective_cache": {
+        "pycache_prefix": "/Users/commonfabric/.local/share/theseus/page-lane5/evidence/1304-build/explicit-cache-green/body-cache",
+        "ignore_environment": 1,
+        "isolated": 1,
+        "executable": "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "argv": [
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ]
+      },
+      "compiled_stage_blobs": [
+        {
+          "path": "body-cache/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.cpython-39.pyc",
+          "sha256": "7d4d233db2eb7a4dc1e95dbc9c30e74c3c433702b7b5462d0ff7c71033bd7477",
+          "size": 15688
+        }
+      ],
+      "accepted_stable_source": true
+    },
+    {
+      "attempt": "explicit-cache-restored",
+      "framework": 16,
+      "pass": 16,
+      "failure": 0,
+      "error": 0,
+      "skip": 0,
+      "child": {
+        "pid": 26429,
+        "exit": 0,
+        "argv": [
+          "/usr/bin/python3",
+          "-I",
+          "-X",
+          "pycache_prefix=/Users/commonfabric/.local/share/theseus/page-lane5/evidence/1304-build/explicit-cache-restored/body-cache",
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ],
+        "source": "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.py",
+        "end_ms": 1795664457796,
+        "inputs_equal": true,
+        "after": {
+          "tools/stage_destination.py": "1dc7487e7a079b716b36374209c9878c52ff305bf934c04873caf36d7afe2b82",
+          "tests/test_stage_destination_1304.py": "4b56a53778640904898f64a0fbbea6bc2d196ba84061f730e22cb56022c136e7",
+          "docs/staging-command-pack-1304.md": "5e2b05b660e4cec59f57bd9d6108ddf31ae83a898d88a6fc524e15640c9e542f",
+          "harness/run_check.py": "bec83d429c9a6e056276d039ca018bdd54b2c14cc56040e7171c1f3ddae21ca4",
+          "harness/installed-lane-lock.py": "bbe2bc7bdfb4565f82ff2ce717468841ecf4ddf00664463dbf603de82f0dd0b7"
+        }
+      },
+      "terminal": {
+        "start_ms": 1795664456868,
+        "end_ms": 1795664457826,
+        "wrapper_pid": 26423,
+        "wrapper_exit": 0,
+        "remaining_original_group": []
+      },
+      "effective_cache": {
+        "pycache_prefix": "/Users/commonfabric/.local/share/theseus/page-lane5/evidence/1304-build/explicit-cache-restored/body-cache",
+        "ignore_environment": 1,
+        "isolated": 1,
+        "executable": "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "argv": [
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ]
+      },
+      "compiled_stage_blobs": [
+        {
+          "path": "body-cache/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.cpython-39.pyc",
+          "sha256": "32116e507a297e2ba5ccb2a31b40ba89c7f482d71bb495c11385ab659405ca1a",
+          "size": 15688
+        }
+      ],
+      "accepted_stable_source": true
+    },
+    {
+      "attempt": "explicit-cache-restored-stable",
+      "framework": 16,
+      "pass": 16,
+      "failure": 0,
+      "error": 0,
+      "skip": 0,
+      "child": {
+        "pid": 26797,
+        "exit": 0,
+        "argv": [
+          "/usr/bin/python3",
+          "-I",
+          "-X",
+          "pycache_prefix=/Users/commonfabric/.local/share/theseus/page-lane5/evidence/1304-build/explicit-cache-restored-stable/body-cache",
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ],
+        "source": "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.py",
+        "end_ms": 1795664515028,
+        "inputs_equal": true,
+        "after": {
+          "tools/stage_destination.py": "1dc7487e7a079b716b36374209c9878c52ff305bf934c04873caf36d7afe2b82",
+          "tests/test_stage_destination_1304.py": "4b56a53778640904898f64a0fbbea6bc2d196ba84061f730e22cb56022c136e7",
+          "docs/staging-command-pack-1304.md": "5e2b05b660e4cec59f57bd9d6108ddf31ae83a898d88a6fc524e15640c9e542f",
+          "harness/run_check.py": "bec83d429c9a6e056276d039ca018bdd54b2c14cc56040e7171c1f3ddae21ca4",
+          "harness/installed-lane-lock.py": "bbe2bc7bdfb4565f82ff2ce717468841ecf4ddf00664463dbf603de82f0dd0b7"
+        }
+      },
+      "terminal": {
+        "start_ms": 1795664514323,
+        "end_ms": 1795664515054,
+        "wrapper_pid": 26795,
+        "wrapper_exit": 0,
+        "remaining_original_group": []
+      },
+      "effective_cache": {
+        "pycache_prefix": "/Users/commonfabric/.local/share/theseus/page-lane5/evidence/1304-build/explicit-cache-restored-stable/body-cache",
+        "ignore_environment": 1,
+        "isolated": 1,
+        "executable": "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+        "argv": [
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ]
+      },
+      "compiled_stage_blobs": [
+        {
+          "path": "body-cache/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.cpython-39.pyc",
+          "sha256": "2f66724a057ca4a35bbf2dd88fda62fce124f416af923cfd2c00c3b3f8c745de",
+          "size": 15688
+        }
+      ],
+      "accepted_stable_source": true
+    },
+    {
+      "attempt": "green-01",
+      "framework": 13,
+      "pass": 13,
+      "failure": 0,
+      "error": 0,
+      "skip": 0,
+      "child": {
+        "pid": 20007,
+        "exit": 0,
+        "argv": [
+          "/usr/bin/python3",
+          "-I",
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ],
+        "source": "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.py",
+        "end_ms": 1795663544168,
+        "inputs_equal": true,
+        "after": {
+          "tools/stage_destination.py": "38cb8c0a75ad9c5658fc9bab4099989c5dd5fc24f3497547766e4bf1dd40d16e",
+          "tests/test_stage_destination_1304.py": "ebb84ca585e498c7082ed6c289e2a855c10113834bb1ab12f43f8173a10f061f",
+          "docs/staging-command-pack-1304.md": "2aab10105be51e389c77c507b3c86084179ebb8379d09780b64e4271ad61d0c4"
+        }
+      },
+      "terminal": {
+        "start_ms": 1795663543619,
+        "end_ms": 1795663544196,
+        "wrapper_pid": 20005,
+        "wrapper_exit": 0,
+        "remaining_original_group": []
+      },
+      "effective_cache": null,
+      "compiled_stage_blobs": [],
+      "accepted_stable_source": true
+    },
+    {
+      "attempt": "hash-fault",
+      "framework": 15,
+      "pass": 14,
+      "failure": 1,
+      "error": 0,
+      "skip": 0,
+      "child": {
+        "pid": 20479,
+        "exit": 1,
+        "argv": [
+          "/usr/bin/python3",
+          "-I",
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ],
+        "source": "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.py",
+        "end_ms": 1795663619834,
+        "inputs_equal": true,
+        "after": {
+          "tools/stage_destination.py": "155e0b14da36da2a426e34189bd42a6895ff19b915728e5d435265baeaea92cc",
+          "tests/test_stage_destination_1304.py": "2897f8d06f9b0dab4810564505d1d3ad4e4b928f81c17bccf4bdd54e48c70349",
+          "docs/staging-command-pack-1304.md": "451694739f73cb7063c0a18b1142f62730c188f9c200c5e307e04897844863f6"
+        }
+      },
+      "terminal": {
+        "start_ms": 1795663619020,
+        "end_ms": 1795663619867,
+        "wrapper_pid": 20477,
+        "wrapper_exit": 1,
+        "remaining_original_group": []
+      },
+      "effective_cache": null,
+      "compiled_stage_blobs": [],
+      "accepted_stable_source": true
+    },
+    {
+      "attempt": "owner-policy-final",
+      "framework": 16,
+      "pass": 16,
+      "failure": 0,
+      "error": 0,
+      "skip": 0,
+      "child": {
+        "pid": 24339,
+        "exit": 0,
+        "argv": [
+          "/usr/bin/python3",
+          "-I",
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ],
+        "source": "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.py",
+        "end_ms": 1795664078396,
+        "inputs_equal": true,
+        "after": {
+          "tools/stage_destination.py": "ffcd04b9d80a96f9a964ee6c489f80931715b8201c91919b39df32159ccd02fd",
+          "tests/test_stage_destination_1304.py": "fcc1c07537f353b12067f8f1a9bde41574d9d245dc6b55b5c8600ca9dbdb2196",
+          "docs/staging-command-pack-1304.md": "202b633ca244151d3c8bff05d83632d0de9069b9ff12c10b0a454b3df640290f"
+        }
+      },
+      "terminal": {
+        "start_ms": 1795664077736,
+        "end_ms": 1795664078423,
+        "wrapper_pid": 24333,
+        "wrapper_exit": 0,
+        "remaining_original_group": []
+      },
+      "effective_cache": null,
+      "compiled_stage_blobs": [],
+      "accepted_stable_source": true
+    },
+    {
+      "attempt": "owner-policy-green",
+      "framework": 15,
+      "pass": 15,
+      "failure": 0,
+      "error": 0,
+      "skip": 0,
+      "child": {
+        "pid": 23806,
+        "exit": 0,
+        "argv": [
+          "/usr/bin/python3",
+          "-I",
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ],
+        "source": "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.py",
+        "end_ms": 1795663976062,
+        "inputs_equal": true,
+        "after": {
+          "tools/stage_destination.py": "ffcd04b9d80a96f9a964ee6c489f80931715b8201c91919b39df32159ccd02fd",
+          "tests/test_stage_destination_1304.py": "b64a865842604e2751fee32301200659a54ea199d41b78917dfbae92451461af",
+          "docs/staging-command-pack-1304.md": "202b633ca244151d3c8bff05d83632d0de9069b9ff12c10b0a454b3df640290f"
+        }
+      },
+      "terminal": {
+        "start_ms": 1795663975388,
+        "end_ms": 1795663976092,
+        "wrapper_pid": 23797,
+        "wrapper_exit": 0,
+        "remaining_original_group": []
+      },
+      "effective_cache": null,
+      "compiled_stage_blobs": [],
+      "accepted_stable_source": true
+    },
+    {
+      "attempt": "restored-green",
+      "framework": 15,
+      "pass": 15,
+      "failure": 0,
+      "error": 0,
+      "skip": 0,
+      "child": {
+        "pid": 20496,
+        "exit": 0,
+        "argv": [
+          "/usr/bin/python3",
+          "-I",
+          "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tests/test_stage_destination_1304.py"
+        ],
+        "source": "/Users/commonfabric/aim-worktrees/page-lane5-stage1304-472/tools/stage_destination.py",
+        "end_ms": 1795663627350,
+        "inputs_equal": true,
+        "after": {
+          "tools/stage_destination.py": "7bd4adaff9c62d1fdfbfb542ae05443ab3009b09eafc891cea43951c01fc3fee",
+          "tests/test_stage_destination_1304.py": "2897f8d06f9b0dab4810564505d1d3ad4e4b928f81c17bccf4bdd54e48c70349",
+          "docs/staging-command-pack-1304.md": "451694739f73cb7063c0a18b1142f62730c188f9c200c5e307e04897844863f6"
+        }
+      },
+      "terminal": {
+        "start_ms": 1795663626585,
+        "end_ms": 1795663627383,
+        "wrapper_pid": 20494,
+        "wrapper_exit": 0,
+        "remaining_original_group": []
+      },
+      "effective_cache": null,
+      "compiled_stage_blobs": [],
+      "accepted_stable_source": true
+    }
+  ],
+  "final_pair": "baseline-final-472=1 missing-new-command failure+15 explicit body skips; explicit-cache-restored-stable=16 pass.",
+  "final_fault": "explicit-cache-faults-stable=14 pass/1 assertion fail/1 error from independently reached staged-byte bypass and ownership-enabled regression; exact restored16 pass. Stable input maps, explicit distinct cache prefixes and module pyc retained.",
+  "retained_bad_attempt": "explicit-cache-faults: source restored before final bookkeeping completed, after-map differs.16 observed outcomes/terminals retained, excluded from stable-source proof; sequential replacement completed.",
+  "historical_cache_limit": "First6 physical attempts only requested env PYTHONPYCACHEPREFIX under -I; fresh isolation unsupported. Historical observed red/green results retained, not relabeled.27697r2 corrects wording.",
+  "limits": [
+    "differing historical UID model uses real files and synthetic UID metadata; actual502 kernel access is not established",
+    "mount facts in controls are synthetic; one read-only diskutil observation is separately retained; no real copy/mount change",
+    "actual both-Mac access, selected data/capacity, package xattrs/ACL/signatures/runtime execution/throughput remain execution obligations",
+    "no full stdlib/runtime/detached-descendant closure",
+    "no production transfer, source fence, activation, profile/route/install/service/autostart/delete operation"
+  ],
+  "original_clocks": {
+    "build_ms": 1795662528498,
+    "push_forecast_ms": 1795663488248,
+    "handoff_forecast_ms": 1795663848498,
+    "prep_complete_forecast_ms": 1795664028498
+  },
+  "forecast_history": "All original misses and27715 revised19:39 PUSH/19:42 HANDOFF/19:44 completion retained; no reset or Live claim."
+}
