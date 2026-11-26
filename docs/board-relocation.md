@@ -255,8 +255,9 @@ profile or raw live database to retrieve a refused record.
 1333 is confirmed shipped as 486 at 2026-11-26 06:46:38.684 Pacific, with
 publication Releases28161 and live readback28162. Its actual-carry report28157
 precedes that publication and is not itself a Live certificate. Preserve
-28143's raw review, 28151's later review and the final source's exact held
-outer-root-FD close fault separately from the earlier nested-parent-close
+28143's raw review, 28151's subsequent carry request, 28157's actual-carry
+classification and the final source's exact held outer-root-FD close fault
+separately from the earlier nested-parent-close
 case: the latter alone did not establish outer-close coverage. The final
 186/186 selected comparison and 25-case own restoration do not erase earlier
 24-case attempts, failures or baseline API-absence barriers.
