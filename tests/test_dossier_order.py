@@ -58,21 +58,22 @@ class DossierOrderCase(fixtures.AsideCase):
         starred = self.command('message.star', {'starred': True}, target={'message_id': a}, expected={'star_revision': 0}, op='731-star-once')
         self.committed(starred)
         self.assertEqual(starred, self.command('message.star', {'starred': True}, target={'message_id': a}, expected={'star_revision': 0}, op='731-star-once'))
-        self.assertEqual(self.order([a,b,c]), [c,a,b])
         self.assertEqual(self.position(a)['order_key'], pre_star_key)
-        self.rejected(self.aside(a, self.latest(), revision=4), 'STARRED_IN_DOSSIER')
+        self.assertEqual(self.position(a)['aside_revision'], 3)
+        self.assertTrue(self.position(a)['below'])
+        self.assertEqual(self.position(a)['starred'], [a])
+        self.post('A visible reply returns the starred dossier', reply_to=a)
         self.assertFalse(self.position(a)['below'])
-        self.post('A starred reply does not move it', reply_to=a)
-        self.assertEqual(self.order([a,b,c]), [c,a,b])
-        self.assertEqual(self.position(a)['order_key'], pre_star_key)
+        self.assertEqual(self.order([a,b,c]), [c,b,a])
 
     def test_item_731_migration_preserves_each_readers_actual_existing_order(self):
-        from aim_next.migrations import migrate, MigrationError
+        from aim_next.migrations import STEPS, freeze_dossier_order, migrate, MigrationError
+        before_order = next(step[0] for step in STEPS if freeze_dossier_order in step[2])
         b, a = self.post('B'), self.post('A')
         self.post('B was the newest active dossier at upgrade', reply_to=b)
         self.committed(self.command('stack.place', {'key': 9000}, target={'message_id': a}, expected={'place_revision': 0}))
         messages, acts = self.sql('SELECT * FROM messages'), self.sql('SELECT * FROM message_acts')
-        restore_frozen_layout(self.path, '48')
+        restore_frozen_layout(self.path, before_order)
         result = migrate(self.path, 'test-instance', self.binding)
         self.assertTrue(result['migrated'])
         self.store = Store(self.path, 'test-instance', expected_binding=self.binding)
@@ -83,7 +84,7 @@ class DossierOrderCase(fixtures.AsideCase):
         self.assertEqual(self.sql('SELECT * FROM messages')[:len(messages)], messages)
         self.assertEqual(self.sql('SELECT * FROM message_acts'), acts)
         with self.assertRaises(MigrationError) as refusal:
-            migrate(self.path, 'test-instance', self.binding, '48')
+            migrate(self.path, 'test-instance', self.binding, before_order)
         self.assertEqual(refusal.exception.code, 'RECORDS_WOULD_BE_LOST')
 
     def test_item_731_reads_are_pure_and_reply_only_page_has_the_root_order(self):

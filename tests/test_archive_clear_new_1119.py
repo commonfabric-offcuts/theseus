@@ -132,11 +132,12 @@ class ArchiveNewCase(StackCase):
         self.assertEqual(self.mark_revision(private, 'agent-a'), 1)
         self.rejected(self.store.view('agent-b', 'stack_positions', {'topic_id': 't1', 'message_ids': [private]}), 'FORBIDDEN')
 
-    def test_star_refusal_precedes_any_read_side_effect(self):
+    def test_a_star_does_not_prevent_archive_from_clearing_new(self):
         root = self.post(); self.mark(root); self.committed(self.star(root))
-        before = self.reading()
-        self.rejected(self.archive(root), 'STARRED_IN_DOSSIER')
-        self.assertEqual(self.reading(), before)
+        receipt = self.committed(self.archive(root))
+        self.assertTrue(self.position(root)['below'])
+        self.assertEqual(self.position(root)['starred'], [root])
+        self.assertEqual(receipt['cleared_new']['marks'], 1)
 
     def test_stale_aside_revision_precedes_any_read_side_effect(self):
         root = self.post(); self.committed(self.archive(root)); self.mark(root)

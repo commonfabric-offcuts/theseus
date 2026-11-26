@@ -22,7 +22,6 @@ import { openDossierJoin } from './dossier-join.mjs';
 import { cardIn } from './fold.mjs';
 import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn, repaintStackReading } from './reply-stacks.mjs';
 import { moveOf, keyOf, joinShown, joinOf, foldStep, laterActs, positionOf, placeOf, sideOf, headOf, stackCover, dossierOf } from './stack-order.mjs';
-import { noteAt } from './press-note.mjs';
 import { keyAction, writing } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
@@ -33,10 +32,6 @@ import { firstCoverMenuItem } from './cover-refresh.mjs';
 import { foldInMotion, closeUp } from './fold-motion.mjs';
 import { ArchiveShelf } from './archive-shelf.mjs';
 
-// Why Archive does nothing for a dossier holding a message the reader
-// starred (item 635), as Core says it (aim_next/stacks.py, HELD_BY_STAR): the
-// way out is to unstar.
-export const HELD_BY_STAR = 'This dossier has a message you starred: unstar it to archive it';
 // The line a card is pressed by and read from: its title bar on a dossier's
 // first message, else who wrote it, else its folded or earlier row.
 const LINES = [':scope > .stack-head', ':scope > .message-author', ':scope > .message-folded', ':scope > .message-earlier'];
@@ -606,8 +601,8 @@ export class StackFeed {
       known.acts = laterActs(known.acts, { folded: true, fold_revision });
     }
     if (kind === 'message.star') this.starsChanged();
-    // A star in a dossier the reader moved below More brought it back, in the same act (item 635): its first
-    // message learns the move's revision, so ⌘Z or the next move is fenced on it, and the places are read again.
+    // A replay may return the receipt of a pre-change star that did bring
+    // its dossier back. Learn the recorded move and its revision as before.
     const back = kind === 'message.star' ? receipt.result.brought_back : null;
     if (back) {
       const known = this.messages().get(back.root_id) ?? this.standIns.get(back.root_id);
@@ -642,21 +637,17 @@ export class StackFeed {
     if (above) revealSelection(above);
     revealSelection(shownSelected(target));
   }
-  // A star keeps a message in view: starring a folded message unfolds it too,
-  // and starring one in a dossier the reader moved below More brings the
-  // dossier back above More, shown at once as Core does it (item 635).
+  // A star keeps the selected message whole and raises its archived dossier
+  // within Archive. It does not change the dossier's place above or below it.
   star(item) {
     return this.cardAct(item.id, () => {
       const on = !this.actsOf(item.id, item).starred;
-      const position = on ? positionOf(stackOf(this.list, this.entryFor(item.id))?.stack ?? { head: item, replies: [] }) : null;
-      // A star admits above More at its retained key, including while Core is pending (10322).
-      this.act('message.star', item, { starred: on }, position && position.through !== null ? [[position.root_id, { aside: null, ...(typeof position.order_key === 'number' ? { order_key: position.order_key } : {}) }]] : []);
+      this.act('message.star', item, { starred: on });
       if (on && this.actsOf(item.id, item).folded) { this.state.peeked.delete(item.id); this.act('message.fold', item, { folded: false }); }
       this.arrange(); this.say(on ? 'Starred, for you only' : 'Star taken off');
     });
   }
-  // The header toggle belongs to the actual first message; reply stars still
-  // retain the dossier above More, but do not fill this control (646).
+  // The header toggle belongs to the actual first message.
   firstStarred(stack) {
     const root = dossierOf(stack), item = (this.arrangeMessages ?? this.messages()).get(root) ?? { acts: { starred: Boolean(positionOf(stack)?.starred?.includes(root)) } };
     return Boolean(this.actsOf(root, item).starred);
@@ -1138,36 +1129,6 @@ export class StackFeed {
     const cover = candidate?.items?.length ? candidate : stack ? stackCover(stack, { alone }) : null;
     return cover ? { cover, topicId: stack.head.topic_id, rootId: positionOf(stack)?.root_id ?? stack.head.id } : null;
   }
-  // Whether the dossier stack is drawn from holds a message the reader
-  // starred, so its title bar shows their star (item 635): Archive
-  // then does nothing, and says why.
-  heldByStar(stack) { return this.state.starred.has(dossierOf(stack)); }
-  // Says why a move below More did nothing, by the dossier it would have
-  // moved, since its words say "This dossier" and "unstar it": where the press
-  // was (at: the control pressed, such as the Reader's archive button, or the
-  // line of the message whose menu it was) when that is the dossier's, else
-  // under its title bar (its first message's line, for a message on its own),
-  // brought into view where it is out of the window, and on the page's status
-  // line where the page does not draw the dossier (Show agent coordination
-  // off). Never beside a message of another dossier: ⌘Z where the keys are on
-  // one, or Undo in its ⋯.
-  held(stack, at = null) {
-    const say = place => noteAt(place, HELD_BY_STAR, this.doc), head = this.entryFor(stack.id), bar = head && lineOf(cardIn(head));
-    if (at && this.ofDossier(at, stack) && say(at)) return;
-    if (bar?.getClientRects().length && (say(bar) || (revealSelection(bar), say(bar)))) return;
-    this.status(HELD_BY_STAR);
-  }
-  // Whether a place a refusal could be said by is the dossier stack is drawn
-  // from: a line of one of its messages, or a control off the list (the
-  // Reader's archive button, which acts on the Reader's message's dossier).
-  ofDossier(place, stack) {
-    if (!this.list.contains(place)) return true;
-    const found = stackOf(this.list, entryOf(this.list, place));
-    return Boolean(found) && dossierOf(found.stack) === dossierOf(stack);
-  }
-  // focus: false leaves the focus where it is, as on the Reader's archive
-  // button, whose dialog keeps it while the page behind it changes. at: the
-  // control pressed, where a refusal is said.
   // The archive shelf, at the foot of the right rail: none where the page has no right rail, and
   // there the feed keeps its own Archived (N).
   archiveShelf() {
@@ -1187,8 +1148,6 @@ export class StackFeed {
   setAside(stack, below, { undoable = true, restoreThrough, restoreKey, focus = true, at = null } = {}) {
     const found = this.rootOf(stack);
     if (!found) return false;
-    // A dossier holding a message the reader starred stays above More for them (item 635): nothing moves.
-    if (below && this.heldByStar(stack)) { this.held(stack, at); return false; }
     const { item, position } = found, root = item.id;
     // Below More through the newest message of the dossier the page has seen.
     const through = restoreThrough !== undefined ? restoreThrough : below ? [...this.messages().values()]

@@ -409,6 +409,13 @@ export function moveOf(stacks, index, way) {
   return [{ id: stacks[index].id, key: near }, { id: next.id, key: mine }];
 }
 
+// Keep the existing order within each archive tier.
+export function archiveOrder(rows, starred = () => false) {
+  const kept = [], ordinary = [];
+  for (const row of rows) (starred(row) ? kept : ordinary).push(row);
+  return [...kept, ...ordinary];
+}
+
 // The stacks in the order the page shows them, top to bottom, More messages a
 // boundary: those drawn above More in their order, then those drawn below it
 // in theirs. view.below(stack): drawn below More; view.hidden(stack): drawn
@@ -417,7 +424,9 @@ export function moveOf(stacks, index, way) {
 // the one beside it (a move, a join, the Reader's ↑ and ↓) reads this, never
 // the stacks in their own order, which still hold the ones put aside.
 export function shownOrder(stacks, view) {
-  return [...stacks.filter(each => !view.below(each)), ...stacks.filter(each => view.below(each))].filter(each => !view.hidden(each));
+  const above = [], below = [];
+  for (const stack of stacks) if (!view.hidden(stack)) (view.below(stack) ? below : above).push(stack);
+  return [...above, ...archiveOrder(below, view.archivedStarred)];
 }
 
 // Whether a stack is drawn below More: Core holds it put aside, and no
@@ -442,7 +451,7 @@ export const dossierOf = stack => positionOf(stack)?.root_id ?? (stack.sourceSta
 // a stack drawn from it shows a starred message of (its acts as the page shows
 // them), or one whose position names a message the reader starred that the
 // page has not loaded (has(id), Core's word for the rest). Its title bar shows
-// the reader's star, and Move below More is refused while it does.
+// the reader's star, and its archive row takes the starred position tier.
 export function starredDossiers(stacks, has) {
   const found = new Set();
   for (const stack of stacks) {
@@ -467,7 +476,7 @@ export const placeOf = position => (position ? `${position.root_id}:${position.a
 // root_id) of each stack drawn but not on show; asideShown, whether a dossier
 // put below More is on show (More open, or Only new).
 export function pageOf(stacks, view, { known = [], viewer = null } = {}) {
-  const all = readingOrder(shownOrder(stacks, { below: view.below, hidden: () => false }));
+  const all = readingOrder(shownOrder(stacks, { ...view, hidden: () => false }));
   const hiddenRoots = new Set(stacks.filter(stack => view.hidden(stack)).flatMap(stack => [stack.id, positionOf(stack)?.root_id ?? stack.id]));
   const order = readingOrder(shownOrder(stacks, view)).filter(item => !view.only || view.only(item));
   const loaded = new Set(all.map(item => item.id));

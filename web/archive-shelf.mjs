@@ -6,6 +6,7 @@
 // the dossier down into the shelf, the lower right corner where the rail is
 // not drawn.
 import { openMessageMenu } from './message-menu.mjs';
+import { archiveOrder } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
 
 const VIEW_KEY = 'theseus-archive-view', AUTO_LIST = 18;
@@ -118,7 +119,9 @@ export class ArchiveShelf {
     this.place();
     const byId = new Map(given.map(each => [each.stack.id, each]));
     const mine = this.here.filter(id => byId.has(id)).reverse().map(id => byId.get(id));
-    const list = [...mine, ...given.filter(each => !mine.includes(each))];
+    const local = new Set(mine);
+    const ordered = [...mine, ...given.filter(each => !local.has(each))];
+    const list = archiveOrder(ordered, each => each.starred);
     const live = new Set();
     // Every look read before any is written, so the page lays out once.
     const looks = list.map(({ stack, section }) => this.look(stack, section));
