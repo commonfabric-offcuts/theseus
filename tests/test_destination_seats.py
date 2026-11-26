@@ -22,7 +22,7 @@ import test_authority_relocation as fixture
 
 AVAILABLE = importlib.util.find_spec('aim_next.destination_seats') is not None
 if AVAILABLE: from aim_next import destination_seats as seats
-EVIDENCE = {'staged': [], 'prohibited_outputs': [], 'shell': [], 'flush_faults': [], 'preservation': [], 'startup_refusals': [], 'fixture_setup': []}
+EVIDENCE = {'staged': [], 'prohibited_outputs': [], 'shell': [], 'flush_faults': [], 'preservation': [], 'startup_refusals': [], 'fixture_setup': [], 'named_controller': [], 'already_current_loaders': []}
 THREADS = {'managed-a':'11111111-2222-4333-8444-555555555555','managed-b':'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'}
 ROLE = 'Keep exact role λ.\nPreserve trailing spaces.  '
 
@@ -34,12 +34,17 @@ class Availability(unittest.TestCase):
 
 @unittest.skipUnless(AVAILABLE,'1332 absent; behavior bodies and targets unreached')
 class SeatCase(unittest.TestCase):
-    def new_case(self,label='A',ready=True,role_conflict=False,role_file=False):
+    def new_case(self,label='A',ready=True,role_conflict=False,role_file=False,named_controller=False):
         real=tempfile.TemporaryDirectory
         def temp(*args,**kwargs):
             kwargs.update(prefix=".1332 "+label+" λ's $(printf no) `echo no`; [x]-",dir=str(Path(__file__).resolve().parents[1]));return real(*args,**kwargs)
         fx=fixture.RelocationCase('test_no_active_database_and_original_lost_response_outcome_remains_identical');self.addCleanup(fx.doCleanups)
         with mock.patch.object(tempfile,'TemporaryDirectory',side_effect=temp):fx.setUp()
+        controller='fixture-controller' if named_controller else 'fixture-owner'
+        template='template-'+'a'*64
+        if named_controller:
+            fx.store.register_actor(controller,'human','Actual controller')
+            fx.store.register_actor('fixture-template','agent','Named host template')
         oldroot=fx.root/'old seats';oldroot.mkdir(mode=0o700);home=fx.root/'old home';home.mkdir(mode=0o700)
         cli_root=fx.root/'new CLI';cli_root.mkdir(mode=0o700);(cli_root/'bin').mkdir(mode=0o700)
         cli=cli_root/'bin'/'aim-next';log=fx.root/'argv.json';repo=str(Path(__file__).resolve().parents[1])
@@ -53,17 +58,24 @@ class SeatCase(unittest.TestCase):
         authority={k:fx.binding[k] for k in ('authority_id','authority_epoch')};sources=[];configs=[];records={}
         with fx.store.runner_guard('genuine-managed-fixture') as guard:
             token=fx.store.acquire_runner(guard)['runner_token']
+            if named_controller:
+                published=fx.store.hosted_seat_publish_templates(guard,token,[dict(id=template,actor_id='fixture-template',model='retained-model',reasoning_effort='high')])
+                self.assertEqual(published['status'],'ok')
             for actor in (THREADS if ready else {'managed-a':THREADS['managed-a']}):
                 with sqlite3.connect(str(fx.db)) as db:version=db.execute("SELECT version FROM workspaces WHERE id='private-work'").fetchone()[0]
                 result=fx.store.command('fixture-owner',dict(v=1,instance_id=fx.store.instance_id,operation_id='add-'+actor,
                     kind='workspace.hosted_seat_add',target={'workspace_id':'private-work'},expected={'authority':authority,'workspace_revision':version},
-                    args={'name':actor.replace('-',' ').title(),'role':ROLE}))
+                    args=dict({'name':actor.replace('-',' ').title(),'role':ROLE},**({'template_id':template} if named_controller else {}))))
                 self.assertEqual(result['status'],'committed',result);identity=result['result']['seat_request_id'];self.assertEqual(result['result']['agent']['id'],actor)
                 folder=oldroot/identity;folder.mkdir(mode=0o700);cwd=folder/'work';cwd.mkdir(mode=0o700)
                 old_profile=folder/(actor+'.profile.json');profile.write_profile(old_profile,fx.db,fx.store.instance_id,actor,binding=fx.binding)
                 outbox=folder/(actor+'.outbox');outbox.mkdir(mode=0o700);io.write_record(outbox/'saved-request.json',{'operation_id':'retain-'+actor,'exact':'old bound request','binding':fx.binding})
                 plan=dict(profile=str(old_profile),config=str(folder/'route.json'),cwd=str(cwd),cli='/retained source CLI',codex_home=str(home),
                     codex_executable='/usr/bin/python3',model='retained-model',reasoning_effort='high',permission_mode='full')
+                if named_controller:
+                    plan['cli']=str(cli)
+                    provisioned=fx.store.provision_route_pin(guard,actor,dict(kind='codex-hosted-stdio',protocol_version=1,codex_home=str(home),thread_id=THREADS[actor]),owner_id=controller)
+                    self.assertEqual(provisioned['status'],'provisioned')
                 io.write_record(folder/'request.json',dict(seat_id=identity,plan=plan))
                 row=fx.store.hosted_seat_claim(guard,token)['seat'];self.assertEqual(row['id'],identity)
                 row=fx.store.hosted_seat_step(guard,token,identity,row['version'],'profile',{'plan':plan})['seat']
@@ -71,12 +83,17 @@ class SeatCase(unittest.TestCase):
                     details={'thread_id':THREADS[actor]} if phase=='persist' else None
                     row=fx.store.hosted_seat_step(guard,token,identity,row['version'],phase,details)['seat']
                 self.assertEqual((row['state'],row['stage']),('ready','ready') if ready else ('preparing','delivery'),row)
-                stop=fx.store.command('fixture-owner',dict(v=1,instance_id=fx.store.instance_id,operation_id='stop-'+actor,kind='agent.execution',
+                stop=fx.store.command(controller,dict(v=1,instance_id=fx.store.instance_id,operation_id='stop-'+actor,kind='agent.execution',
                     target={'actor_id':actor},expected={'authority':authority,'execution_revision':1},args={'desired':'stopped'}));self.assertEqual(stop['status'],'committed',stop)
                 config=dict(v=2,kind='codex-hosted-stdio',actor_id=actor,profile=str(old_profile),cli=plan['cli'],codex_executable=plan['codex_executable'],
                     codex_home=str(home),thread_id=THREADS[actor],cwd=str(cwd),model=plan['model'],writable_roots=[str(fx.db.parent),str(outbox)],
                     permission_mode='full',reasoning_effort='high',instructions='Conflicting role B.  ' if role_conflict and actor=='managed-a' else ROLE)
                 io.write_record(folder/'route.json',config)
+                if named_controller:
+                    loaded=broker_routes.load_hosted_config(folder/'route.json')
+                    controls=fx.store.hosted_controls(guard,token,[actor]);self.assertEqual(controls['status'],'ok')
+                    control=controls['controls'][actor];self.assertEqual((control['owner_id'],control['desired'],control['revision']),(controller,'stopped',2))
+                    EVIDENCE['already_current_loaders'].append({'test':self.id(),'actor':loaded.profile.actor_id,'binding':loaded.profile.binding,'destination':loaded.destination,'control':control,'native_consumer':False,'source':'Normal config loader/current Core pin and guard-held hosted_controls BEFORE relocation; generator not called after adoption.'})
                 sources.append(dict(source_path=str(old_profile),source_bytes=old_profile.read_text(),outbox_parent=str(folder)))
                 configs.append(dict(actor_id=actor,source_path=str(folder/'route.json'),source_bytes=(folder/'route.json').read_text(),cli=str(cli)))
                 records[actor]=dict(id=identity,source_request_path=str(folder/'request.json'),source_request_bytes=(folder/'request.json').read_text())
@@ -140,6 +157,17 @@ class SeatCase(unittest.TestCase):
         self.use(self.new_case('delivery-only',ready=False));row=self.request['seats'][0]['seat_snapshot']
         self.assertEqual((row['state'],row['stage'],row['first_message_id'],row['ready_seq']),('preparing','delivery',None,None))
         self.rejected(code='SEATS_NOT_READY');self.assertFalse(self.output().exists())
+
+    def test_named_template_and_distinct_actual_controller_are_preserved(self):
+        self.use(self.new_case('named-controller',named_controller=True));entry=self.request['seats'][0];sid=entry['seat_id'];row=entry['seat_snapshot']
+        self.assertEqual(row['template_id'],'template-'+'a'*64)
+        self.assertEqual((row['inviter_id'],row['owner_id']),('fixture-owner','fixture-owner'))
+        old=json.loads(entry['control_bytes']);self.assertEqual((old['owner_id'],old['desired'],old['revision']),('fixture-controller','stopped',2))
+        self.assertIsInstance(old['changed_ms'],int);self.assertEqual(old['binding']['authority_epoch'],self.request['hosted_request']['profiles_request']['profiles'][0]['source_bytes'] and self.case['fx'].binding['authority_epoch'])
+        before=self.preserved();result=self.call();manifest=json.loads((self.output()/'manifest.json').read_text());observed=manifest['observations'][sid]
+        self.assertEqual(observed['row'],row);self.assertEqual(observed['control_bytes'],entry['control_bytes']);self.assertEqual(before,self.preserved())
+        self.assertEqual(observed['workspace_owner'],'fixture-owner');self.assertEqual(result['seats'][sid]['plan']['model'],'retained-model')
+        EVIDENCE['named_controller'].append({'test':self.id(),'row':row,'workspace_owner':observed['workspace_owner'],'before_control_bytes':entry['control_bytes'],'after_control_bytes':observed['control_bytes'],'unchanged_whole_bytes':True,'result':result})
 
     def test_role_settings_family_rejects_authentic_hosted_B_against_ready_Core_A(self):
         self.use(self.new_case('role-conflict',role_conflict=True));self.assertEqual(self.request['seats'][0]['seat_snapshot']['role'],ROLE)
@@ -221,7 +249,8 @@ class SeatCase(unittest.TestCase):
     def test_relocated_startup_still_refuses_without_adoption(self):
         self.call();path=Path(self.request['hosted_request']['output_dir'])/'managed-a.hosted.json';before=self.store.path.read_bytes()
         try:broker_routes.load_hosted_config(path)
-        except Exception as error:EVIDENCE['startup_refusals'].append({'code':getattr(error,'code',type(error).__name__),'native_consumer':False})
+        except route_pins_error() as error:
+            self.assertEqual(error.code,'ROUTE_PIN_MISMATCH');EVIDENCE['startup_refusals'].append({'test':self.id(),'exception_type':type(error).__name__,'code':error.code,'native_consumer':False})
         else:self.fail('unadopted route was accepted')
         self.assertEqual(before,self.store.path.read_bytes())
 
