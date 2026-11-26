@@ -67,7 +67,7 @@ const coverTools = new WeakMap();
 export function forgetStackMessages(list, retained) {
   const state = states.get(list); if (!state) return;
   readingFrames.delete(list);
-  for (const name of ['kept', 'unreadKept', 'peeked', 'earlier', 'whole', 'waiting', 'filled', 'apart', 'sourceRoots', 'writing', 'folded', 'starred', 'coordination', 'coordinationHere', 'below', 'earlierRows', 'contextRows']) {
+  for (const name of ['kept', 'unreadKept', 'peeked', 'earlier', 'whole', 'waiting', 'filled', 'revealedFilled', 'apart', 'sourceRoots', 'writing', 'folded', 'starred', 'coordination', 'coordinationHere', 'below', 'earlierRows', 'contextRows']) {
     const set = state[name]; if (set) for (const id of set) if (!retained.has(id)) set.delete(id);
   }
   // Sections still own their DOM until arrange moves surviving children and
@@ -175,7 +175,7 @@ export function stackState(list) {
     }, { capture: true, passive: true });
     const state = { scrolled, levels: new Map(), savedLevels: new Map(), kept: new Set(), unreadKept: new Set(), contextRows: new Set(), peeked: new Set(), here: new Map(), renaming: null,
     stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: false, coordinationHere: new Set(), below: new Set(), viewer: null, again: () => {}, waiting: new Set(),
-    checking: new Map(), earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), apart: new Set() };
+    checking: new Map(), earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), revealedFilled: new Set(), apart: new Set() };
     indexedStacks(state, state.stacks);
     states.set(list, state);
   }
@@ -202,7 +202,7 @@ export function fillFrom(list) {
   let below = Infinity;
   for (const stack of state.stacks) for (const item of [stack.head, ...stack.replies]) { if (!item.dossierSource) { known.add(item.id); below = Math.min(below, item.seq); } }
   const last = shownStacks(state).filter(stack => !view.below(stack)).at(-1);
-  state.filling = { into: last && !state.apart.has(last.id) ? last.dossier : null, drawn: new Set(state.stacks.map(stack => stack.dossier)), known, below };
+  state.filling = { into: last && !state.apart.has(last.id) ? last.dossier : null, drawn: new Set(state.stacks.map(stack => stack.dossier)), recollapsed: new Set(), known, below };
 }
 
 // Each message this drawing is the first to hold, older than everything
@@ -215,7 +215,10 @@ function fill(state, loaded) {
   for (const item of loaded) {
     if (state.sourceRoots?.has(item.id)) continue;
     const of = dossier.get(item.id);
-    if (!filling.known.has(item.id) && item.seq < filling.below && filling.drawn.has(of)) state.filled.add(item.id);
+    if (!filling.known.has(item.id) && item.seq < filling.below && filling.drawn.has(of)) {
+      state.filled.add(item.id);
+      if (!filling.recollapsed.has(of)) state.revealedFilled.add(item.id);
+    }
     filling.known.add(item.id);
   }
 }
@@ -241,6 +244,10 @@ export function setLevel(state, stack, level, { save = false } = {}) {
   state.levels.set(stack.id, level);
   state.peeked.delete(stack.id);
   for (const item of stack.replies) { state.kept.delete(item.id); state.unreadKept.delete(item.id); state.peeked.delete(item.id); }
+  if (level !== 'open') {
+    state.filling?.recollapsed.add(stack.dossier);
+    for (const item of [stack.head, ...stack.replies]) state.revealedFilled?.delete(item.id);
+  }
   state.earlier.delete(stack.id); for (const item of [stack.head, ...stack.replies]) state.whole.delete(item.id);
   if (save) state.on?.level?.(stack, level);
 }
@@ -275,7 +282,7 @@ export function drawn(list, id) {
   if (stack && view.hidden(stack)) return false;
   const item = found?.item ?? { id };
   if (view.only) return Boolean(view.only(item));
-  return !stack || item === stack.head || shown(stack, item, { level: levelOf(state, stack.id), kept: each => state.kept.has(each.id), writing: each => state.writing?.has(each.id), newReply: each => state.unreadKept.has(each.id), earlier: state.earlier.has(stack.id), held: state.held.get(stack.id) ?? null });
+  return !stack || item === stack.head || shown(stack, item, { level: levelOf(state, stack.id), kept: each => state.kept.has(each.id), writing: each => state.writing?.has(each.id), newReply: each => state.unreadKept.has(each.id), revealed: each => state.revealedFilled.has(each.id), earlier: state.earlier.has(stack.id), held: state.held.get(stack.id) ?? null });
 }
 // The page as stepping reads it (stack-order.mjs, pageOf and stepTarget).
 export const stackPage = (state, messages = null) => pageOf(state.stacks, shownView(state), { known: messages?.values() ?? [], viewer: state.viewer });
@@ -964,7 +971,7 @@ function paintStack(section, stack, byId, context) {
   p.toggle.onclick = () => { setLevel(state, stack, LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length], { save: true }); state.on?.folded?.(stack, level); state.again(); };
   const desired = [];
   const newReply = item => { if (unread(item)) state.unreadKept.add(item.id); return state.unreadKept.has(item.id); };
-  const rows = single ? [] : rowsOf(stack, { level, kept, writing: item => state.writing.has(item.id), unread, newReply, peeked: item => state.peeked.has(item.id), earlier: earlierOpen, held, headWhole: open });
+  const rows = single ? [] : rowsOf(stack, { level, kept, writing: item => state.writing.has(item.id), unread, newReply, revealed: item => state.revealedFilled.has(item.id), peeked: item => state.peeked.has(item.id), earlier: earlierOpen, held, headWhole: open });
   // A reply drawn starred stays as an unread one does: its star taken off, here or elsewhere, never folds it away under the reader (item 413).
   for (const row of rows) if (row.kind === 'reply' && row.item.acts?.starred === true) state.kept.add(row.item.id);
   for (const row of rows) {
@@ -1205,7 +1212,7 @@ export function arrangeStacks(list, messages, options = {}) {
   }
   state.sourceRoots ??= new Set();
   for (const item of loaded) if (item.dossierSource) state.sourceRoots.add(item.id);
-  for (const id of state.sourceRoots) { state.filled.delete(id); state.apart.delete(id); }
+  for (const id of state.sourceRoots) { state.filled.delete(id); state.revealedFilled.delete(id); state.apart.delete(id); }
   // A root already displayed as a source keeps the same loaded branch anchor
   // when More reaches it. Otherwise an earlier own branch could jump above
   // the formerly gathered head. The root's actual item now owns its bytes.

@@ -5,7 +5,7 @@ import { TopicViews } from '../web/topic-views.mjs';
 import { DossierHeads } from '../web/stack-order.mjs';
 import { VisitNew } from '../web/visit-new.mjs';
 import { CardReplies } from '../web/card-replies.mjs';
-import { stackState, forgetStackMessages, drawn, arrangeStacks } from '../web/reply-stacks.mjs';
+import { stackState, forgetStackMessages, drawn, arrangeStacks, fillFrom } from '../web/reply-stacks.mjs';
 import { paintPendingSends, adoptPendingSend } from '../web/pending-sends.mjs';
 import { renderer799 } from './fixtures/renderer799.mjs';
 import { readFileSync } from 'node:fs';
@@ -383,3 +383,82 @@ test('1247 quoted revision and pending edit caches retire when their final loade
   }
   assert.equal(views.messages.get('m1171').reply_to_excerpt, 'New quoted words');
 });
+
+for (const history of [100, 30000]) {
+  test(`1344 closed dossier recollapse at ${history} messages, with a bounded working set`, t => {
+    const historyRows = records(history);
+    const fixture = renderer799();
+    const { list, messages } = fixture, doc = list.ownerDocument;
+    const views = new TopicViews({ instanceId: 'i', topicId: 't' });
+    const unrelated = 'm' + (history - 8), grandparent = 'm' + (history - 7);
+    const parent = 'm' + (history - 6), unreadId = 'm' + (history - 1), latest = 'm' + history;
+    const newId = 'm' + (history + 1), unread = new Set([unreadId]);
+    let reads = 0, received = 0;
+    const draw = () => arrangeStacks(list, messages, { doc, viewer: 'reader', unread: row => unread.has(row.id) });
+    const load = (from, through, options) => {
+      const answer = page(from, through, from);
+      answer.items = answer.items.map(row => ({ ...(historyRows.get(row.id) ?? row) }));
+      for (const record of answer.items) {
+        record.reply_to = 'm1';
+        record.stack_position = { root_id: 'm1', at: { acts: 0, messages: through } };
+        if (record.id === parent) record.reply_to = grandparent;
+        if (record.id === unreadId) record.reply_to = parent;
+        if (record.id === latest) record.acts = { folded: true };
+        if (record.id === newId) record.acts = { joined: { into: parent, by: 'reader' } };
+      }
+      reads++; received += answer.items.length;
+      assert.equal(views.messagesPage(answer, options), true);
+      fixture.add(views.messages.values());
+      draw();
+    };
+    load(history - 5, history, { initial: true });
+    const state = stackState(list);
+    state.again = draw;
+    const toggle = list.querySelector('.stack-toggle');
+    const measureToggle = () => {
+      toggle.focus();
+      const start = performance.now();
+      toggle.onclick();
+      assert.equal(doc.activeElement, toggle);
+      return performance.now() - start;
+    };
+    measureToggle();
+    assert.equal(toggle.dataset.state, 'folded');
+    fillFrom(list);
+    load(history - 10, history - 6, { cursor: history - 5 });
+    assert.ok(state.filled.has(unrelated) && drawn(list, unrelated));
+    assert.ok(drawn(list, unreadId) && !state.folded.has(unreadId));
+    unread.clear(); draw();
+    assert.ok(drawn(list, unreadId), 'reading retains the row until explicit recollapse');
+    measureToggle();
+    fillFrom(list); // A second More request can still be in flight when the dossier closes.
+    const before = { reads, received, records: views.messages.size };
+    const recollapseMs = measureToggle();
+    assert.equal(toggle.dataset.state, 'folded');
+    assert.ok(state.filled.has(unrelated), 'ordering provenance survives recollapse');
+    assert.equal(drawn(list, unrelated), false);
+    assert.equal(list.querySelector(`[data-id="${unrelated}"]`).hidden, true);
+    assert.ok(drawn(list, latest) && state.folded.has(latest), 'saved body fold is retained');
+    assert.deepEqual({ reads, received, records: views.messages.size }, before);
+    load(history + 1, history + 1, { live: true, cursor: history });
+    assert.ok(drawn(list, newId) && !state.folded.has(newId));
+    assert.ok(drawn(list, parent) && state.contextRows.has(parent));
+    assert.equal(drawn(list, grandparent), false, 'context stops after one loaded effective edge');
+    assert.equal(drawn(list, unrelated), false, 'a live arrival does not re-expose filled history');
+    const delayed = 'm' + (history - 11);
+    load(history - 12, history - 11, { cursor: history - 10 });
+    assert.ok(state.filled.has(delayed), 'late history retains its place');
+    assert.equal(drawn(list, delayed), false, 'a pending More response respects recollapse');
+    fixture.add([{ ...item(1), dossierSource: true }]);
+    draw();
+    assert.equal(drawn(list, unrelated), false, 'canonical-root hydration keeps the reset');
+    assert.ok(drawn(list, parent) && state.contextRows.has(parent));
+    assert.ok(views.messages.size <= 300);
+    const rows = list.querySelectorAll('[data-seq]').filter(row => row.dataset.id);
+    const visible = rows.filter(row => !row.hidden);
+    assert.ok(rows.length <= views.messages.size + 1);
+    t.diagnostic(JSON.stringify({ history, reads, received, records: views.messages.size, domRows: rows.length,
+      full: visible.filter(row => !state.folded.has(row.dataset.id)).length,
+      compact: visible.filter(row => state.folded.has(row.dataset.id)).length, recollapseMs }));
+  });
+}
