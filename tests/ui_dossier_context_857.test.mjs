@@ -127,9 +127,9 @@ test('857 ordinary saved folds and already-visible parents retain their existing
  assert.equal(foldedClick(f.list,f.cards.get('m5'),{target:f.cards.get('m5')}),true);assert.equal(f.acts(),1,'saved fold still goes through its existing owner');
 });
 
-test('857 a read latest reply loses its parent context on an explicit reset',()=>{
+test('857 a read latest reply keeps its immediate parent context on explicit reset',()=>{
  const items=sample();items[4].reply_to='m2';
  const f=fixture(items,['m5']);f.state.levels.set('m1','folded');f.draw();assert.equal(f.cards.get('m2').hidden,false);
  f.read();f.draw();assert.equal(f.cards.get('m2').hidden,false);
- setLevel(f.state,f.state.stacks[0],'folded');f.draw();assert.equal(f.cards.get('m5').hidden,false);assert.equal(f.cards.get('m2').hidden,true);
+ setLevel(f.state,f.state.stacks[0],'folded');f.draw();assert.equal(f.cards.get('m5').hidden,false);assert.equal(f.cards.get('m2').hidden,false);assert.ok(f.state.contextRows.has('m2'));
 });

@@ -744,7 +744,7 @@ function noteRead() {
   for (const entry of seenEntries.values()) {
     const seq = Number(entry.dataset.seq), id = entry.dataset.id, item = views.messages.get(id);
     if (!entry.isConnected || messageEntries.get(id) !== entry) { forgetReadEntry(entry); continue; }
-    if (item?.topic_id !== topic.id || item.seq !== seq) continue;
+    if (item?.topic_id !== topic.id || item.seq !== seq || entry.dataset.stackContext === 'true') continue;
     if ((halfShown.has(seq) || atMiddle.has(seq)) && onScreen(entry)) {
       shown.add(seq);
       if (item.author_id !== bootstrap.actor) arrivals.push(id);
