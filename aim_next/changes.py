@@ -60,6 +60,10 @@ class Changes:
         return {"workspace": record["version"]}, [scope]
 
     def _view_changes(self, db, actor, args):
+        if "windows" in args:
+            return self._page_change_windows(db, actor, args)
+        if set(args) - {"scope", "cursor", "limit"}:
+            raise Refusal("INVALID_ARGUMENT", "Use one exact scope or a bounded set of windows")
         scope, limit = _scope(args.get("scope")), _page_size(args)
         cursor = _cursor(args["cursor"]) if "cursor" in args else None
         identity = dict(v=1, instance_id=self.instance_id, actor_id=actor, scope=scope,
@@ -109,3 +113,68 @@ class Changes:
                     raise Refusal("VIEW_TOO_LARGE", "A change key cannot fit in the bounded response")
                 return response(items, True)
         return response(items, len(rows) > len(items))
+
+    def _page_change_windows(self, db, actor, args):
+        """One snapshot of explicitly named canonical scopes, with changed rail rows.
+
+        Total selected keys stay within one normal page. Each continuation
+        remains its scope's exact, independently reauthorized fixed window.
+        No records or private keys are returned if any scope refuses.
+        """
+        windows = args.get('windows')
+        if (set(args) - {'windows', 'limit', 'project'} or type(windows) is not list
+                or not 1 <= len(windows) <= LIMITS['page_max'] or type(args.get('project', False)) is not bool):
+            raise Refusal('INVALID_ARGUMENT', 'Name one bounded set of change windows')
+        seen = set()
+        for window in windows:
+            if type(window) is not dict or set(window) not in ({'scope'}, {'scope','cursor'}):
+                raise Refusal('INVALID_ARGUMENT', 'Use an exact scope and its original cursor')
+            scope = _scope(window['scope'])
+            key = (scope['kind'], scope['id'])
+            if key in seen:
+                raise Refusal('INVALID_ARGUMENT', 'Name each change scope once')
+            seen.add(key)
+        limit = min(_page_size(args), max(1, LIMITS['page_max'] // len(windows)))
+        pages = [self._view_changes(db, actor, dict(window, limit=limit)) for window in windows]
+        answer = dict(instance_id=self.instance_id, windows=pages, topics=[], counts=[], affected_topics=[], attention_changed=False)
+        if args.get('project'):
+            personal = [item for page in pages if page['scope']['kind']=='actor' for item in page['items']]
+            answer['attention_changed'] = any(item['resource_kind'] in ('waiting','participation','question','withdrawal') for item in personal)
+            deliveries = sorted({item['resource_id'] for item in personal if item['resource_kind']=='delivery'})
+            affected = set()
+            if deliveries:
+                for row in db.execute('SELECT d.topic_id,EXISTS(SELECT 1 FROM delivery_reasons r WHERE r.delivery_id=d.id '
+                                      "AND r.reason!='subscription') AS direct FROM deliveries d WHERE d.recipient_id=? AND d.id IN (%s)"
+                                      % ','.join('?'*len(deliveries)), (actor,)+tuple(deliveries)):
+                    affected.add(row['topic_id'])
+                    answer['attention_changed'] |= bool(row['direct'])
+            messages = sorted({item['resource_id'] for item in personal if item['resource_kind'] in ('mark','source_cover_read')})
+            if messages:
+                affected.update(row[0] for row in db.execute('SELECT topic_id FROM messages WHERE id IN (%s)' % ','.join('?'*len(messages)), tuple(messages)))
+            changed = {item['resource_id'] for page in pages if page['scope']['kind']=='workspace'
+                       for item in page['items'] if item['resource_kind']=='topic'}
+            spaces = {page['scope']['id'] for page in pages if page['scope']['kind']=='workspace'}
+            if affected:
+                affected = {row['id'] for row in db.execute('SELECT id,workspace_id FROM topics WHERE id IN (%s)' % ','.join('?'*len(affected)), tuple(sorted(affected))) if row['workspace_id'] in spaces}
+                changed.update(affected)
+                answer['affected_topics'] = sorted(affected)
+            if not answer['attention_changed'] and (deliveries or messages):
+                totals = self._unread(db, actor)
+                answer['attention_counts'] = dict(commit_seq=int(db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()[0]),
+                                                 unread=sum(row[0] for row in totals.values()),
+                                                 addressed=sum(row[1] for row in totals.values()))
+            if changed:
+                from .store import _TOPIC_SUMMARY
+                # The IDs came only from authorized workspace scopes, but a
+                # projection still checks current topic access before reading.
+                for ident in changed:
+                    self._topic(db, actor, ident)
+                rows = db.execute('SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t ' + _TOPIC_SUMMARY +
+                                  'WHERE t.id IN (%s)' % ','.join('?'*len(changed)), tuple(sorted(changed))).fetchall()
+                workspaces = sorted({row['workspace_id'] for row in rows})
+                builds = set().union(*(self._build_topics(db, ident) for ident in workspaces))
+                answer['topics'] = self._topic_items(db, actor, rows, builds)
+                answer['counts'] = self._view_workspace_counts(db, actor, {'workspace_ids':workspaces})['items'] if workspaces else []
+        if len(_json(answer).encode('utf-8')) > LIMITS['summary_utf8_bytes']:
+            raise Refusal('VIEW_TOO_LARGE', 'These change windows and rows exceed the bounded page; retain their cursors')
+        return answer

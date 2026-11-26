@@ -900,7 +900,7 @@ VIEW_PATHS = {
     "attention": "the reader's own deliveries; a whisper never waits",
     "topic_unread": "the reader's own deliveries",
     "marks": "visible() before a mark; the reader's own marks",
-    "changes": "a whisper writes only to its two people's actor scopes",
+    "changes": "a whisper writes only to its two people's actor scopes; a batch reauthorizes every scope and projects only canonical public topic summaries and the reader's own counts",
     "topic": "summaries, waits and participation are untouched by a whisper; the message that reopened or started it through redact_topic",
     "workspace_topics": "summaries, activity, order and waits are untouched by a whisper; each topic's reopening and source through redact_topic; latest_message reads only the public summary message with private_to IS NULL",
     "workspaces": "per-reader delivery counts",
@@ -943,6 +943,7 @@ VIEW_PATHS = {
 }
 # Each read of the messages table outside the visibility rule, and why it shows no whisper to anyone outside it.
 MESSAGE_READS = {
+    "aim_next/changes.py": ("bounded topic-id lookup only for message ids from this reader's private mark/source-cover changes; returns no words, and projected topic rows additionally require a named authorized workspace and current topic access", 1),
     "aim_next/current_rule.py": ("source metadata after _message_access, selecting private_to and outcome only to refuse private or cross-outcome policy sources; current public words are read through the existing source guard afterward", 1),
     "aim_next/cover_refresh.py": ("first-cover recipient lookup follows _acted_message and current-root admission, then walks only requester-visible MEMBERS and reads the last agent reply's author; candidate enabled/access/root checks remain; the existing completion lookup follows the guarded changed-write path and reads only immutable message metadata", 2),
     "aim_next/drafts.py": ("the actor-owned submission and submission list exclude a published unsent message by the same actor and exact send operation; existence-only checks return no message identity or words; private unsent draft/prepared content remains its owner's", 2),
