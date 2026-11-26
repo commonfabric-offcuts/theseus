@@ -712,7 +712,7 @@ function paintFolded(entry, item, folded, { nameOf, doc }) {
 // Item 645: consecutive drawn folded rows share one visible sender name.
 // Keep each row's attribution in the accessibility tree. Work from the drawn
 // structure, with no layout reads and no grouping across a dossier or a line.
-export function paintFoldedNames(list, messages, state = stackState(list)) {
+export function paintFoldedNames(list, messages, state = stackState(list), roots = null) {
   const visit = nodes => {
     let previous = null;
     for (const entry of nodes) {
@@ -733,7 +733,7 @@ export function paintFoldedNames(list, messages, state = stackState(list)) {
       previous = folded ? item.author_id : null;
     }
   };
-  visit(list.children);
+  visit(roots ?? list.children);
 }
 
 // One of an open dossier's earlier messages, shown as one row set into its
@@ -1091,4 +1091,103 @@ export function arrangeStacks(list, messages, options = {}) {
   if (active?.isConnected && doc.activeElement !== active) active.focus({ preventScroll: true });
   state.on?.arranged?.();
   paintFoldedNames(list, messages, state);
+  // Full structural publication re-seeds the presentation-only append index.
+  state.appendIndex={entries:byId,byDossier:new Map(stacks.map(stack=>[stack.dossier,stack])),
+    byMessage:new Map(stacks.flatMap(stack=>[stack.head,...stack.replies].map(item=>[item.id,stack]))),options};
+}
+
+// An ordinary admitted append touches only its affected dossiers. Structural
+// transitions return false before any mutation and keep the full owner.
+export function appendStacks(list, messages, added, options = {}) {
+  const state=stackState(list),index=state.appendIndex;
+  if(!index||!added.length||state.only||state.renaming||state.waiting.size)return false;
+  const settings={...index.options,...options}, {viewer=null,doc=list.ownerDocument,keep=()=>false,unread=()=>false,nameOf=id=>id,colorOf=()=>null,quiet=()=>false}=settings;
+  const groups=new Map(),incoming=new Map(),batch=new Map(added.map(item=>[item.id,item]));
+  const rootOf=(item,path=new Set())=>{
+    if(path.has(item.id))return null;
+    path.add(item.id);
+    const parent=item.acts?.joined?.into??item.reply_to,prior=index.byMessage.get(parent);
+    return prior?.dossier??(batch.has(parent)?rootOf(batch.get(parent),path):item.stack_position?.root_id??item.id);
+  };
+  for(const item of added){
+    const entry=options.entries?.get(item.id);
+    if(!entry||index.entries.has(item.id)||ownWithdrawnQuestion(item,viewer)||item.moving||item.dossierSource)return false;
+    incoming.set(item.id,entry);
+    const root=rootOf(item);if(root===null)return false;
+    let group=groups.get(root);if(!group)groups.set(root,group={old:index.byDossier.get(root)??null,added:[]});
+    group.added.push(item);
+  }
+  const changes=[];
+  for(const [root,group] of groups){
+    const members=[...(group.old?[group.old.head,...group.old.replies].map(item=>messages.get(item.id)).filter(Boolean):[]),...group.added];
+    const gathered=visibleStacks(withDossierHeads(ordered(gather(members,{viewer,filled:state.filled,apart:state.apart})),messages,{apart:state.apart,sourceRoots:state.sourceRoots}),viewer);
+    if(gathered.length!==1||group.old&&gathered[0].id!==group.old.id)return false;
+    const stack=gathered[0];
+    const below=!state.starred.has(dossierOf(stack))&&drawnBelow(stack,item=>{const mark=state.here.get(item.id);return mark?.pending?placeOf(positionOf(stack)):mark?.place??null;});
+    if(below||group.old&&state.below.has(group.old.id))return false;
+    changes.push({root,old:group.old,stack,members,starred:starredDossiers(gathered,id=>messages.has(id)).has(root)});
+  }
+  for(const [id,entry] of incoming)index.entries.set(id,entry);
+  const moved=[],context={state,keep,unread,nameOf,colorOf,doc,moved};
+  for(const {root,old,stack,members,starred} of changes){
+    if(old)state.stacks.splice(state.stacks.indexOf(old),1);
+    // Sort only the changed dossier into the already ordered list.
+    let low=0,high=state.stacks.length;
+    const precedes=other=>ordered([stack,other])[0]===stack;
+    while(low<high){const mid=(low+high)>>1;if(precedes(state.stacks[mid]))high=mid;else low=mid+1;}
+    state.stacks.splice(low,0,stack);index.byDossier.set(root,stack);
+    for(const item of members){
+      index.byMessage.set(item.id,stack);
+      const writing=cardIn(index.entries.get(item.id))?.getAttribute('data-card-reply')!=null;
+      if(writing)state.writing.add(item.id);else state.writing.delete(item.id);
+      state.earlierRows.delete(item.id);state.contextRows.delete(item.id);
+      if(!writing&&rowFolded(item,{peeked:each=>state.peeked.has(each.id)}))state.folded.add(item.id);else state.folded.delete(item.id);
+    }
+    const position=positionOf(stack);
+    if(position&&'level_revision' in position){
+      const next={root:position.root_id,level:position.level,revision:position.level_revision},prior=state.savedLevels.get(stack.id);
+      if(prior&&(prior.root!==next.root||prior.revision!==next.revision||prior.level!==next.level))state.levels.delete(stack.id);
+      state.savedLevels.set(stack.id,next);
+    }
+    if(starred)state.starred.add(root);else state.starred.delete(root);
+    if(coordinationStack(stack,quiet))state.coordination.add(stack.id);else state.coordination.delete(stack.id);
+    if(!state.sections.has(stack.id))state.sections.set(stack.id,makeStack(doc,stack.id));
+    const section=state.sections.get(stack.id),head=index.entries.get(stack.id);
+    head.dataset.coordination=state.coordination.has(stack.id)?'agents':'';
+    paintStack(section,stack,index.entries,context);
+    section.dataset.coordinationRevealed=String(coordinationRevealed(state,stack));
+    section.hidden=false;
+    let next=null;
+    for(let at=low+1;at<state.stacks.length;at++){const other=state.stacks[at];if(!state.below.has(other.id)){next=state.sections.get(other.id);break;}}
+    const home=settings.home,resting=home&&!home.open&&!list.hidden;
+    next??=resting?home:state.controls?.parentElement===list?state.controls:null;
+    if(section.nextElementSibling!==next)list.insertBefore(section,next);
+    const heads=stack.replies.length?new Set([stack.id]):new Set();
+    for(const item of members){const entry=index.entries.get(item.id);if(!heads.has(item.id))unhead(entry);
+      paintFolded(entry,item,state.folded.has(item.id),{nameOf,doc});paintEarlier(entry,item,state.earlierRows.has(item.id),{nameOf,doc});paintFoldHeader(entry,doc);
+      paintCoverPills(cardIn(entry),null,{viewer,nameOf,topicId:item.topic_id});const starred=String(Boolean(item.acts?.starred));if(cardIn(entry).dataset.starred!==starred)cardIn(entry).dataset.starred=starred;
+    }
+    paintFoldedNames(list,messages,state,[section]);
+  }
+  // A first or last coordination dossier can change the existing controls
+  // boundary without repainting any other dossier.
+  if(settings.coordinationHost){
+    if(state.belowCount||state.coordination.size){
+      state.controls??=element(doc,'div','stack-controls');
+      if(settings.coordinationHost.parentElement!==state.controls)state.controls.append(settings.coordinationHost);
+      if(state.controls.parentElement!==list){
+        const firstBelow=state.stacks.find(stack=>state.below.has(stack.id));
+        list.insertBefore(state.controls,firstBelow?state.sections.get(firstBelow.id):null);
+      }
+    }else state.controls?.remove();
+  }
+  // Restore only scroll boxes within a dossier actually moved by this append.
+  for(const [box,{left,top}] of state.scrolled){
+    if(!list.contains(box)){state.scrolled.delete(box);continue;}
+    if(moved.some(node=>node.contains(box))){box.scrollLeft=left;box.scrollTop=top;state.scrolled.delete(box);}
+  }
+  // These callbacks retain the existing navigation, unread and shelf owners.
+  state.on?.coordinationCount?.(state.coordination.size,state.stacks.some(stack=>state.coordination.has(stack.id)&&[stack.head,...stack.replies].some(unread)));
+  state.on?.arranged?.();
+  return true;
 }

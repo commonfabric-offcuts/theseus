@@ -258,6 +258,7 @@ export class TopicViews {
     const moved = this.learnUnread(answer);
     if (!initial && !live && !anchored && cursor !== this.olderCursor || live && cursor !== this.newest) { if (moved) this.paint('line'); return false; }
     let previous = -1;
+    const added = [], changed = [], before = new Map();
     const ids = new Set();
     for (const item of answer.items) {
       if (!item || typeof item.id !== 'string' || !integer(item.seq) || item.seq < 1 || item.seq <= previous || ids.has(item.id) ||
@@ -265,6 +266,8 @@ export class TopicViews {
           live && item.seq <= cursor || !initial && !live && item.seq >= cursor) throw invalid('The message page belongs to another frontier.');
       previous = item.seq; ids.add(item.id);
       const known = this.messages.get(item.id);
+      if(!known)added.push(item.id);
+      else before.set(item.id,JSON.stringify(known));
       // What makes a message itself never changes. Its words change only by
       // an edit, which a later revision carries (docs/message-edit.md).
       if (known && (known.seq !== item.seq || known.author_id !== item.author_id ||
@@ -322,12 +325,13 @@ export class TopicViews {
     if (this.starsLoaded && this.starRoots.size && this.olderCursor !== null) {
       this.starredPending = true; this.invalidate('starred', 0); this.paint('starred');
     }
+    for(const [id,prior] of before)if(prior!==JSON.stringify(this.messages.get(id)))changed.push(id);
     if (live) this.arrived(answer.items);
-    if (draw) this.paintMessages();
+    if (draw) this.paintMessages(!initial&&(live||anchored)?{incremental:true,added,changed}:null);
     return true;
   }
-  paintMessages() {
-    this.paint('messages');
+  paintMessages(detail = null) {
+    this.paint('messages', detail);
     if (this.revised.size) this.paint('edited');
     if (this.yours.size) this.paint('yours');
   }

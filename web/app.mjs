@@ -629,6 +629,7 @@ function onScreen(node) {
 const cardsSeen = (shown, test) => entries => {
   for (const entry of entries) {
     const seq = Number(entry.target.dataset.seq);
+    if(entry.isIntersecting)visibleFeedEntries.add(entry.target);else visibleFeedEntries.delete(entry.target);
     if (test(entry)) shown.add(seq); else shown.delete(seq);
   }
   noteRead();
@@ -954,6 +955,8 @@ async function openSource(ref, opener, act = null, mode = 'reply', replyCard = n
 let roomy = null, listAnchor = null, anchorDepth = 0, anchorWatch = null, anchorActing = false, listActAnchor = null, anchorHold = null;
 const newAbove = new Set();
 let newAboveButton = null;
+let renderedNewest=0, renderedChanges=[];
+const visibleFeedEntries=new Set();
 // A later gesture owns its own place (including More and keyboard navigation).
 // Reads/settlement have no gesture, so keep the acted identity until then.
 for (const kind of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
@@ -961,7 +964,7 @@ for (const kind of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
 }
 function actedListCard(mark) {
   if (!mark || mark.list !== $('messages') || mark.views !== views) return null;
-  const entry = entries(mark.list).find(node => node.dataset.id === mark.id);
+  const entry = messageEntries.get(mark.id);
   if (!entry?.isConnected || !drawn(mark.list, mark.id)) return null;
   const section = entry.closest('.reply-stack'), card = cardIn(entry);
   const dossier = stackState(mark.list).stacks.find(stack => stack.id === section?.dataset.stack)?.dossier;
@@ -970,7 +973,57 @@ function actedListCard(mark) {
     .find(node => node.getClientRects().length) : card.getClientRects().length ? card : entry;
   return node?.getClientRects().length && node.getBoundingClientRect().height > 0 ? { entry, node, mark } : null;
 }
+// Hit testing and the browser's existing intersection observations identify
+// the reading edge. At most two visible records are measured, regardless of
+// loaded history. More's explicit older-page landing keeps its full owner.
+function visibleListAnchor({list,doc,visible,entryFor}) {
+  if(typeof doc.elementsFromPoint!=='function')return null;
+  const box=list.getBoundingClientRect(),x=Math.max(1,Math.min(innerWidth-1,box.left+box.width/2));
+  const start=Math.max(1,Math.min(innerHeight-1,box.top+1));
+  let anchor=null;
+  for(const y of [...new Set([start,Math.min(innerHeight-1,start+16),Math.min(innerHeight-1,start+48),Math.min(innerHeight-1,start+96)])]){
+    for(const hit of doc.elementsFromPoint(x,y)){
+      const candidate=hit.closest?.('[data-id], .dossier-cover, .stack-earlier, [data-line=older]');
+      if(candidate&&list.contains(candidate)&&(!candidate.dataset.id||entryFor(candidate.dataset.id)===candidate||candidate.contains(entryFor(candidate.dataset.id)))){anchor=candidate;break;}
+    }
+    if(anchor)break;
+  }
+  if(anchor?.dataset.line==='older')return null;
+  const candidates=[...visible].filter(entry=>entry.isConnected&&list.contains(entry)&&entryFor(entry.dataset.id)===entry);
+  candidates.sort((a,b)=>a===b?0:a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1);
+  if(!anchor)anchor=candidates.find(entry=>{const rect=entry.getBoundingClientRect();return rect.bottom>0&&rect.top<innerHeight;})??null;
+  const successor=candidates.find(entry=>entry!==anchor&&Boolean(anchor?.compareDocumentPosition(entry)&Node.DOCUMENT_POSITION_FOLLOWING))??null;
+  return {anchor,successor};
+}
+function captureVisibleListAnchor() {
+  const list=$('messages'),at=document.activeElement;
+  if(typeof document.elementsFromPoint!=='function')return null;
+  const writing=inline?.root.contains(at)&&registry.isCurrent(registry.inline);
+  const field=!writing&&$('main').contains(at)&&typingField(at)&&inView(at);
+  const acted=!writing&&!field?actedListCard(listActAnchor):null;
+  const edge=writing||field||acted?{anchor:writing?inline.field:field?at:acted.node,successor:null}
+    :visibleListAnchor({list,doc:document,visible:visibleFeedEntries,entryFor:id=>messageEntries.get(id)});
+  if(!edge)return null;
+  const anchor=edge.anchor,held=[anchor,edge.successor].filter(Boolean);
+  const cards=held.filter(node=>messageEntries.get(node.dataset.id)===node);
+  const tops=new Map(held.map(node=>[node,node.getBoundingClientRect().top]));
+  if(acted)tops.set(anchor,acted.mark.top);
+  let point=null;
+  if(!writing&&!field&&!acted&&anchor&&list.contains(anchor)&&tops.get(anchor)<0){
+    const box=anchor.getBoundingClientRect(),x=Math.max(1,Math.min(innerWidth-1,box.left+box.width/2));
+    const caret=document.caretPositionFromPoint?.(x,1),old=caret?null:document.caretRangeFromPoint?.(x,1);
+    const text=caret?.offsetNode??old?.startContainer,offset=caret?.offset??old?.startOffset;
+    if(text?.nodeType===Node.TEXT_NODE&&anchor.contains(text)){
+      const range=document.createRange();range.setStart(text,offset);range.setEnd(text,Math.min(text.length,offset+1));
+      if(range.getClientRects().length)point={range,text,words:text.data,top:range.getBoundingClientRect().top};
+    }
+  }
+  return {bounded:true,list,anchor,cards,held,tops,point,control:null,edge:null,last:null,present:null,y:window.scrollY,
+    topicViews:views,acted,baseline:Boolean(writing||field||acted||anchor&&tops.get(anchor)<0||window.scrollY>0),
+    height:document.documentElement.scrollHeight,newest:renderedNewest,changesStart:renderedChanges.length};
+}
 function captureListAnchor() {
+  const bounded=captureVisibleListAnchor();if(bounded)return bounded;
   const at = document.activeElement, list = $('messages');
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
   const field = !writing && $('main').contains(at) && typingField(at) && inView(at);
@@ -1010,7 +1063,8 @@ function recordListArrivals(saved, revised = []) {
   if (!saved?.newest || saved.topicViews !== views || retired || topicUnavailable ||
       authorityReviewPending() || !saved.list.isConnected || saved.list.hidden) return;
   const changed = new Set(revised);
-  saved.arrivals = new Map(entries(saved.list).flatMap(entry => {
+  const candidates=saved.bounded?[...new Set([...renderedChanges.slice(saved.changesStart??0),...revised.map(id=>messageEntries.get(id)).filter(Boolean)])]:entries(saved.list);
+  saved.arrivals = new Map(candidates.flatMap(entry => {
     const item = views.messages.get(entry.dataset.id);
     return item && item.topic_id === topic.id && item.author_id !== bootstrap.actor &&
       messageEntries.get(item.id) === entry &&
@@ -1019,7 +1073,7 @@ function recordListArrivals(saved, revised = []) {
 }
 // Record geometry in document coordinates: scrolling is a separate owner.
 function arrivalLayout(saved) {
-  const nodes = [saved.list, ...entries(saved.list)];
+  const nodes = saved.bounded?[...new Set([saved.list,...saved.held,...(saved.arrivalOwners?.keys()??[])])]:[saved.list,...entries(saved.list)];
   return new Map(nodes.map(node => {
     const box = node.getBoundingClientRect();
     return [node, { top: box.top + window.scrollY, left: box.left, width: box.width, height: box.height }];
@@ -1077,7 +1131,7 @@ function restoreListAnchor(saved) {
   } else if (anchorHold === saved) anchorHold = null;
   // Older pages and the person's own writing never make this offer. Remember
   // arrivals by identity, so a later repaint or a new reply cannot lose it.
-  if (saved.newest && hold?.isConnected) for (const entry of entries(list)) {
+  if (saved.newest && hold?.isConnected) for (const entry of saved.bounded?[...(saved.arrivals?.keys()??[])]:entries(list)) {
     if (saved.arrivals?.has(entry) && Number(entry.dataset.seq) > saved.newest && drawn(list, entry.dataset.id) &&
         views.messages.get(entry.dataset.id)?.author_id !== bootstrap.actor && entry.getBoundingClientRect().top < 0) newAbove.add(entry.dataset.id);
   }
@@ -1097,7 +1151,7 @@ function holdTopArrivals(saved) {
   if (!saved || saved.y !== 0 || saved.topicViews !== views ||
       retired || topicUnavailable || authorityReviewPending() || saved.list.hidden ||
       !saved.list.isConnected || !saved.newest || anchorActing) return;
-  const incoming = entries(saved.list).filter(entry => Number(entry.dataset.seq) > saved.newest &&
+  const incoming = (saved.bounded?[...(saved.arrivals?.keys()??[])]:entries(saved.list)).filter(entry => Number(entry.dataset.seq) > saved.newest &&
     views.messages.get(entry.dataset.id)?.topic_id === topic.id &&
     views.messages.get(entry.dataset.id).author_id !== bootstrap.actor);
   if (!(saved.tops.get(saved.anchor) > 0) || !saved.anchor?.isConnected) return;
@@ -1154,6 +1208,7 @@ function keepListAnchor(paint, act = null, revised = []) {
     recordListArrivals(saved, revised);
     if (saved.arrivals?.size) holdTopArrivals(saved);
     anchorDepth--; restoreListAnchor(saved); rememberListAnchor();
+    if(!anchorDepth)renderedChanges=[];
   }
 }
 function paintNewAbove() {
@@ -1320,15 +1375,22 @@ function placeLine() {
     views.olderCursor === null ? null : () => run(loadToUnread), views.line?.sent_ms ?? null, views.held);
   paintFoldedNames($('messages'), views.messages);
 }
-function paintViews(kind) {
-  if (questionStates) for (const item of feedMessages().values()) questionStates.of(item);
+let pendingAppendIds=new Set(), pendingFullMessages=false;
+const topicPresentation = value => JSON.stringify(Object.fromEntries(Object.entries(value??{}).filter(([key])=>!['version','activity_ms','work'].includes(key))));
+let shownTopicPresentation=null,shownParticipants=null;
+function paintViews(kind, detail = null) {
+  if(kind==='messages'){
+    if(detail?.incremental){for(const id of detail.added)pendingAppendIds.add(id);pendingFullMessages||=detail.changed.length>0;}
+    else if(!detail?.queued)pendingFullMessages=true;
+  }
+  if (questionStates) for (const item of detail?.incremental ? [...detail.added,...detail.changed].map(id=>views.messages.get(id)).filter(Boolean) : feedMessages().values()) questionStates.of(item);
   // Notebook pages remain admitted in TopicViews for reads and links. Their
   // visible list belongs to the right rail, so a memory update moves no feed.
   if (kind === 'memory') return;
   if (kind === 'offer') { reader?.paintOffer(); return; }
   // All but the header and the people, which repaint in place, move the list:
   // under a press held down they wait for it to end, so the click lands where it began.
-  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }
+  if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind,{queued:true})); return; }
   if (kind === 'starred') { keepListAnchor(paintStarredStatus); return; }
   // A thumbs-up reads its message (card-reading.mjs, readNow): its card, and its stack's count of new replies, read so.
   if (kind === 'reactions') { keepListAnchor(() => { paintCardReading(); stackMessages(); menu?.paint(); }); paintReaderThumb$(); return; }
@@ -1349,29 +1411,35 @@ function paintViews(kind) {
     if (authorityReviewPending()) return;
     topicUnavailable = false;
     topic = views.topic;
+    const presentation=topicPresentation(topic),participants=JSON.stringify(views.participants);
+    const metadataChanged=presentation!==shownTopicPresentation,peopleChanged=participants!==shownParticipants;
+    shownTopicPresentation=presentation;shownParticipants=participants;
     if (questionStates && questionStates.archived !== Boolean(topic.archived)) {
       questionStates.archived = Boolean(topic.archived);
       freshness?.invalidate('acts', 0, true);
     }
-    shell.topicChanged();
+    if(metadataChanged)shell.topicChanged();
     // The panel paints the header with the newest topic it has seen.
     if (topicState) topicState.paint(topic, views.participants); else paintHeader(topic);
-    if (registry.inline) { registry.inline.topic = structuredClone(topic); inline.$('destination').textContent = `To ${topic.title}`; }
-    topicRail?.updateCurrent(topic);
-    paintParticipants(topic, views.participants);
-    drawFeed(true);
+    if (registry.inline) { registry.inline.topic = structuredClone(topic); const destination=inline.$('destination'),words=`To ${topic.title}`;if(destination.textContent!==words)destination.textContent=words; }
+    topicRail?.updateCurrent(topic,{paint:metadataChanged});
+    if(metadataChanged||peopleChanged)paintParticipants(topic, views.participants);
+    if(metadataChanged)drawFeed(true);
     if (registry?.current?.topicUpdatesPaused) { registry.current.topicUpdatesPaused = false; reader.paintStatus(); }
     paintMarks(); noteRead(); return;
   }
+  const appendIds=kind==='messages'&&!pendingFullMessages?[...pendingAppendIds]:null;
+  if(kind==='messages'){pendingAppendIds.clear();pendingFullMessages=false;}
+  const incremental=appendIds?.length&&stackFeed?.state.appendIndex&&appendIds.every(id=>!messageEntries.has(id));
   keepListAnchor(() => {
   // Newest first, so where each new card goes is at or after where the one before it went.
   const renderedMessages = kind === 'messages' ? feedMessages() : null;
-  if (kind === 'messages') for (const [id, entry] of messageEntries) if (!renderedMessages.has(id)) {
+  if (kind === 'messages'&&!incremental) for (const [id, entry] of messageEntries) if (!renderedMessages.has(id)) {
     dropCardDocuments(entry); dropCardImages(entry); cardObserver?.unobserve(entry); middleObserver?.unobserve(entry); entry.remove(); messageEntries.delete(id);
   }
   let following = $('messages').firstElementChild;
   const messages = kind === 'messages' ? feedMessages() : null;
-  for (const item of messages ? [...messages.values()].sort((a, b) => b.seq - a.seq) : []) {
+  for (const item of messages ? (incremental?appendIds.map(id=>messages.get(id)).filter(Boolean):[...messages.values()]).sort((a, b) => b.seq - a.seq) : []) {
     let card = messageEntries.get(item.id);
     if (!card) {
       const ref = { kind: 'message', id: item.id };
@@ -1431,7 +1499,7 @@ function paintViews(kind) {
       // drawn next move no card past it.
       while (following && following !== $('new-message-sheet') && !(Number(following.dataset.seq) < item.seq)) following = following.nextElementSibling;
       $('messages').insertBefore(entry, following);
-      messageEntries.set(item.id, entry);
+      messageEntries.set(item.id, entry);renderedNewest=Math.max(renderedNewest,item.seq);renderedChanges.push(entry);
       cardObserver?.observe(entry); middleObserver?.observe(entry);
     }
     paintCardDocuments(cardIn(messageEntries.get(item.id)), item);
@@ -1446,7 +1514,14 @@ function paintViews(kind) {
     learnReply(views.messages, item, bootstrap.actor);
   }
   // The stacks are drawn with the new messages in before any of them is dealt with (stack-feed.mjs, arrived).
-  if (kind === 'messages') { syncDossierHeads(); feedOf().arrived([...views.messages.values()]); paintCardReading(); }
+  if (kind === 'messages') {
+    const added=incremental?appendIds.map(id=>messages.get(id)).filter(Boolean):null;
+    const missing=added?.some(item=>{const root=item.stack_position?.root_id;return root&&root!==item.id&&!views.messages.has(root)&&!dossierHeads?.records.has(root);});
+    if(!incremental||missing)syncDossierHeads();
+    const appended=incremental&&!missing&&feedOf().append(added,messageEntries);
+    if(!appended)feedOf().arrived([...views.messages.values()]);
+    paintCardReading(appended?[...appendIds,...added.map(item=>item.reply_to).filter(Boolean)]:null);
+  }
   if (kind === 'messages') {
     movedDossiers.paint($('messages'), views.movedPointers ?? []);
     placeLine(); menu?.paint(); paintDossierSourceStatus();
@@ -1642,11 +1717,12 @@ function clearVisitNew(id) {
 const cardRead = item => readNow(item, { viewer: bootstrap.actor, marked: marks?.state(item.id)?.marked === true, opened: openedIds.has(item.id) });
 // Each loaded card's read look, agent talk, reply arrow and the dots on the
 // reader's own message while it waits for a reply, as they now stand.
-function paintCardReading() {
+function paintCardReading(ids = null) {
   if (!views) return;
   const { kindOf } = whisperPeople();
-  learnAnswered(views.messages, bootstrap.actor, kindOf);
-  for (const entry of entries($('messages'))) {
+  const selected=ids?new Map([...new Set(ids)].map(id=>[id,views.messages.get(id)]).filter(([,item])=>item)):views.messages;
+  learnAnswered(selected, bootstrap.actor, kindOf);
+  for (const entry of ids?[...selected.keys()].map(id=>messageEntries.get(id)).filter(Boolean):entries($('messages'))) {
     const card = cardIn(entry), item = views.messages.get(card.dataset.id);
     if (!item) continue;
     const quiet = agentTalk(item, bootstrap.actor, bootstrap.actor_kind, kindOf);
@@ -1677,7 +1753,7 @@ function landOn(id, { full = false } = {}) {
 // anchored page, preserving the paging gap. With no visible card, the exact
 // source opens through the ordinary Reader owner instead.
 let landingSerial = 0;
-async function landOnMessage(id, serial = ++landingSerial, current = () => true) {
+async function landOnMessage(id, serial = ++landingSerial, current = () => true, { ownSend = false } = {}) {
   const accessEpoch = listAccessEpoch, generation = registry.generation;
   const mine = () => !retired && !registry.disposed && !topicUnavailable &&
     accessEpoch === listAccessEpoch && serial === landingSerial && generation === registry.generation && current();
@@ -1690,7 +1766,7 @@ async function landOnMessage(id, serial = ++landingSerial, current = () => true)
       if (source.source_ref?.kind !== 'message' || source.source_ref.id !== id || source.topic_id !== topic.id ||
           !Number.isSafeInteger(source.seq) || source.seq < 1) throw Error('This message could not be found in this topic.');
       const cursor = source.seq + 1;
-      const page = checkedView(await foreground.read(options => api.view('topic_messages', { topic_id: topic.id, audience: 'all', direction: 'before', cursor, limit: 30 }, options)), bootstrap.instance_id);
+      const page = checkedView(await foreground.read(options => api.view('topic_messages', ownSend?{topic_id:topic.id,message_ids:[id]}:{ topic_id: topic.id, audience: 'all', direction: 'before', cursor, limit: 30 }, options)), bootstrap.instance_id);
       if (!mine()) return false;
       views.messagesPage(page, { anchored: true, cursor });
     } finally { foreground.release(); }
@@ -3295,8 +3371,8 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
   // Each new commit asks for a pass; while the stream is down the timer resumes.
   // Back live, Topic settings asks Core about a save whose answer was lost.
   live?.listen(event => {
-    if (event.state === 'live') topicState?.reconnected();
-    if (event.kind === 'commit' || event.state === 'live' || event.state === 'down' || event.state === 'unavailable') pageRefresh.request(event.state==='live');
+    if (event.state === 'live') {topicState?.reconnected();wakeLights.load();}
+    if (event.kind === 'commit' || event.state === 'live' || event.state === 'down' || event.state === 'unavailable') pageRefresh.request();
   });
   document.addEventListener('visibilitychange', () => {freshness.setVisible(document.visibilityState === 'visible');if(document.visibilityState==='visible')pageRefresh.request();});
   window.addEventListener('online', () => { if (document.visibilityState === 'visible') pageRefresh.request(); topicState?.reconnected(); });
@@ -3617,7 +3693,7 @@ async function initialize() {
     edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
     status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, savedAt: editor => registry.savedTime(editor), needsReview, reviewState,
     send: (editor, p) => registry.send(editor, { presentation: p, stay: true }),
-    sent: (p, result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current),
+    sent: (p, result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current, {ownSend:true}),
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
     renderPending: () => paintReview(),
     retry: () => run(retryInline),
@@ -3709,7 +3785,7 @@ async function initialize() {
     authority: () => registry.runtime.current, current: () => !retired && !registry.disposed && !authorityReviewPending() });
   cardReplies = new CardReplies({ template: $('inline-composer'), registry, topic: () => topic,
     callbacks: { ...inline.callbacks, notebook: null, recipientsPainted: null, retry: retryCard,
-      sent: (result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current) }, offer: offerAuthor, discover, say: status });
+      sent: (result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current, {ownSend:true}) }, offer: offerAuthor, discover, say: status });
   registry.cleanup.resumeListeners.add(rechecked);
   // After any recorded answer to a mark, this page shows what Core now holds,
   // with or without the live stream.

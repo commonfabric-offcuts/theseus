@@ -472,7 +472,7 @@ test('on a phone there is no peek: the row\'s words are always there', t => {
   assert.deepEqual(reads, []);
 });
 
-test('the light sets no timer: the page reads it again on each commit, and spoken times follow the day through repaintTimes', async t => {
+test('successful light reads set no timer; only a failed visible peek owns bounded retry', async t => {
   dom(t);
   const scheduled = [], real = { setTimeout: globalThis.setTimeout, setInterval: globalThis.setInterval };
   globalThis.setTimeout = (...args) => { scheduled.push('setTimeout'); return real.setTimeout(...args); };
@@ -491,7 +491,7 @@ test('the light sets no timer: the page reads it again on each commit, and spoke
   peek.hide();
   assert.deepEqual(scheduled, []);
   const source = readFileSync(new URL('../web/outcome-light.mjs', import.meta.url), 'utf8') + readFileSync(new URL('../web/outcome-light-words.mjs', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /setTimeout|setInterval|requestAnimationFrame/);
+  assert.doesNotMatch(source, /setInterval|requestAnimationFrame/);
 });
 
 test('a question that holds a release or a piece says so on the light, ahead of the count (item 259)', () => {

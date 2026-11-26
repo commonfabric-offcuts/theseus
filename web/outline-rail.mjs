@@ -825,7 +825,7 @@ export class OutlineRail {
     items.forEach(item => {
       const outcome = this.outcome(item), open = this.isOpen(item.id), visible = shownUnder(this.filter, item);
       shown.add(item.id);
-      const presentation=JSON.stringify([item,open,visible,route?.kind,route?.id,this.filter,outcomeColors.forDisplay(item)]);
+      const presentation=JSON.stringify([item,open,visible,route?.kind,route?.id,this.filter,this.phone,outcomeColors.forDisplay(item)]);
       if(outcome.presentation===presentation)return;
       outcome.presentation=presentation;
       this.phoneQuestionControl(outcome);

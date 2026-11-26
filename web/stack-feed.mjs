@@ -17,7 +17,7 @@ import { unstarDossier } from './dossier-unstar.mjs';
 // stacks are drawn again whenever an answer changes what they show. Explicit
 // dossier levels and individual message folds are separate personal Core acts.
 import { cardIn } from './fold.mjs';
-import { arrangeStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
+import { arrangeStacks, appendStacks, entries, entryOf, stackOf, stackState, setLevel, levelOf, reveal, renameInput, shownSelected, unkeep, shownView, drawn } from './reply-stacks.mjs';
 import { moveOf, keyOf, joinShown, joinOf, foldStep, laterActs, positionOf, placeOf, sideOf, headOf, stackCover, dossierOf } from './stack-order.mjs';
 import { noteAt } from './press-note.mjs';
 import { keyAction, writing } from './pane-keys.mjs';
@@ -677,6 +677,19 @@ export class StackFeed {
     const found = stackOf(this.list, this.entryFor(item.id));
     if (!found || !found.stack.replies.length || this.actsOf(item.id).dealt) return;
     this.act('message.deal', item, { dealt: true });
+  }
+  append(items, entryMap) {
+    if(this.pending.size||!this.state.appendIndex)return false;
+    const newest=items.reduce((most,item)=>Math.max(most,item.seq),this.newestSeen??0);
+    const mine=this.newestSeen===null?[]:items.filter(item=>item.seq>this.newestSeen&&item.author_id===this.viewer&&(item.reply_to||this.actsOf(item.id).joined));
+    for(const item of mine)this.state.kept.add(item.id);
+    const accepted=this.hold(()=>appendStacks(this.list,this.shownMessages(),items,{entries:entryMap}));
+    if(!accepted)return false;
+    this.newestSeen=newest;
+    for(const item of items){const entry=entryMap.get(item.id);if(entry){const card=cardIn(entry);this.paintStar(card.querySelector(':scope > .message-author'),item);this.paintFoldedThumb(card,item);}}
+    this.redrawn();
+    for(const item of mine)this.deal(item);
+    return true;
   }
   // Messages arrived: the stacks are drawn with them in, then the reader's own
   // reply arriving in a stack deals with the stack up to it, as does their

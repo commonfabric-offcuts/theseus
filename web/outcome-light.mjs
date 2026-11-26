@@ -1,8 +1,8 @@
 // Where each outcome stands, on the page (item 86, docs/outcome-light.md): the
 // light and its words on every outcome row, the peek that opens from a row on
 // a laptop, the "Where it stands" card at the top of an outcome's page, and the one quiet line naming other outcomes' questions there. The
-// words are outcome-light-words.mjs; the server decides every value. Nothing
-// here sets a timer: the rows and the panel are read again on every commit
+// words are outcome-light-words.mjs; the server decides every value. Visible
+// peeks retry only failed reads; the rows and panel otherwise follow changes
 // the live feed announces, and spoken times follow the day through
 // repaintTimes.
 import { spokenNode, spokenTime } from './times.mjs';

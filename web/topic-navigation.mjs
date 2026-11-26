@@ -435,10 +435,10 @@ export class TopicRail {
   }
   // Leaving changes selection at once, retaining the known row until a complete
   // fresh list replaces it. Current-topic facts are separate from selection.
-  updateCurrent(topic) {
+  updateCurrent(topic, {paint = true} = {}) {
     this.selected = structuredClone(topic);
     if (topic) for (const list of this.lists) list.pages.current = structuredClone(topic);
-    this.paint();
+    if(paint)this.paint();
   }
   invalidate() { ++this.epoch; }
 

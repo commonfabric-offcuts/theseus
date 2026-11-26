@@ -299,8 +299,10 @@ test('item 785 recorded arrival owns its own height above reading',()=>{const {m
 test('item 785 page-made scrolls stick after arrival restoration',()=>pageScrollControl785());
 test('item 785 causal model faults apply, fail and byte restore all three controls',()=>{
  const dir=mkdtempSync(join(tmpdir(),'reading785-causal-')),path=join(dir,'app.mjs');
+ const outsideGuard="if (!records.some(record => record.target === list || list.contains(record.target))) {\n      anchorHold = null;\n      return;";
+ const outsideFault="if (!records.some(record => record.target === list || list.contains(record.target))) {\n      restoreListAnchor(listAnchor); anchorHold = null;\n      return;";
  const variants=[
-  ['unrelated-layout','else if (changed === null) anchorHold = null;','else { restoreListAnchor(listAnchor); anchorHold = null; }',s=>{const m=unrelatedLayoutControl785(s);m.api.stop();}],
+  ['unrelated-layout',source.includes(outsideGuard)?outsideGuard:'else if (changed === null) anchorHold = null;',source.includes(outsideGuard)?outsideFault:'else { restoreListAnchor(listAnchor); anchorHold = null; }',s=>{const m=unrelatedLayoutControl785(s);m.api.stop();}],
   ['page-scroll','if (anchorHold?.y !== window.scrollY || event?.target && event.target !== document && event.target !== window) anchorHold = null;','if (anchorHold) { anchorHold.y = window.scrollY; restoreListAnchor(anchorHold); }',pageScrollControl785],
   ['recorded-arrival','function recordListArrivals(saved, revised = []) {','function recordListArrivals(saved, revised = []) { return;',s=>{const {m}=recordedArrivalControl785(s);m.api.stop();}],
  ];

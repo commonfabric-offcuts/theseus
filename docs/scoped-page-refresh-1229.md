@@ -65,3 +65,27 @@ even outside a page change window. Hide/close/navigation/authority retirement
 fence those jobs; returning to a visible dirty owner resumes it. Last-good
 sections/stars stay drawn through a transient failure. Typed refusals retain
 precedence and do not start automatic quiet retry, including mixed responses.
+
+## Incremental open-topic arrivals (25352)
+
+A validated live/anchored message page names its added/changed message IDs.
+Initial/older loads, membership changes and explicit structural acts retain
+the existing full owner. Ordinary appends use the exact changed records to
+create/update cards and affected dossier rows; unchanged dossier nodes receive
+no writes. Cached indexes are presentation indexes of the admitted records,
+invalidated/rebuilt by full structural ownership, never independent authority.
+
+Reading anchors use visible/acted/writing identities plus bounded successors
+and changed arrivals. Capture and delayed-image validation measure that small
+set and the feed's bounds, never every loaded card. Scroll/gesture/route epochs
+retire a stale hold. A late own-send landing names its exact new record and
+bounded anchored page, releases the foreground when transport settles, and
+coalesces subsequent catch-up rather than replaying whole-feed publication.
+
+Every incremental path is compared with its full-owner result for ordinary
+new roots/replies, unread/holds, placement/More, withdrawn sources, writing and
+focus. Unsupported structural transitions remain explicit full operations;
+ordinary appended records cannot silently fall back to whole-feed geometry.
+Native scaling compares actual loaded feed sizes, both own-send surfaces,
+quiet and timed active background traffic; CPU ms/send and wall/quiet duration
+are retained alongside reads/layouts/styles and averaged CPU percentage.
