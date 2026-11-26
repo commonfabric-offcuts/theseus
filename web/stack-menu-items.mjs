@@ -12,6 +12,7 @@ export function stackMenuItems(s, act) {
   if (s.reader || !s.found) return { first: items, last: [] };
   if (s.head && s.hasReplies) items.push(choice('level', s.open ? 'Show latest and unread replies' : 'Show all messages', s.open ? 'latest' : 'all', [s.open ? 'folded' : 'open']));
   if (s.joined) items.push(choice('split', 'Split back out', 'split'));
+  if (s.splitSources) items.push(choice('split-sources', 'Split back out…', 'split'));
   const moves = [choice('move-up', 'Move its stack up', 'up', ['up'], { keys: '⌘↑' }),
     choice('move-down', 'Move its stack down', 'down', ['down'], { keys: '⌘↓' }),
     ...(s.hasReplies && s.foldable ? [choice('fold-stack', 'Fold its stack', 'chevron', ['fold'], { keys: '←' })] : []),
