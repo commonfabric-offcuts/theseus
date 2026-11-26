@@ -92,22 +92,21 @@ with tempfile.TemporaryDirectory(prefix='run-', dir=str(OWNED)) as temporary:
     phases['before_remote_star'] = page()
     assert position(r2)['below'] is True
     assert a not in {item['id'] for item in phases['before_remote_star']['items']}
-    brought = star(r2)
-    assert brought['brought_back']['root_id'] == a
-    assert position(r2)['below'] is False
+    before = position(r2)
+    starred = star(r2)
+    assert 'brought_back' not in starred
+    assert position(r2)['below'] is True and position(r2)['aside_revision'] == before['aside_revision']
     assert position(r2, 'other')['below'] is True
-    refusal = aside(a, through, position(a)['aside_revision'], commit=False)
-    assert refusal['status'] == 'rejected' and refusal['error']['code'] == 'STARRED_IN_DOSSIER'
     phases['after_remote_star'] = page()
     star(r2, False, 1)
-    assert position(r2)['below'] is False, 'explicit unstar preserves actual Bring back'
+    assert position(r2)['below'] is True, 'explicit unstar preserves archive membership'
     star(r2, True, 2)
     aside(b, through)
     assert position(b)['below'] is True
     command('stack.join', {'into':b}, {'message_id':a}, {'join_revision':0})
     joined = position(r2)
     assert joined['root_id'] == b and joined['through'] == through and joined['starred'] == [r2]
-    assert joined['below'] is False, 'joining a starred dossier into an existing move must keep it above More'
+    assert joined['below'] is True, 'joining a starred dossier into an archive keeps it archived'
     phases['after_join'] = page()
     star(r2, False, 3)
     assert position(r2)['below'] is True, 'ordinary unstarred joined dossier keeps existing below-More move'

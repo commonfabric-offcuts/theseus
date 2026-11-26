@@ -92,62 +92,18 @@ the page has not loaded is sent for one stand-in kept for that root, so it
 learns the revision the act before it left: Command-Z at once after a move is
 fenced on the move's own answer, as on a loaded root.
 
-## A star holds it above More (item 635)
+## Starred dossiers in Archive
 
-A dossier's title bar shows the reader's star when any message of it is
-starred by them, not only its first, and a dossier whose title bar shows the
-reader's star is not moved below More for them. Move below More in its menu,
-the swipe on its title bar and the Reader's archive button show as ever; a
-press says "This dossier has a message you starred: unstar it to move it below
-More" where it was (`press-note.mjs`: under the archive button, the line of
-the message whose menu it was, or the title bar the swipe crossed), and
-nothing moves on any frame. Command-Z, or Undo in ⋯, after a Bring back on a
-dossier starred since is held the same way, and nothing says it was put back.
-The words name "This dossier", so they show by the dossier the undo would have
-moved, never beside a message of another one. Undo in ⋯ on a message of that
-dossier says why by that message. Command-Z, wherever the keys are, and Undo in
-the ⋯ of a message of another dossier say it under the dossier's title bar,
-brought into view where it was out of the window, where its star shows. Where
-the page does not draw the dossier at all (an agents-only dossier while Show
-agent coordination is off), the reason goes on the page's status line (in the
-left rail on a laptop), and nothing hidden is shown for it. A note shows under
-what it is said beside, and over it where the window has no room below (a
-message near the bottom of a phone's screen). The way out is to unstar. A star and the move are
-each the reader's alone, so the hold is too: another reader's star never holds
-yours, and yours never holds theirs. Starring a message in a dossier the reader
-moved below More brings it back above More for them, in the same act; taking
-the star off later leaves it above More.
+Archive and stars are personal and independent. Archive accepts a dossier
+with a starred message. Starring or unstarring an archived message leaves
+the saved boundary and its revision alone. A newer visible reply and an
+explicit Bring back still return the dossier under the existing rules.
 
-Core holds this for every way a dossier goes below More, since each sends
-`stack.aside`: the menu item, the swipe on the title bar, the Reader's archive
-button, Command-Z or Undo in ⋯ after a Bring back, and any client or agent sending the
-command itself, as the CLI's `command` verb does (it has no verb of its own
-for the move). No other key moves a dossier below More:
-
-- `stack.aside` below More is refused as `STARRED_IN_DOSSIER`, with that
-  sentence, when the dossier holds a message the reader starred and can see;
-  nothing is recorded. Bring back (`through: null`) is never refused, even
-  for a dossier their star is in: a starred stack joined into a dossier they
-  moved below More leaves that move standing, and their Bring back of it is
-  recorded.
-- `message.star` with `starred: true` on a message of a dossier the reader
-  moved below More records their Bring back (`through: null`, its next
-  `aside_revision`) in the same transaction, and its result says so:
-  `brought_back: {root_id, aside_revision}`. The reader is told once, at the
-  last row.
-- A position names the reader's starred messages of the dossier, oldest
-  first, loaded on the page or not: `starred: [message ids]`, which the title
-  bar's star reads for those the page has not loaded (`starredDossiers` in
-  `web/stack-order.mjs`; the page's own acts for those it has). A position
-  naming one is never `below`, so a starred stack someone joins into a
-  dossier below More keeps it above More for that reader (item 368).
-
-The page checks the same rule before sending anything, so a press on a
-dossier whose title bar shows the star moves nothing even for a frame. A move
-sent before the page has read a star made on another device is refused by
-Core, and said on the status line as any refusal is ("… was not saved: This
-dossier has a message you starred …"); the dossier shows where Core holds it,
-above More.
+Core positions include the reader's visible starred message IDs for the
+dossier, including messages outside the loaded page. Both Archive layouts
+put loaded dossiers that have a star above the other loaded dossiers and
+preserve their existing ordering within each group. Archive uses the existing
+loaded history and More to load older messages.
 
 Schema 38 adds `aside` to the existing act table plus reply/join edge indexes.
 Upgrade preserves act ids, revisions and the sequence high-water mark. Downgrade

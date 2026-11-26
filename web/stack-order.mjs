@@ -442,7 +442,7 @@ export const dossierOf = stack => positionOf(stack)?.root_id ?? (stack.sourceSta
 // a stack drawn from it shows a starred message of (its acts as the page shows
 // them), or one whose position names a message the reader starred that the
 // page has not loaded (has(id), Core's word for the rest). Its title bar shows
-// the reader's star, and Move below More is refused while it does.
+// the reader's star, and its archive row takes the starred position tier.
 export function starredDossiers(stacks, has) {
   const found = new Set();
   for (const stack of stacks) {

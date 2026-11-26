@@ -118,7 +118,9 @@ export class ArchiveShelf {
     this.place();
     const byId = new Map(given.map(each => [each.stack.id, each]));
     const mine = this.here.filter(id => byId.has(id)).reverse().map(id => byId.get(id));
-    const list = [...mine, ...given.filter(each => !mine.includes(each))];
+    const local = new Set(mine);
+    const ordered = [...mine, ...given.filter(each => !local.has(each))];
+    const list = [...ordered.filter(each => each.starred), ...ordered.filter(each => !each.starred)];
     const live = new Set();
     // Every look read before any is written, so the page lays out once.
     const looks = list.map(({ stack, section }) => this.look(stack, section));

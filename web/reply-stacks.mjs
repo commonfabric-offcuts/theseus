@@ -1215,7 +1215,7 @@ export function repaintStackReading(list, ids, messages) {
   state.on?.coordinationCount?.(state.coordination.size, coordinationNews);
   if (ready.some(({ stack }) => state.below.has(stack.id))) state.on?.archived?.(state.stacks
     .filter(stack => state.below.has(stack.id) && (state.showCoordination || !state.coordination.has(stack.id)))
-    .map(stack => ({ stack, section: state.sections.get(stack.id) })));
+    .map(stack => ({ stack, section: state.sections.get(stack.id), starred: state.starred.has(dossierOf(stack)) })));
   for (const [box, position] of state.scrolled) {
     if (!list.contains(box)) { state.scrolled.delete(box); continue; }
     if (!moved.some(node => node.contains(box))) continue;
@@ -1292,15 +1292,15 @@ export function arrangeStacks(list, messages, options = {}) {
   list.dataset.showCoordination = String(state.showCoordination);
   const coordinationNews = stacks.some(stack => state.coordination.has(stack.id) && [stack.head, ...stack.replies].some(unread));
   state.on?.coordinationCount?.(state.coordination.size, coordinationNews);
-  const top = [...waiting, ...withdrawn.values()], aside = [], live = new Set(), moved = [], context = { state, keep, unread, nameOf, colorOf, doc, moved };
+  const top = [...waiting, ...withdrawn.values()], aside = [], starredAside = [], live = new Set(), moved = [], context = { state, keep, unread, nameOf, colorOf, doc, moved };
   state.below = new Set();
   for (const stack of stacks) {
     const head = byId.get(stack.id);
     head.dataset.coordination = state.coordination.has(stack.id) ? 'agents' : '';
     // An agent coordination dossier moves below More like any other.
-    const below = !state.starred.has(dossierOf(stack)) && drawnBelow(stack, item => { const mark = state.here.get(item.id); return mark?.pending ? placeOf(positionOf(stack)) : mark?.place ?? null; });
+    const below = drawnBelow(stack, item => { const mark = state.here.get(item.id); return mark?.pending ? placeOf(positionOf(stack)) : mark?.place ?? null; });
     if (below) state.below.add(stack.id);
-    const destination = below ? aside : top;
+    const destination = below ? (state.starred.has(dossierOf(stack)) ? starredAside : aside) : top;
     live.add(stack.id);
     if (!state.sections.has(stack.id)) state.sections.set(stack.id, makeStack(doc, stack.id));
     const section = state.sections.get(stack.id);
@@ -1308,6 +1308,7 @@ export function arrangeStacks(list, messages, options = {}) {
     section.dataset.coordinationRevealed = String(coordinationRevealed(state, stack));
     destination.push(section);
   }
+  aside.unshift(...starredAside);
   // More counts the dossiers it would show: with Show agent coordination off,
   // agent coordination put aside stays hidden below More too and is not counted.
   const shownAside = aside.filter(node => state.showCoordination || node.dataset.coordination !== 'agents').length;
@@ -1339,7 +1340,7 @@ export function arrangeStacks(list, messages, options = {}) {
   for (const [id, section] of state.sections) if (!live.has(id)) { section.remove(); state.sections.delete(id); }
   // The archive shelf: the dossiers below More, in their order, for the right rail's foot; after reconcile, so the
   // sections it reads its replicas' look from are on the page.
-  state.on?.archived?.(stacks.filter(stack => state.below.has(stack.id) && (state.showCoordination || !state.coordination.has(stack.id))).map(stack => ({ stack, section: state.sections.get(stack.id) })));
+  state.on?.archived?.(stacks.filter(stack => state.below.has(stack.id) && (state.showCoordination || !state.coordination.has(stack.id))).map(stack => ({ stack, section: state.sections.get(stack.id), starred: state.starred.has(dossierOf(stack)) })));
   for (const entry of byId.values()) if (entry.parentElement === list) entry.hidden = false;
   // Only a stack's head carries its row: a message that headed one before a
   // join, or before its replies went, is a card again.

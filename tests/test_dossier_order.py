@@ -58,13 +58,13 @@ class DossierOrderCase(fixtures.AsideCase):
         starred = self.command('message.star', {'starred': True}, target={'message_id': a}, expected={'star_revision': 0}, op='731-star-once')
         self.committed(starred)
         self.assertEqual(starred, self.command('message.star', {'starred': True}, target={'message_id': a}, expected={'star_revision': 0}, op='731-star-once'))
-        self.assertEqual(self.order([a,b,c]), [c,a,b])
         self.assertEqual(self.position(a)['order_key'], pre_star_key)
-        self.rejected(self.aside(a, self.latest(), revision=4), 'STARRED_IN_DOSSIER')
+        self.assertEqual(self.position(a)['aside_revision'], 3)
+        self.assertTrue(self.position(a)['below'])
+        self.assertEqual(self.position(a)['starred'], [a])
+        self.post('A visible reply returns the starred dossier', reply_to=a)
         self.assertFalse(self.position(a)['below'])
-        self.post('A starred reply does not move it', reply_to=a)
-        self.assertEqual(self.order([a,b,c]), [c,a,b])
-        self.assertEqual(self.position(a)['order_key'], pre_star_key)
+        self.assertEqual(self.order([a,b,c]), [c,b,a])
 
     def test_item_731_migration_preserves_each_readers_actual_existing_order(self):
         from aim_next.migrations import migrate, MigrationError
