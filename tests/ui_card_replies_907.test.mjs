@@ -116,3 +116,42 @@ test('929 an unrelated or stale Reader close does not close another opening', as
     { fromCardReply: {}, source: row.p.source, editors: { reply: {} } }]) owner.readerClosed(p);
   assert.equal(row.p.hidden, false); assert.equal(row.ui.root.hidden, false);
 });
+
+test('confirmed card action closes its empty opening without invoking the draft close path', async () => {
+  const owner = replies(), row = owner.rows.get('a');
+  Object.assign(owner.registry, {
+    isCurrent: () => true, saveSign: () => ({ state: 'saved' }), doubt: () => ({ label: null }),
+    hideCard: () => { assert.fail('Automatic dismissal would touch draft storage'); },
+  });
+  row.ui.field.value = '';
+  Object.assign(row.p.editors.reply, { localVersion: 0, submissions: [] });
+  await owner.open('a', row.card);
+  row.ui.root.ownerDocument = { activeElement: row.ui.field };
+  row.ui.root.contains = node => node === row.ui.field;
+  const close = owner.captureEmpty('a');
+  assert.equal(close(), true);
+  assert.equal(owner.shown('a'), false);
+  assert.equal(close(), false);
+});
+
+test('a late card action leaves newer openings and writing alone', async () => {
+  const owner = replies(), row = owner.rows.get('a'), editor = row.p.editors.reply;
+  Object.assign(owner.registry, {
+    isCurrent: () => true, saveSign: () => ({ state: 'saved' }), doubt: () => ({ label: null }),
+  });
+  row.ui.field.value = '';
+  Object.assign(editor, { localVersion: 0, submissions: [] });
+  await owner.open('a', row.card);
+  const oldOpening = owner.captureEmpty('a');
+  await owner.open('a', row.card);
+  const beforeTyping = owner.captureEmpty('a');
+  assert.equal(oldOpening(), false);
+  ++editor.localVersion;
+  assert.equal(beforeTyping(), false);
+  row.ui.field.value = '  ';
+  assert.equal(owner.captureEmpty('a'), null, 'raw whitespace in the field is writing');
+  row.ui.field.value = '';
+  editor.draft.body = 'Restored writing';
+  assert.equal(owner.captureEmpty('a'), null, 'a restored draft protects the editor before drawing');
+  assert.equal(owner.shown('a'), true);
+});
