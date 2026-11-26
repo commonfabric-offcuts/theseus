@@ -1,3 +1,4 @@
+import { OutlineMenus } from './outline-menus.mjs';
 import { PAGE, paintChanged, changedSince } from './topic-navigation.mjs';
 import { notebookDocument } from './notebook-view.mjs';
 
@@ -18,12 +19,21 @@ export function pageOpening(body, title) {
 // The topic's changes do not cover the outcome's Notebook, so each read tells
 // the Reader the revisions it saw.
 export class OutcomeReferences {
-  constructor({ scope, host, list, more, message, read, open, denied, seen = () => {}, painted = () => {}, create = null, pageMax = PAGE, viewPreference = null }) {
+  constructor({ scope, host, list, more, message, read, open, denied, seen = () => {}, painted = () => {}, create = null, pageMax = PAGE, viewPreference = null, menuHandles = null }) {
     Object.assign(this, { scope, host, list, more, message, read, open, isDenied: denied, seen, painted, pageMax, viewPreference });
     this.creation = create?.(); this.creation?.setAvailable(false);
     this.items = []; this.next = null; this.loading = null; this.queued = null;
     more.onclick = () => this.load(true);
     viewPreference?.listen(() => this.paint());
+    if (menuHandles) {
+      this.menus = new OutlineMenus({
+        doc: list.ownerDocument, list, message,
+        get handles() { return menuHandles(); },
+      });
+    }
+  }
+  dispose() {
+    this.menus?.dispose();
   }
   paint() {
     const ids = new Set(this.items.map(item => item.id));
@@ -32,6 +42,9 @@ export class OutcomeReferences {
       let row = [...this.list.children].find(child => child.dataset.id === item.id);
       if (!row) {
         row = document.createElement('button'); row.type = 'button'; row.className = 'nav-item reference'; row.dataset.id = item.id;row.draggable=true;
+        row.dataset.pageId = item.id;
+        row.notebookScope = { kind: 'workspace', id: this.scope };
+        row.pageTarget = { ...row.notebookScope, page: item.id };
         this.list.append(row);
       }
       row.textContent = item.title || 'Notebook item';
