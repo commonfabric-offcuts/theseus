@@ -169,8 +169,12 @@ export function gather(items, { has = null, viewer = null, filled = new Set(), a
     const alone = apart.has(head.id), placed = !alone && typeof place === 'number' ? place : null;
     const newest = list => list.reduce((most, item) => Math.max(most, item.seq), 0);
     const own = item => item.id !== head.id && !joins.has(item.id) && viewer !== null && item.author_id === viewer;
+    // Filled rows do not own grouping or order. A loaded parent in the same
+    // dossier can still give a selected reply one edge of reading context.
+    const filledParent = id => filled.has(id) && !apart.has(id) && dossier.get(id) === root && (!has || has(id));
+    const parents = new Map(members.map(item => [item.id, (up(item.id) ?? parentOf(item, filledParent))?.id ?? null]));
     return { id: head.id, head, replies, joins, newest: newest(members), lifted: newest(members.filter(item => !own(item))), placed: typeof position?.order_key === 'number' && position.order_key !== placed ? null : placed, dossier: root, orderKey: alone ? null : position?.order_key, orderTie: position?.order_tie,
-      parents: new Map(members.map(item => [item.id, up(item.id)?.id ?? null])), filled: new Set(late.map(item => item.id)), branches: head.id === root || alone ? null : new Set(tops.filter(item => item !== head).map(item => item.id)) };
+      parents, filled: new Set(late.map(item => item.id)), branches: head.id === root || alone ? null : new Set(tops.filter(item => item !== head).map(item => item.id)) };
   });
 }
 
@@ -256,33 +260,33 @@ export function earlierOf(stack, level, { held = null } = {}) {
 // drew them (reply-stacks.mjs). A fold never decides this:
 // a folded reply shows where it would, as its one-line row (rowFolded). Open,
 // an earlier reply (earlierOf, held) shows once its row was opened (earlier).
-// Item 550: what Earlier messages filled the stack with always shows (gather,
-// filled), and folded, a stack gathered from branches under a first message
-// the page has not loaded keeps each branch's head in view (branches): before
-// 550 each was a stack of its own, its card in view, and a fold loses none.
-function shownWithoutContext(stack, item, { level = 'folded', kept = () => false, writing = () => false, earlier = false, held = null } = {}) {
-  if (writing(item) || stack.filled?.has(item.id) || item.yours?.note === true) return true;
-  if (!earlier && earlierOf(stack, level, { held }).includes(item)) return false;
-  if (level === 'open') return true;
-  if (level === 'head') return false;
-  return actsOf(item).starred === true || kept(item) || item.seq === newestReply(stack) || Boolean(stack.branches?.has(item.id));
-}
-
-// Context is one effective-parent edge for a new reply, never a traversal.
-// Keep the same cycle-cut join/reply links as gather, and add only parents
-// that the collapsed view would otherwise hide. Roots already have a tab.
-function contextParents(stack, options) {
-  if ((options.level ?? 'folded') !== 'folded') return new Set();
-  const newReply = options.newReply ?? (() => false), rows = new Map(stack.replies.map(item => [item.id, item])), result = new Set();
-  for (const reply of stack.replies) {
-    if (!shownWithoutContext(stack, reply, options) || !newReply(reply)) continue;
-    const parent = rows.get(stack.parents?.get(reply.id));
-    if (parent && !shownWithoutContext(stack, parent, options)) result.add(parent.id);
+// Explicitly revealed history keeps its gathered order until recollapse.
+// Missing-root branch heads stay reachable independently of history reveal.
+function replySelection(stack, options) {
+  const { level = 'folded', kept = () => false, writing = () => false, newReply = () => false,
+    revealed = () => true, earlier = false, held = null } = options;
+  const all = stack.replies, latest = newestReply(stack);
+  const earliest = earlierOf(stack, level, { held }), earlierIds = new Set(earliest.map(item => item.id));
+  const selected = new Set(), context = new Set();
+  for (const item of all) {
+    if (writing(item) || item.yours?.note === true || stack.filled?.has(item.id) && revealed(item) ||
+        (level === 'open' && (earlier || !earlierIds.has(item.id))) ||
+        (level === 'folded' && (actsOf(item).starred === true || kept(item) ||
+          item.seq === latest || stack.branches?.has(item.id)))) selected.add(item.id);
   }
-  return result;
+  if (level === 'folded') {
+    const loaded = new Set(all.map(item => item.id));
+    for (const reply of all) {
+      if (!selected.has(reply.id) || !(newReply(reply) || reply.seq === latest)) continue;
+      const parent = stack.parents?.get(reply.id);
+      if (loaded.has(parent) && !selected.has(parent)) context.add(parent);
+    }
+  }
+  return { selected, context, earliest, earlierIds };
 }
 export function shown(stack, item, options = {}) {
-  return shownWithoutContext(stack, item, options) || (options.context ?? contextParents(stack, options)).has(item.id);
+  const { selected, context } = replySelection(stack, options);
+  return selected.has(item.id) || context.has(item.id);
 }
 
 // Whether a message reads as its one-line row: the reader folded it (their
@@ -310,10 +314,9 @@ const messages = n => (n === 1 ? 'message' : 'messages');
 // earlier: true } in its place. A first message shown whole by a landing
 // (headWhole, 875) is omitted from that row's count and press target, without
 // moving the held boundary for the newest seven.
-export function rowsOf(stack, { level = 'folded', kept, writing = () => false, unread = () => false, newReply = unread, peeked = () => false, earlier = false, held = null, headWhole = false } = {}) {
-  const options = { level, kept, writing, newReply, earlier, held }, context = contextParents(stack, options);
-  const rows = [], all = stack.replies, show = item => shown(stack, item, { ...options, context });
-  const earliest = earlierOf(stack, level, { held });
+export function rowsOf(stack, { level = 'folded', kept, writing = () => false, unread = () => false, newReply = unread, revealed, peeked = () => false, earlier = false, held = null, headWhole = false } = {}) {
+  const { selected, context, earliest, earlierIds } = replySelection(stack, { level, kept, writing, newReply, revealed, earlier, held });
+  const rows = [], all = stack.replies;
   const hiddenEarlier = earliest.filter(item => !writing(item) && item.yours?.note !== true && (!headWhole || item !== stack.head));
   if (hiddenEarlier.length && !earlier) rows.push({ kind: 'earlier', items: hiddenEarlier, words: `${hiddenEarlier.length} earlier ${(headWhole ? replies : messages)(hiddenEarlier.length)}`, fresh: hiddenEarlier.filter(unread).length });
   let run = [], before = true;
@@ -325,11 +328,11 @@ export function rowsOf(stack, { level = 'folded', kept, writing = () => false, u
     run = [];
   };
   for (const item of all) {
-    if (!show(item)) { if (!earliest.includes(item)) run.push(item); continue; }
+    if (!selected.has(item.id) && !context.has(item.id)) { if (!earlierIds.has(item.id)) run.push(item); continue; }
     flush(); before = false;
     if (stack.joins.has(item.id)) rows.push({ kind: 'join', item, join: stack.joins.get(item.id) });
     rows.push({ kind: 'reply', item, folded: !writing(item) && rowFolded(item, { peeked }) || context.has(item.id) && !peeked(item), context: context.has(item.id) });
-    if (earliest.includes(item)) rows[rows.length - 1].earlier = true;
+    if (earlierIds.has(item.id)) rows[rows.length - 1].earlier = true;
   }
   flush();
   return rows;
