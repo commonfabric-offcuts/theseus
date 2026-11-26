@@ -20,7 +20,7 @@ import test_destination_profiles as fixture
 
 AVAILABLE = importlib.util.find_spec('aim_next.ownership_handoff') is not None
 if AVAILABLE: from aim_next import ownership_handoff as handoff
-EVIDENCE = {'captures': [], 'observations': [], 'rejections': [], 'prohibited_acceptances': [], 'bounds': []}
+EVIDENCE = {'captures': [], 'observations': [], 'rejections': [], 'prohibited_acceptances': [], 'bounds': [], 'hosted_preservation': []}
 
 
 class Availability(unittest.TestCase):
@@ -145,17 +145,54 @@ class HandoffCase(unittest.TestCase):
         self.new_write(); self.refused(lambda: self.verify(captured), 'HANDOFF_SNAPSHOT_CHANGED')
 
     def test_human_owner_stop_continue_plan_outbox_home_thread_and_request_bytes_stay_unchanged(self):
+        # These JSON files are modeled operator state, separate from the real DB records below.
         operator = self.fx.operator
         control = operator/'control.json'; value = io.read_record(control)[0]
         value.update(choice='Continue', revision=19); control.write_bytes(io.encode(value))
         io.write_record(operator/'home-thread.json', dict(home='/historical/private/home',thread='opaque-thread',
             plan_revision=23, control_revision=19, requires_adoption=True))
-        before = self.bytes(); captured = self.capture(); self.verify(captured)
-        self.assertEqual(self.bytes(), before)
         with sqlite3.connect(str(self.store.path)) as db:
-            self.assertEqual(db.execute('SELECT owner_id FROM workspaces WHERE id=?', ('private-work',)).fetchone(),
-                             ('fixture-owner',))
+            version = db.execute("SELECT version FROM workspaces WHERE id='private-work'").fetchone()[0]
+        pin = {key:self.store.binding[key] for key in ('authority_id', 'authority_epoch')}
+        added = self.store.command('fixture-owner', dict(v=1, instance_id=self.store.instance_id,
+            operation_id='handoff-kept-seat', kind='workspace.hosted_seat_add', target={'workspace_id':'private-work'},
+            expected={'authority':pin, 'workspace_revision':version}, args={'name':'Kept seat', 'role':'Retained role'}))
+        self.assertEqual(added['status'], 'committed', added); actor = added['result']['agent']['id']
+        home = self.fx.root/'retained hosted home'; home.mkdir(mode=0o700)
+        destination = dict(kind='codex-hosted-stdio', protocol_version=1, codex_home=str(home),
+            thread_id='11111111-2222-4333-8444-555555555555')
+        io.write_record(home/'thread.json', destination)
+        with self.store.runner_guard('fixture-handoff-setup') as guard:
+            token = self.store.acquire_runner(guard)['runner_token']
+            seat = self.store.hosted_seat_claim(guard, token)['seat']
+            planned = self.store.hosted_seat_step(guard, token, seat['id'], seat['version'], 'profile',
+                {'plan':{'codex_home':str(home), 'profile':'/retained/old/private/profile', 'revision':9}})['seat']
+            self.store.provision_route_pin(guard, actor, destination, owner_id='fixture-owner')
+        stopped = self.store.command('fixture-owner', dict(v=1, instance_id=self.store.instance_id,
+            operation_id='handoff-keep-stopped', kind='agent.execution', target={'actor_id':actor},
+            expected={'authority':pin, 'execution_revision':1}, args={'desired':'stopped'}))
+        self.assertEqual(stopped['status'], 'committed', stopped)
+        def records():
+            with sqlite3.connect(str(self.store.path)) as db:
+                control = db.execute('SELECT value FROM metadata WHERE key=?', ('hosted_control.v1:'+actor,)).fetchone()[0]
+                plan = db.execute('SELECT plan,version,owner_id FROM hosted_seats WHERE id=?', (seat['id'],)).fetchone()
+                owner = db.execute('SELECT owner_id FROM workspaces WHERE id=?', ('private-work',)).fetchone()[0]
+            return dict(control=control, plan=list(plan), owner=owner)
+        real_before = records(); parsed = json.loads(real_before['control'])
+        self.assertEqual((parsed['desired'], parsed['revision']), ('stopped', 2))
+        self.assertEqual(real_before['plan'][1:], [planned['version'], 'fixture-owner'])
+        self.assertEqual(json.loads(real_before['plan'][0]),
+            dict(codex_home=str(home), profile='/retained/old/private/profile', revision=9))
+        before = self.bytes(); request = copy.deepcopy(self.request)
+        captured = self.capture(); observed = self.verify(captured)
+        self.assertEqual(self.bytes(), before)
+        self.assertEqual(self.request, request); self.assertEqual(records(), real_before)
+        self.assertEqual(real_before['owner'], 'fixture-owner')
         self.assertEqual(io.read_record(control)[0], value)
+        EVIDENCE['hosted_preservation'].append(dict(test=self.id(), actor=actor, seat_id=seat['id'],
+            before=real_before, after=records(), capture_digest=captured['snapshot_digest'],
+            observed_status=observed['status'], all_fixture_file_bytes_unchanged=True,
+            request_unchanged=True, modeled_operator_json_checked_separately=True))
 
     def test_no_old_private_paths_mutation_publisher_or_replay_are_used(self):
         protected = [self.fx.db.parent, self.fx.anchor.parent, self.fixture.output().parent.parent/'retained old profiles',
