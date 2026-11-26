@@ -122,6 +122,45 @@ class ProfilesCase(unittest.TestCase):
         self.rejected(request=dict(self.request, publication_digest='0'*64), code='PROFILES_RECEIPT_MISMATCH')
         self.assertFalse(self.output().exists())
 
+    def test_nonrelocation_current_anchor_is_a_typed_refusal(self):
+        path=self.store._authority.path; original,_=io.read_record(path)
+        for recovery in (None,[],{'kind':'initial'}):
+            path.write_bytes(io.encode(dict(original,recovery=recovery)))
+            with self.subTest(recovery=recovery):
+                self.rejected(code='PROFILES_LINEAGE_MISMATCH');self.assertFalse(self.output().exists())
+        path.write_bytes(io.encode(original))
+
+    def test_reached_human_stop_control_and_managed_plan_bytes_and_revisions_are_preserved(self):
+        with sqlite3.connect(str(self.store.path)) as db:
+            version=db.execute("SELECT version FROM workspaces WHERE id='private-work'").fetchone()[0]
+        pin={k:self.store.binding[k] for k in ('authority_id','authority_epoch')}
+        added=self.store.command('fixture-owner',dict(v=1,instance_id=self.store.instance_id,operation_id='add-kept-seat',
+            kind='workspace.hosted_seat_add',target={'workspace_id':'private-work'},
+            expected={'authority':pin,'workspace_revision':version},args={'name':'Kept seat','role':'Keep original role'}))
+        self.assertEqual(added['status'],'committed',added);actor=added['result']['agent']['id']
+        home=self.root/'retained thread home';home.mkdir(mode=0o700)
+        destination=dict(kind='codex-hosted-stdio',protocol_version=1,codex_home=str(home),
+            thread_id='11111111-2222-4333-8444-555555555555')
+        with self.store.runner_guard('fixture-profile-setup') as guard:
+            token=self.store.acquire_runner(guard)['runner_token']
+            seat=self.store.hosted_seat_claim(guard,token)['seat']
+            planned=self.store.hosted_seat_step(guard,token,seat['id'],seat['version'],'profile',
+                {'plan':{'codex_home':str(home),'profile':'/retained/old/private/profile','revision':9}})['seat']
+            self.store.provision_route_pin(guard,actor,destination,owner_id='fixture-owner')
+        stopped=self.store.command('fixture-owner',dict(v=1,instance_id=self.store.instance_id,operation_id='keep-stopped',
+            kind='agent.execution',target={'actor_id':actor},expected={'authority':pin,'execution_revision':1},
+            args={'desired':'stopped'}))
+        self.assertEqual(stopped['status'],'committed',stopped)
+        with sqlite3.connect(str(self.store.path)) as db:
+            control=db.execute('SELECT value FROM metadata WHERE key=?',('hosted_control.v1:'+actor,)).fetchone()[0]
+            plan=db.execute('SELECT plan,version,owner_id FROM hosted_seats WHERE id=?',(seat['id'],)).fetchone()
+        self.assertEqual(json.loads(control)['desired'],'stopped');self.assertEqual(json.loads(control)['revision'],2)
+        self.assertEqual(plan[2],'fixture-owner');self.assertIn('retained/old/private/profile',plan[0])
+        before=self.store.path.read_bytes();self.stage();self.assertEqual(self.store.path.read_bytes(),before)
+        with sqlite3.connect(str(self.store.path)) as db:
+            self.assertEqual(db.execute('SELECT value FROM metadata WHERE key=?',('hosted_control.v1:'+actor,)).fetchone()[0],control)
+            self.assertEqual(db.execute('SELECT plan,version,owner_id FROM hosted_seats WHERE id=?',(seat['id'],)).fetchone(),plan)
+
     def test_predecessor_profile_fields_and_enabled_actor_are_checked(self):
         original = json.loads(self.request['profiles'][0]['source_bytes'])
         for field in ('instance_id','db_path','authority_path','authority_id','authority_epoch','actor_id'):

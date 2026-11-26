@@ -90,7 +90,8 @@ def _receipt(receipt, request, store, record, snapshots):
     io.require(type(receipt) is dict and receipt.get('status') == 'published', 'PROFILES_NOT_CONFIRMED')
     io.require(receipt.get('durability_confirmed') is True, 'PROFILES_NOT_CONFIRMED')
     io.require(io.digest_record(receipt) == request['publication_digest'], 'PROFILES_RECEIPT_MISMATCH')
-    lineage = record.get('recovery', {}).get('relocation')
+    recovery = record.get('recovery')
+    lineage = recovery.get('relocation') if type(recovery) is dict else None
     io.require(type(lineage) is dict and receipt.get('binding') == _binding(store), 'PROFILES_LINEAGE_MISMATCH')
     commit = receipt.get('cutover_commit')
     io.require(type(commit) is dict and type(commit.get('commit_seq')) is str
