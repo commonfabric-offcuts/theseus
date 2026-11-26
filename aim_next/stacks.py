@@ -450,6 +450,23 @@ MEMBERS = """
 
 def _dossier(db, actor, root):
     """(the newest message, the newest by someone else) the reader can see in root's dossier, as sequences or None."""
+    topic = db.execute("SELECT topic_id FROM messages WHERE id=?", (root,)).fetchone()[0]
+    probe = db.execute("SELECT m.id,m.seq,m.author_id FROM messages m INDEXED BY topic_messages "
+                            "WHERE m.topic_id=:topic AND " + VISIBLE + " ORDER BY m.seq DESC LIMIT 32",
+                            {'topic': topic, 'actor': actor})
+    latest = probe.fetchone()
+    roots = StackRoots(db, actor)
+    # Older dossiers cannot use this certificate. Do not consume an unrelated
+    # topic window before their exact fallback, even when later history grows.
+    candidates = [latest] + probe.fetchall() if latest is not None and roots.root(latest['id']) == root else []
+    probe.close()
+    if candidates:
+        other = next((row for row in candidates if row['author_id'] != actor), None)
+        # Global newest visible candidates certify the maxima only when they
+        # belong here. A full window of the reader's own posts proves no such
+        # absence; older/other dossiers keep the exact recursive calculation.
+        if other is not None and roots.root(other['id']) == root or other is None and len(candidates) < 32:
+            return latest['seq'], other['seq'] if other is not None else None
     row = db.execute(MEMBERS + " SELECT max(m.seq), max(CASE WHEN m.author_id<>:actor THEN m.seq END) FROM members p JOIN messages m ON m.id=p.id",
                      {"root": root, "actor": actor}).fetchone()
     return row[0], row[1]
