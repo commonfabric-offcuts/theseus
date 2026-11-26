@@ -121,6 +121,37 @@ test('1295 a late recovery answer cannot publish after navigation', async t => {
   assert.deepEqual(f.state.stars, []);
 });
 
+for (const hiding of ['group', 'parent', 'document', 'removed', 'topic access'])
+  test('1295 hiding ' + hiding + ' after recovery starts releases its busy slot and allows a same-run reveal', async t => {
+    const f = fixture(t); f.jobs.push(offline); await f.load(); let resolve;
+    f.jobs.push(() => new Promise(yes => { resolve = yes; })); answered(); await flush();
+    assert.equal(f.calls.length, 2); assert.ok(f.state.busy);
+    if (hiding === 'group') f.state.visible = false;
+    if (hiding === 'parent') f.parent.getClientRects = () => [];
+    if (hiding === 'document') f.doc.visibilityState = 'hidden';
+    if (hiding === 'removed') f.box.remove();
+    if (hiding === 'topic access') f.handles.topicReadAllowed = () => false;
+    resolve(page([star(99)])); await flush();
+    assert.deepEqual(f.state.stars, [], 'the hidden recovery never publishes');
+    assert.equal(f.state.busy, null, 'settlement releases this request even when publication is ineligible');
+    f.state.visible = true; f.parent.getClientRects = () => [{}]; f.doc.visibilityState = 'visible';
+    if (hiding === 'removed') f.parent.parent.append(f.box);
+    f.handles.topicReadAllowed = () => true;
+    f.queue([star(7)]); await f.load();
+    assert.equal(f.calls.length, 3); assert.equal(f.state.stars[0].dossier.id, 'd7');
+  });
+
+test('1295 an old recovery settling cannot release a newer run\'s busy owner', async t => {
+  const f = fixture(t); f.jobs.push(offline); await f.load(); let oldAnswer, newAnswer;
+  f.jobs.push(() => new Promise(yes => { oldAnswer = yes; })); answered(); await flush();
+  f.subject.begin();
+  f.jobs.push(() => new Promise(yes => { newAnswer = yes; })); const next = f.load(); await flush();
+  const busy = f.state.busy; oldAnswer(page([star(99)])); await flush();
+  assert.equal(f.state.busy, busy); assert.deepEqual(f.state.stars, []);
+  newAnswer(page([star(7)])); await next;
+  assert.equal(f.state.busy, null); assert.equal(f.state.stars[0].dossier.id, 'd7');
+});
+
 test('1295 pointer/key/touch Retry callback and More keep their existing owners; a focused Retry returns to the topic', async t => {
   const f = fixture(t); f.jobs.push(offline); await f.load();
   const retry = f.box.querySelector('[data-retry]'); assert.ok(retry); retry.focus();
