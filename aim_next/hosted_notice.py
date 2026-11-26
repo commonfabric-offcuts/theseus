@@ -9,6 +9,7 @@ text; they travel as untrusted additional context.
 
 import json
 import re
+import shlex
 
 
 MAX_LISTED = 20
@@ -23,7 +24,8 @@ UNNAMED = "(not shown: run inbox)"
 
 
 def cli_command(cli, profile_path, broker=None):
-    return "/usr/bin/python3 -I %s --%s %s" % (cli, 'broker' if broker else 'profile', broker or profile_path)
+    return "/usr/bin/python3 -I %s --%s %s" % (shlex.quote(str(cli)), 'broker' if broker else 'profile',
+                                             shlex.quote(str(broker or profile_path)))
 
 
 def developer_instructions(actor_id, cli, profile_path, broker=None):
