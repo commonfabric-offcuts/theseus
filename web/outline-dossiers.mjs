@@ -2,8 +2,9 @@
 // read in bounded star pages; the existing guard owns every navigation.
 import { messagePreview } from './message-preview.mjs';
 import { routeHref, paintUnread, landsOnUnread, UNREAD_TIP } from './topic-navigation.mjs';
-import { checkedView, readFailure } from './freshness.mjs';
+import { bindingOf, checkedView, readFailure } from './freshness.mjs';
 import { paintRemoval } from './message-removal.mjs';
+import { answeredSince, attemptOf, heard, sessionRefused, unreached } from './api.mjs';
 
 const PAGE = 50;
 export const dossierTitle = item => item.name || messagePreview({ ...item, preview: true }) || 'Untitled dossier';
@@ -31,6 +32,7 @@ export class OutlineDossiers {
     if (rail) this.observer.observe(rail, {attributes:true, attributeFilter:['class']});
   }
   begin() {
+    this.clearRecoveries();
     this.epoch++;
     // Retire reads, retaining drawn stars and their links through a move.
     // The next run refreshes them; a late old reply cannot publish or clear it.
@@ -39,9 +41,41 @@ export class OutlineDossiers {
     }
   }
   reset() {
+    this.clearRecoveries();
     this.epoch++;
     for (const state of this.states.values()) state.box.remove();
     this.states.clear();
+  }
+  clearRecoveries() {
+    this.recoveries?.clear(); this.unhear?.(); this.unhear = null;
+  }
+  cancelRecovery(state) {
+    this.recoveries?.delete(state);
+    if (!this.recoveries?.size) { this.unhear?.(); this.unhear = null; }
+  }
+  waitForContact(state, error, more, current, token) {
+    if (!unreached(error) || !['retry', 'reconnect'].includes(readFailure(error).kind)) return;
+    this.recoveries ??= new Map();
+    this.recoveries.set(state, { error, more, current, token });
+    this.unhear ??= heard(() => this.recoverAfterContact());
+    this.recoverAfterContact();
+  }
+  recoverAfterContact() {
+    if (this.recoveryScheduled) return;
+    this.recoveryScheduled = true;
+    // Coalesce contact bursts and let a read's finally release its busy owner.
+    Promise.resolve().then(() => {
+      this.recoveryScheduled = false;
+      for (const [state, pending] of this.recoveries ?? []) {
+        if (!pending.current()) { this.cancelRecovery(state); continue; }
+        if (!answeredSince(pending.error)) continue;
+        // Renewal validates the instance/person before replacing the active
+        // token. An answer elsewhere cannot validate a refused old session.
+        if (sessionRefused(attemptOf(pending.error)) && this.outline.handles.api?.token === pending.token) continue;
+        this.cancelRecovery(state);
+        this.load(state, pending.more, pending.current);
+      }
+    });
   }
   parents() {
     const parents=[...this.outline.list.querySelectorAll('a[data-topic-id]')].filter(el => el.getClientRects().length && !el.closest('[inert]'));
@@ -81,18 +115,26 @@ export class OutlineDossiers {
       return state?.busy && alreadyReading && !alreadyReading.has(state.busy) ? state.busy : this.load(state);
     }));
   }
-  async load(state, more = false) {
+  async load(state, more = false, recovering = null) {
     if (!state || !this.outline.handles) return true;
     if (state.busy) {
       if (!more) state.again = true;
       return state.busy;
     }
     if (more && state.next === null) return true;
+    this.cancelRecovery(state);
     const epoch = this.epoch, handles = this.outline.handles;
-    const mine = () => epoch === this.epoch && handles === this.outline.handles;
+    const binding = JSON.stringify(bindingOf(handles.bootstrap)), token = handles.api?.token;
+    const owned = () => epoch === this.epoch && handles === this.outline.handles &&
+      binding === JSON.stringify(bindingOf(handles.bootstrap));
+    const mine = () => owned() && (!recovering || recovering());
+    const recoveryCurrent = () => owned() && this.states?.get(state.id) === state && state.visible !== false &&
+      state.box.isConnected !== false && state.parent?.isConnected !== false &&
+      state.parent?.getClientRects?.().length !== 0 &&
+      this.outline.doc?.visibilityState !== 'hidden' && handles.topicReadAllowed?.() !== false;
     state.box.setAttribute('aria-busy','true');
     // Defer the read to a microtask so busy is set before sync can run again.
-    state.busy = Promise.resolve().then(async () => {
+    const reading = state.busy = Promise.resolve().then(async () => {
       let accepted = false;
       try {
         let cursor = more ? state.next : null, stars = more ? [...state.stars] : [], next;
@@ -113,8 +155,12 @@ export class OutlineDossiers {
         state.error = readFailure(error);
         if (state.error.kind === 'forbidden' || state.error.kind === 'reconnect') state.stars = [];
         this.paint(state);
+        this.waitForContact(state, error, more, recoveryCurrent, token);
       } finally {
-        if (mine()) {
+        // Publication can become ineligible while this request is out (for
+        // example, its group is folded). Settlement still releases its own
+        // slot; an old request must never release a newer run's read.
+        if (state.busy === reading) {
           state.busy = null; state.box.setAttribute('aria-busy','false');
         }
       }
@@ -130,6 +176,7 @@ export class OutlineDossiers {
   }
   paint(state) {
     const doc = this.outline.doc, nodes = [], alive = new Set();
+    const focusedRetry = state.box.querySelector?.('[data-retry]') === doc.activeElement;
     for (const star of this.pageStars?state.stars:dossierRows(state.stars)) {
       const item = star.dossier, id = this.pageStars?star.item_id:item.id, title = this.pageStars?(star.title||'Notebook page'):dossierTitle(item);
       const target=this.pageStars?{kind:star.owner_scope?.kind??'topic',id:star.owner_scope?.id??state.id,page:id}:{kind:'topic',id:state.id,message:id,land:true};
@@ -178,13 +225,14 @@ export class OutlineDossiers {
     if (state.error) {
       const notice = doc.createElement('span'); notice.className='muted'; notice.setAttribute('role','status');
       notice.textContent = state.error.kind === 'forbidden' ? `Starred ${noun} are unavailable.` : `Starred ${noun} could not be read.`;
-      const retry = doc.createElement('button'); retry.type='button'; retry.textContent='Retry starred '+noun; retry.dataset.retry=''; retry.tabIndex=-1;
+      const retry = state.box.querySelector?.('[data-retry]') ?? doc.createElement('button'); retry.type='button'; retry.textContent='Retry starred '+noun; retry.dataset.retry=''; retry.tabIndex=-1;
       retry.onclick=()=>this.load(state); nodes.push(notice,retry);
     } else if (state.next !== null) {
       const more = doc.createElement('button'); more.type='button'; more.textContent='More starred '+noun; more.tabIndex=-1;
       more.onclick=()=>this.load(state,true); nodes.push(more);
     }
     // Keep each title's element (and its native focus) while its words change.
+    if (focusedRetry && !state.error) state.parent?.focus();
     for (let i=0;i<nodes.length;i++) if(state.box.children[i]!==nodes[i]) state.box.insertBefore(nodes[i],state.box.children[i]??null);
     for (const node of [...state.box.children]) if(!nodes.includes(node)) node.remove();
     state.box.dataset.loaded = String(state.loaded);
