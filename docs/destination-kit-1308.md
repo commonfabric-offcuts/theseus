@@ -46,6 +46,10 @@ Relay: Warp supplies a complete reviewed request, then theseus as the real local
 commonfabric user runs `prepare` in private scratch and `preflight`; retain both
 JSON answers and exact argv/terminal. A lost answer resumes the same packet/request,
 never a new id. A timeout or partial pack is not adoption. Do not run old SPECs.
-Bulk material uses the selected encrypted APFS volume with fresh private local
-copies and separately verified volume identity/behavior; this pack authorizes no
-transfer, recursive ownership change or live authority on removable media.
+Bulk material follows the current sourced transport decision. Rule19 selects
+only /Volumes/secretsky/theseus-move on observed VolumeUUID
+E899C601-EF65-4C1E-9F0B-4D90AD6A7ABC, with ownership ignored and encryption
+facts recorded without requiring encryption. Other secretsky files stay untouched.
+Import remains into fresh private actual-user-owned LOCAL files. This pack
+authorizes no transfer, recursive ownership change, deletion or live authority
+on removable media;1315 consumes the reviewed staging/activation receipts.

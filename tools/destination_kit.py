@@ -20,7 +20,7 @@ DEPLOY_REQUIRED = {'live', 'instance', 'server_profile', 'port', 'runner_profile
 DEPLOY_OPTIONAL = {'python', 'tailnet_origin', 'outcome', 'reporter_profile', 'release_branch', 'repository', 'pipeline_outcome', 'pipeline_instance', 'pipeline_broker', 'pipeline_profile', 'seat_template'}
 PENDING = ['1306 confirmed durable activation', '1307 supported profile/route rebinding',
            'destination account/staged kit and Python3.9/native architecture/Node v26.12.1/gh/Codex0.167.0-alpha.3.2 receipts',
-           'Warp1315 reviewed adoption and selected encrypted APFS medium identity/behavior']
+           'Warp1315 reviewed adoption and current sourced transport identity/behavior receipts']
 REQUIRED_VERSIONS = {'python': 'CPython3.9.x', 'node': 'v26.12.1', 'codex': '0.167.0-alpha.3.2', 'architecture': 'arm64'}
 
 
