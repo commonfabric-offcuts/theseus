@@ -6563,6 +6563,77 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     return got;
   };
 
+  await check('reading stacks one trackpad burst counts as one action across a vertical sample', async () => {
+    const topic = 'one-trackpad-burst';
+    const ids = await seed(topic, [
+      ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Dossier root.', divergence_reason: 'Independent trackpad fixture.' }],
+      ...['one', 'two', 'last'].map(key =>
+        [key, { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Swipe card ' + key + '.', reply_without_quote: 'Testing the gesture on this card.' }]),
+    ]);
+    const p = await open(topic, 'laptop', topic, ids.root, HEARD_WHEELS);
+    try {
+      await fullyOpen(p, 'laptop', ids);
+      const began = await foldsSent(p);
+      const tail = Array.from({ length: 8 }, () => [30, 0]);
+      const heard = await trackpad(p, card(ids.one), [...SWIPE_RIGHT, [0, -8], ...tail]);
+      await until(() => p.evaluate('window.fetchesOut === 0'), 'fold commands settled');
+      assert.equal(await foldsSent(p) - began, 1, 'one wheel burst issued one command');
+      assert.ok(heard.every(sample => sample.prevented === (sample.y === 0)), JSON.stringify(heard));
+      assert.equal(await foldOf(topic, ids.one), true, 'the message stays folded');
+      assert.equal(await foldOf(topic, ids.two), false, 'the neighbor is unchanged');
+      const row = card(ids.one) + ' > .message-folded > .folded-words';
+      await trackpad(p, row, SWIPE_RIGHT.map(([x, y]) => [-x, y]));
+      await until(async () => !await foldOf(topic, ids.one), 'a distinct gesture unfolds the message');
+      await until(() => p.evaluate('window.fetchesOut === 0'), 'unfold command settled');
+      assert.equal(await foldsSent(p) - began, 2, 'the next wheel burst issued one command');
+      const title = `#messages .reply-stack[data-stack="${ids.root}"] .stack-head`;
+      const archiveCount = () => p.evaluate("window.sent.filter(kind => kind === 'stack.aside').length");
+      const beforeArchive = await archiveCount();
+      await trackpad(p, title, [...SWIPE_RIGHT, [0, -8], ...tail]);
+      await until(async () => (await actsOf(topic, ids.root))?.aside > 0, 'the dossier is archived');
+      await until(() => p.evaluate('window.fetchesOut === 0'), 'archive command settled');
+      assert.equal(await archiveCount() - beforeArchive, 1, 'one wheel burst issued one archive');
+      assert.equal(await foldsSent(p) - began, 2, 'the archive issued no message fold');
+      assert.deepEqual(p.errors, []);
+    } finally {
+      await p.close();
+    }
+  });
+
+  if (engine === 'chrome') await check('reading stacks one finger swipe at each phone width counts as one action', async () => {
+    for (const width of [320, 375, 390]) {
+      const topic = 'one-finger-swipe-' + width;
+      const ids = await seed(topic, [
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Dossier root.', divergence_reason: 'Independent swipe fixture.' }],
+        ...['one', 'two', 'last'].map(key =>
+          [key, { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Swipe card ' + key + '.', reply_without_quote: 'Testing the gesture on this card.' }]),
+      ]);
+      const p = await open(topic, 'phone', topic, ids.root);
+      try {
+        await p.send('Emulation.setDeviceMetricsOverride', { width, height: 844, deviceScaleFactor: 1, mobile: true });
+        assert.equal(await p.evaluate('innerWidth'), width);
+        await fullyOpen(p, 'phone', ids);
+        const wait = () => until(() => p.evaluate('window.fetchesOut === 0'), 'gesture commands settled');
+        const prior = await foldsSent(p);
+        await fingerDrag(p, words(ids.one), 20, 150);
+        await until(() => foldOf(topic, ids.one), 'the message folds');
+        await wait();
+        assert.equal(await foldsSent(p) - prior, 1, 'one right swipe issues one fold at ' + width);
+        assert.equal(await foldOf(topic, ids.two), false);
+        assert.equal(await readerOn(p), null);
+        const line = card(ids.one) + ' > .message-folded > .folded-words';
+        await fingerDrag(p, line, 150, 20);
+        await until(async () => !await foldOf(topic, ids.one), 'the message unfolds');
+        await wait();
+        assert.equal(await foldsSent(p) - prior, 2, 'the next, distinct swipe issues one unfold at ' + width);
+        assert.equal(await readerOn(p), null);
+        assert.deepEqual(p.errors, []);
+      } finally {
+        await p.close();
+      }
+    }
+  });
+
   // Item 377: a person's reply to a message, or their thumbs-up on it, folds it for them in Core, as their Fold would.
   await check('reading stacks replying to a message or a thumbs-up on it folds it for the person, on every device; a starred one stays whole, the Reader keeps showing it whole, the feed keeps its place and the keys, and ⌘Z leaves it folded', async () => {
     const topic = 'stack-fold-answered';
