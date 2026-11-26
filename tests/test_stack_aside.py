@@ -390,7 +390,8 @@ class StarHoldCLICase(AgentCLIBase):
 
 class AsideMigrationCase(StackCase):
     def test_upgrade_and_back_preserve_schema_records_and_sequence_then_refuse_to_drop_any_aside(self):
-        from aim_next.migrations import migrate, MigrationError
+        from aim_next.migrations import ASIDE_UP, STEPS, migrate, MigrationError
+        before_aside = next(step[0] for step in STEPS if step[2] is ASIDE_UP)
         import sqlite3
         root = self.post('Migration root')
         self.committed(self.star(root))
@@ -404,7 +405,7 @@ class AsideMigrationCase(StackCase):
             # later 731 positions explicitly; test_dossier_order checks the
             # real schema-48 preservation and downgrade refusal separately.
             db.execute("DELETE FROM dossier_order")
-        migrate(self.path, 'test-instance', self.binding, '37')
+        migrate(self.path, 'test-instance', self.binding, before_aside)
         self.assertEqual(self.sql('SELECT * FROM message_acts ORDER BY id'), rows)
         migrate(self.path, 'test-instance', self.binding)
         self.assertEqual(self.sql("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name"), schema)
@@ -416,6 +417,6 @@ class AsideMigrationCase(StackCase):
         self.committed(self.command('stack.aside', {'through': None}, target={'message_id': moved}, expected={'aside_revision': 1}))
         before = self.sql('SELECT * FROM message_acts ORDER BY id')
         with self.assertRaises(MigrationError) as caught:
-            migrate(self.path, 'test-instance', self.binding, '37')
+            migrate(self.path, 'test-instance', self.binding, before_aside)
         self.assertEqual(caught.exception.code, 'RECORDS_WOULD_BE_LOST')
         self.assertEqual(self.sql('SELECT * FROM message_acts ORDER BY id'), before)
