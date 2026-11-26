@@ -659,7 +659,13 @@ export class DeckPage {
     field.value = editing.shown ?? editing.text;
     if (editing.bodyStart != null) field.style.setProperty('--body-start', `${editing.bodyStart}px`);
     field.setAttribute('aria-labelledby', 'deck-editor-label');
-    field.addEventListener('input', () => this.fit(field));
+    field.addEventListener('input', () => {
+      // Measuring at auto height can briefly clamp the sheet's scroll.
+      // Restore the position before paint so caret reveal starts from it.
+      const putBack = this.holdPage();
+      this.fit(field);
+      putBack();
+    });
     this.editing = { ...editing, field, input: new WritingInput({ field }) };
     // A key that opens the card brings it into view once the box has the height it keeps, not before (paint).
     const keyed = this.keyed;
