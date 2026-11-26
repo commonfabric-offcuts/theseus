@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import re
+import platform
 from pathlib import Path
 import tempfile
 import unittest
@@ -35,7 +36,7 @@ class DestinationKit(unittest.TestCase):
         landing.update(seat="warp", workspace="building-theseus", remote="https://example.invalid/repo", repo="owner/repo", release_branch="release/live73", guard="guard.json", cards_note="n-card", releases_topic="t-releases", dossier_tells="tony")
         deploy = dict(live=landing['live'], instance=landing['instance'], server_profile="server.json", runner_profile="runner.json", routes="routes.json", port=5192, runner_id="runner", release_branch="release/live73", repository="owner/repo", pipeline_instance="same-instance", pipeline_outcome="building-theseus", pipeline_profile=str(self.dest / "profile"), seat_template="core-lane7")
         identity = {k: landing[k] for k in ["seat", "workspace", "repo", "remote", "release_branch", "guard", "cards_note", "releases_topic", "dossier_tells"]}
-        self.request = {"v": 1, "packet_id": str(uuid.uuid4()), "inventory": {"v": 1, "source_host": "source-host", "identity": identity, "source_head": "a" * 40, "guard_head": "b" * 40, "files": [{"path": str(self.file), "sha256": hashlib.sha256(self.file.read_bytes()).hexdigest()}]}, "destination": {"home": str(self.dest), "host": "destination-host", "landing": landing, "deploy": deploy}}
+        self.request = {"v": 1, "packet_id": str(uuid.uuid4()), "inventory": {"v": 1, "source_host": platform.node(), "identity": identity, "source_head": "a" * 40, "guard_head": "b" * 40, "files": [{"path": str(self.file), "sha256": hashlib.sha256(self.file.read_bytes()).hexdigest()}]}, "destination": {"home": str(self.dest), "host": "destination-host", "landing": landing, "deploy": deploy}}
 
     def test_config_bytes_and_pending_authority_are_real_outputs(self):
         result = kit.prepare(self.request, self.out)
@@ -194,6 +195,16 @@ class DestinationKit(unittest.TestCase):
         self.assertEqual(result['required_versions']['node'], 'v26.12.1')
         request['destination']['deploy']['tailnet_origin'] = 'https://source-host:5192'
         with self.assertRaisesRegex(kit.Refused, 'origin'):kit.prepare(request, self.root / 'wrong-origin')
+
+    def test_destination_checks_sealed_pack_without_source_paths(self):
+        kit.prepare(self.request, self.out)
+        self.source.rename(self.root / 'source-moved-away')
+        with patch.object(kit.platform, 'node', return_value='destination-host'):
+            report = kit.preflight(self.out)
+            self.assertFalse(report['source_freshness_checked'])
+            self.assertFalse(report['authorized_for_effects'])
+        (self.out / 'deploy.json').write_text('{}')
+        with self.assertRaises(kit.Refused):kit.preflight(self.out)
 
 
 if __name__ == '__main__':

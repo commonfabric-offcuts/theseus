@@ -83,12 +83,16 @@ def checked_file(path, expected):
     require(sha(p.read_bytes()) == expected, 'source hash differs: ' + str(p))
 
 
-def verify_inventory(value):
+def verify_inventory(value, check_files=True):
     require(value.get('v') == 1 and type(value.get('files')) is list and 0 < len(value['files']) <= 2048, 'bounded inventory required')
     require(len({x['path'] for x in value['files']}) == len(value['files']), 'duplicate source path')
     for item in value['files']:
         require(set(item) == {'path', 'sha256'}, 'source file fields differ')
-        checked_file(item['path'], item['sha256'])
+        p = Path(item['path'])
+        require(p.is_absolute() and str(p) == item['path'] and '..' not in p.parts, 'invalid source provenance path')
+        require(re.fullmatch('[0-9a-f]{64}', item['sha256']) is not None, 'invalid hash')
+        if check_files:
+            checked_file(item['path'], item['sha256'])
 
 
 def inventory(landing_config, repo):
@@ -115,7 +119,7 @@ def inventory(landing_config, repo):
     return result
 
 
-def validate(request):
+def validate(request, check_source=True):
     require(set(request) == {'v', 'packet_id', 'inventory', 'destination'} and type(request['v']) is int and request['v'] == 1, 'unsupported request fields/version')
     require(str(uuid.UUID(request['packet_id'])) == request['packet_id'], 'canonical packet UUID required')
     inv, dest = request['inventory'], request['destination']
@@ -156,7 +160,9 @@ def validate(request):
     if 'on_live' in landing:
         argv = shlex.split(landing['on_live'])
         require(len(argv) == 2 and argv[0] in ['bash', '/bin/bash'] and home in canonical(argv[1]).parents, 'explicit destination on_live script required')
-    verify_inventory(inv)
+    if check_source:
+        require(platform.node() == inv['source_host'], 'prepare must run on inventoried source host')
+    verify_inventory(inv, check_files=check_source)
 
 
 def sync_dir(path):
@@ -218,12 +224,13 @@ def preflight(pack):
     for name, digest in receipt['files'].items():
         require(name in {'request.json', 'landing.json', 'deploy.json', 'inventory.json'}, 'unexpected manifest path')
         private(pack / name);require(sha((pack / name).read_bytes()) == digest, 'pack hash differs')
-    request = read(pack / 'request.json');validate(request)
+    request = read(pack / 'request.json');validate(request, check_source=False)
     expected = {'v': 1, 'status': 'prepared', 'packet_id': request['packet_id'], 'request_digest': sha(encoded(request)),
                 'mode': 'report-only', 'authorized_for_effects': False, 'pending': PENDING, 'required_versions': REQUIRED_VERSIONS,
                 'files': {name: sha(raw) for name, raw in payloads(request).items()}}
     require(receipt == expected, 'manifest/request differs')
-    return dict(receipt, status='preflight-report')
+    return dict(receipt, status='sealed-pack-report', source_freshness_checked=False,
+                scope='sealed request/manifest/config bytes and schemas only; staged compatibility remains1315')
 
 
 def main():

@@ -10,7 +10,8 @@ approved source manifest, verified code, current landing/deploy config and kit.
 It checks their declared hashes and reports exact file hashes; paths are source
 observations, not destination authority. Profile files are never opened.
 
-`prepare --request FILE --output NEW_PRIVATE_DIRECTORY` takes v1 JSON with a
+On the inventoried SOURCE host, `prepare --request FILE --output NEW_PRIVATE_DIRECTORY`
+takes v1 JSON with a
 canonical UUID `packet_id`, the complete `inventory` result, and `destination`:
 `home`, `host`, complete proposed `landing` and `deploy` config objects. All
 destination absolute config paths must be canonical descendants of `home`;
@@ -32,8 +33,10 @@ A matching-file retry reflushes the file and its containing pack directory;
 failed confirmation still fails the retry, even when all bytes are present.
 A missing manifest means incomplete, not success. `--disabled` writes nothing.
 
-`preflight --pack DIRECTORY` verifies every sealed byte, private local ownership,
-the source inventory's unchanged inputs and proposed config schema. It reports
+On the DESTINATION, `preflight --pack DIRECTORY` verifies every sealed byte,
+private local ownership and proposed request/config/inventory schemas. Original
+source paths are provenance only: this command never opens or rehashes those
+paths there. Its report explicitly leaves source freshness unchecked. It reports
 dependencies1306 durable activation,1307 supported rebinding, destination account,
 staged kit/tool versions and Warp1315 adoption as pending. It cannot clear these
 from copied JSON or fixture results. Python3.9/native arm64 architecture,
@@ -42,9 +45,13 @@ pinned Codex0.167.0-alpha.3.2 need fresh destination receipts in1315. Existing
 permanent enforcement remains; this new tool is report-only with `--disabled`
 as the off switch and the reviewed manual config process as fallback.
 
-Relay: Warp supplies a complete reviewed request, then theseus as the real local
-commonfabric user runs `prepare` in private scratch and `preflight`; retain both
-JSON answers and exact argv/terminal. A lost answer resumes the same packet/request,
+Relay: Warp supplies the reviewed request and runs `inventory`/`prepare` on the
+source while its inputs are available. Copy the sealed pack into fresh private
+LOCAL destination scratch through the reviewed staging procedure. cf-hands,
+running as actual local commonfabric, runs only `preflight` there; theseus under
+tonyespinoza only relays. Retain both JSON answers and exact argv/terminal.
+Destination staged kit/runtime compatibility is separately owed by1315, using
+real staged-input receipts. A lost answer resumes the same packet/request,
 never a new id. A timeout or partial pack is not adoption. Do not run old SPECs.
 Bulk material follows the current sourced transport decision. Rule19 selects
 only /Volumes/secretsky/theseus-move on observed VolumeUUID
