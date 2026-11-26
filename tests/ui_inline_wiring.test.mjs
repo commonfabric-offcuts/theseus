@@ -4931,9 +4931,10 @@ test('on the conversation page replies stack under the message they answer, as i
   assert.equal(tools.className, 'stack-tools');
   assert.deepEqual([head.dataset.id, replies.children.map(child => child.dataset.id ?? child.className)], ['m1', ['m2', 'm3', 'm4', 'm5']],
     'the message on top, its replies under it oldest first, as a chat reads, with folded replies kept in their positions');
-  // Folded, a stack shows its newest reply and what the person must not miss there: an item nothing has settled, and an ask that waits on them.
-  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, true],
-    'read asks and unsettled items do not override latest plus unread');
+  // Folded, a read newest reply keeps its immediate parent as compact context.
+  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, false],
+    'read asks and unsettled items do not override latest, unread and immediate context');
+  assert.equal(entryIn(f, 'm2').dataset.folded, 'true');
   assert.equal(toggle.getAttribute('aria-expanded'), 'true');
   assert.equal(toggle.className, 'stack-toggle');
   assert.equal(painted.tags.size, 0, 'the retired item-tag painter is never called');
@@ -4942,7 +4943,9 @@ test('on the conversation page replies stack under the message they answer, as i
 });
 
 test('on the conversation page a link to a message folded in a stack opens its stack and lands on it, from a tag or from the address', async () => {
-  const { f, painted, opens, stackOf } = await conversationPage(conversationMessages(), { waits: ASKED, folded: ['m1'] });
+  const list = conversationMessages();
+  list.find(message => message.id === 'm5').reply_to = 'm1';
+  const { f, painted, opens, stackOf } = await conversationPage(list, { waits: ASKED, folded: ['m1'] });
   const scrolled = [];
   for (const id of ['m2', 'm4']) entryIn(f, id).scrollIntoView = () => scrolled.push(id);
   assert.equal(entryIn(f, 'm2').hidden, true, 'the reply the item\'s Answered tag names is folded away');
@@ -4958,7 +4961,7 @@ test('on the conversation page a link to a message folded in a stack opens its s
   painted.about.get('m1').open('message', 'elsewhere'); await settle();
   assert.equal(opens.at(-1)[0], 'elsewhere');
   // A message's link (docs/links.md) to a folded reply in the conversation.
-  const linked = await conversationPage(conversationMessages(), { waits: ASKED, href: 'https://fixture/?topic=t1&message=m2', folded: ['m1'] });
+  const linked = await conversationPage(list, { waits: ASKED, href: 'https://fixture/?topic=t1&message=m2', folded: ['m1'] });
   assert.deepEqual([linked.stackOf('m2').dataset.fold, entryIn(linked.f, 'm2').hidden, linked.opens.at(-1)], ['open', false, ['m2', 'm2']],
     'the address opens the stack and the Reader on the message, from its card');
 });
@@ -4976,7 +4979,8 @@ test('on the conversation page More messages brings a stack\'s first message: th
   // it names m2 and m4 as separate dossiers; m1 therefore starts a new view.
   f.runObservation("stackState(document.getElementById('messages')).levels.set('m1', 'folded')");
   f.paintViews('messages'); await settle();
-  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, true], 'read asks and New items do not add extra messages');
+  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(f, id).hidden), [false, true, true, false], 'only the newest and its immediate context show');
+  assert.equal(entryIn(f, 'm2').dataset.folded, 'true');
   assert.equal(entryIn(f, 'm1').dataset.item, undefined, 'More paints no retired Only new marker');
   assert.equal(painted.about.get('m1').item.id, 'm1', 'More keeps ordinary source-link context');
 
@@ -4993,7 +4997,8 @@ test('on the conversation page More messages brings a stack\'s first message: th
   current.f.paintViews('messages'); await settle();
   assert.equal(current.stackOf('m1').dataset.fold, 'folded', 'the canonical dossier keeps its chosen fold when its first message loads');
   assert.deepEqual(['m2', 'm3', 'm4', 'm5'].map(id => current.stackOf(id) === current.stackOf('m1')), [true, true, true, true]);
-  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(current.f, id).hidden), [false, true, true, true]);
+  assert.deepEqual(['m5', 'm4', 'm3', 'm2'].map(id => entryIn(current.f, id).hidden), [false, true, true, false]);
+  assert.equal(entryIn(current.f, 'm2').dataset.folded, 'true');
   assert.equal(current.painted.about.get('m1').item.id, 'm1');
 });
 
@@ -5008,7 +5013,8 @@ test('on the conversation page a reply folded in its stack is never reported rea
   }));
   for (const handler of f.events.filter(e => e[0] === 'window-handler' && e[1] === 'focus')) handler[2]();
   await settle(); await settle();
-  assert.equal(entryIn(f, 'm2').hidden, true, 'm2 is folded in its stack');
+  assert.equal(entryIn(f, 'm2').hidden, false, 'm2 is visible as immediate context');
+  assert.equal(entryIn(f, 'm2').dataset.folded, 'true', 'm2 is still folded');
   assert.deepEqual(ranges(), [[5, 6]], 'the messages on screen are read, the folded reply is not, and the person\'s own is never reported');
 });
 
