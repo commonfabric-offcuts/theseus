@@ -6061,5 +6061,15 @@
       "inputs": [],
       "scope": "generated/system/product"
     }
+  },
+  "tests/test_scale_unread_1294.py": {
+    "8b1f818b155a48a5b7a30b0a313c687061f0c1a1a669ca6e32a02858eb10f95c": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "8b1f818b155a48a5b7a30b0a313c687061f0c1a1a669ca6e32a02858eb10f95c:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
   }
 }
