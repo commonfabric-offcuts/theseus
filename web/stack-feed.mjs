@@ -1,3 +1,4 @@
+import { wheelSwipe } from './message-fold-swipe.mjs';
 import { stackMenuItems, STARRED_FOLD_REASON } from './stack-menu-items.mjs';
 import { archiveReadConfirmed } from './archive-new.mjs';
 import { unstarDossier } from './dossier-unstar.mjs';
@@ -63,11 +64,6 @@ function scrollsSideways(target, list) {
   return false;
 }
 
-// A trackpad's two-finger swipe reaches the page as wheel events. One swipe
-// is a run of them less than SWIPE_GAP ms apart by the events' own times; it
-// acts once it has gone SWIPE_ACROSS pixels across, and further across than
-// down.
-const SWIPE_GAP = 250, SWIPE_ACROSS = 80;
 // Whether a swipe that went across (its summed deltaX) folds the message, or
 // unfolds it. With macOS's natural scrolling, the default, fingers moving
 // right scroll the content left, a negative deltaX: swiped right folds, as a
@@ -220,9 +216,10 @@ export class StackFeed {
     // swiped to the left unfolds it; a drag on something that scrolls
     // sideways scrolls it instead. Native selection handles keep their drag.
     list.addEventListener('touchstart', event => {
-      const touch = event.touches?.[0];
-      this.swipe = touch && doc.getSelection()?.isCollapsed !== false && !scrollsSideways(event.target, list) ? { x: touch.clientX, y: touch.clientY, target: event.target } : null;
+      const touch = event.touches?.length === 1 ? event.touches[0] : null;
+      this.swipe = touch && doc.getSelection()?.isCollapsed !== false && !scrollsSideways(event.target, list) ? { id: touch.identifier, x: touch.clientX, y: touch.clientY, target: event.target } : null;
     }, { passive: true });
+    list.addEventListener('touchcancel', () => { this.swipe = null; }, { passive: true });
     list.addEventListener('touchend', event => this.swiped(event), { passive: false });
     // Two fingers across a laptop's trackpad do the same. Not passive: while a
     // swipe over a message goes across, the page keeps it from the browser,
@@ -1246,39 +1243,21 @@ export class StackFeed {
     return through && folds ? this.foldThrough(gesture.found.stack, gesture.item) : this.setFold(gesture.item, folds, { focus: false });
   }
   swiped(event) {
-    const start = this.swipe, touch = event.changedTouches?.[0];
+    const start = this.swipe;
     this.swipe = null;
+    const touch = [...(event.changedTouches ?? [])].find(each => each.identifier === start?.id);
     const across = touch && start ? touch.clientX - start.x : 0;
     if (!start || this.doc.getSelection()?.isCollapsed === false || Math.abs(across) < 80 || Math.abs(touch.clientY - start.y) > 40) return;
     event.preventDefault();
     this.swipeAct(start.target, across > 0, event.altKey);
   }
-  // A wheel event on the list: part of a trackpad swipe, or a scroll the
-  // browser keeps. The message is the one under the swipe's first event, and
-  // the swipe folds or unfolds it once; the rest of it, momentum and all, is
-  // still kept from the browser while it goes across. A scroll further down
-  // than across, a swipe that began on something scrolling sideways and the
-  // wheel with Ctrl or ⌘ (zoom) are left to the browser.
-  // Each event is judged on its own too (item 393): one that goes further down
-  // than across ends the swipe and is the browser's, so a scroll begun in the
-  // swipe's momentum, after it folded a message or before, scrolls at once.
+  // Feed and Reader share the wheel burst. The action still belongs to
+  // the surface and target where the gesture began.
   wheeled(event) {
-    if (event.ctrlKey || event.metaKey) return;
-    const [unitX, unitY] = event.deltaMode === 1 ? [16, 16] : event.deltaMode === 2 ? [this.list.clientWidth, this.doc.defaultView.innerHeight] : [1, 1];
-    const across = event.deltaX * unitX, down = event.deltaY * unitY;
-    if (Math.abs(down) > Math.abs(across)) { this.wheelSwipe = null; return; }
-    let swipe = this.wheelSwipe;
-    if (!swipe || event.timeStamp - swipe.last >= SWIPE_GAP) {
-      const target = scrollsSideways(event.target, this.list) ? null : event.target;
-      swipe = this.wheelSwipe = { x: 0, y: 0, target, valid: target && !target.closest?.('#reader'), done: false };
-    }
-    swipe.last = event.timeStamp;
-    swipe.x += across; swipe.y += down;
-    if (!swipe.valid || Math.abs(swipe.x) <= Math.abs(swipe.y)) return;
-    event.preventDefault();
-    if (swipe.done || Math.abs(swipe.x) < SWIPE_ACROSS) return;
-    swipe.done = true;
-    this.swipeAct(swipe.target, swipeFolds(swipe.x), event.altKey);
+    wheelSwipe(this.list, event, target => {
+      if (!target || target.closest?.('#reader') || scrollsSideways(target, this.list)) return null;
+      return (across, option) => { if (!this.gone) this.swipeAct(target, swipeFolds(across), option); };
+    });
   }
   // Stack keys on a message or its chevron, never in writing. Plain arrows
   // open/fold first; the pane's document listener handles the boundary.
