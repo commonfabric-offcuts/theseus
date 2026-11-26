@@ -1931,6 +1931,7 @@ function feedOf() {
     send: async envelope => { const receipt = await api.command(envelope); if (receipt?.status === 'committed') views.ownAct(envelope.kind, receipt.result); return receipt; },
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: newOnPage, unread: newOnPage, acted: clearVisitNew, captureArchive: captureArchiveReading,
+    captureEmptyReply: id => cardReplies?.captureEmpty(id),
     nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     newest: (stack, mark) => run(() => openDossierNew(stack, mark)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), arranged: stacksRedrawn,
@@ -4227,7 +4228,17 @@ async function initialize() {
     quote: (id, card, chosen) => run(() => replyMessage(id, card, chosen)),
     // A thumbs-up on a reply deals with its stack up to it (stack-feed.mjs).
     // What Theseus answered without taking a card's 👍 or answer is said with its card (stack-feed.mjs notTaken).
-    thumb: (item, on) => run(() => thumbMessage(item, on, cardSaid('message.thumb', item, { thumbed: on }, 'reaction:' + item.id)).then(receipt => { if (on && receipt) stackFeed?.thumbed(item); return receipt; })),
+    thumb: (item, on) => {
+      const closeReply = on && cardReplies.captureEmpty(item.id);
+      return run(async () => {
+        const receipt = await thumbMessage(item, on, cardSaid('message.thumb', item, { thumbed: on }, 'reaction:' + item.id));
+        if (on && receipt?.status === 'committed') {
+          if (closeReply && closeReply()) stackFeed?.arrange();
+          stackFeed?.thumbed(item);
+        }
+        return receipt;
+      });
+    },
     answer: (item, answer) => act(reactions.answer(item, answer, cardSaid('message.answer', item, { answer }, 'reaction:' + item.id))),
     more: openMessageMore, copy: copyMessage,
     expand: (card, item) => cardScroll.expand(card, item),

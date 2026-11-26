@@ -185,8 +185,8 @@ export class StackFeed {
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
     newest = () => {}, refreshPositions = async () => {}, acted = () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), navigate = () => {}, press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
-    colorOf = () => null, readNamed = null, captureArchive = () => null, clock = () => Date.now(), thumbPending = () => null, doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, captureArchive, clock, doc });
+    colorOf = () => null, readNamed = null, captureArchive = () => null, captureEmptyReply = null, clock = () => Date.now(), thumbPending = () => null, doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, captureArchive, captureEmptyReply, clock, doc });
     this.archiveReads = new Map();
     this.thumbPending = thumbPending;
     this.readNamed = readNamed; this.headerStars = new Set();
@@ -943,6 +943,7 @@ export class StackFeed {
   setFold(item, on, { focus = true, undoable = true } = {}) {
     const acts = item && this.actsOf(item.id, item);
     if (on && acts?.folded && !acts.starred && this.state.peeked.has(item.id)) {
+      this.captureEmptyReply?.(item.id)?.();
       this.state.peeked.delete(item.id);
       foldInMotion(this.list.ownerDocument, () => this.entryFor(item.id), () => this.arrange(), true);
       if (focus) this.focusOn(item.id);
@@ -952,7 +953,11 @@ export class StackFeed {
     if (reason) return this.refuseFold(reason);
     if (Boolean(acts.folded) === on) return false;
     this.state.peeked.delete(item.id);
+    const closeReply = on && this.captureEmptyReply?.(item.id);
     const sent = this.act('message.fold', item, { folded: on });
+    if (closeReply) sent.then(() => {
+      if (this.actsOf(item.id, item).folded && closeReply()) this.arrange();
+    }, () => {});
     if (undoable) this.remember(() => { this.setFold(item, !on, { undoable: false }); });
     // In motion (fold-motion.mjs): the message closes to its row, or opens out of it.
     foldInMotion(this.list.ownerDocument, () => this.entryFor(item.id), () => this.arrange(), on);
