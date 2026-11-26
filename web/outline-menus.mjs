@@ -44,17 +44,17 @@ export function menuDoor(root, locate, open, { doc = root.ownerDocument, clock =
 }
 
 export class OutlineMenus {
-  constructor(outline, { show = openMessageMenu, copy = copyText } = {}) {
+  constructor(outline, { show = openMessageMenu, copy = copyText, signal } = {}) {
     Object.assign(this, { outline, show, copy }); this.serial = 0; this.commands = new RailMenuCommands();
     this.cancelDoor = menuDoor(outline.list, target => this.row(target), (row, at) => this.open(row, at));
     outline.doc.addEventListener('pointerdown', event => {
       if (this.pending && !this.pending.contains(event.target)) { ++this.serial; this.pending = null; }
-    }, true);
-    outline.doc.addEventListener('keydown', event => { if (this.pending && event.key === 'Escape') { ++this.serial; this.pending = null; } }, true);
+    }, { capture: true, signal });
+    outline.doc.addEventListener('keydown', event => { if (this.pending && event.key === 'Escape') { ++this.serial; this.pending = null; } }, { capture: true, signal });
   }
   row(target) {
     if (!this.outline.handles || target.closest?.('[inert], input, textarea, select, [contenteditable]')) return null;
-    const row = target.closest?.('a.ol-name, a.ol-dossier[data-dossier-id], a[data-topic-id], a.ol-page[data-page-id]');
+    const row = target.closest?.('a.ol-name, a.ol-dossier[data-dossier-id], a[data-topic-id], a.ol-page[data-page-id], button.reference[data-page-id]');
     return row && this.outline.list.contains(row) ? row : null;
   }
   reset() { ++this.serial; this.pending = null; this.cancelDoor(); this.menu?.close(false); this.menu = null; }

@@ -3,10 +3,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { OutcomeReferences } from '../web/outcome-references.mjs';
 
-function fixture(t, { pageMax, create, painted } = {}) {
+function fixture(t, { pageMax, create, painted, menuHandles } = {}) {
   const previous = globalThis.document;
   class Element {
-    constructor() { this.children = []; this.dataset = {}; this.hidden = false; this.text = ''; }
+    constructor() { this.children = []; this.dataset = {}; this.hidden = false; this.text = ''; this.listeners = {}; }
+    addEventListener(type, listener) { this.listeners[type] = listener; }
+    contains(node) { return this.children.includes(node); }
+    closest(selector) {
+      return this.dataset.pageId && selector.includes('button.reference[data-page-id]') ? this : null;
+    }
     // As the DOM's: setting the text replaces whatever the element held.
     get textContent() { return this.text; } set textContent(value) { this.text = value; this.children = []; }
     append(...nodes) { for (const child of nodes) { child.remove(); child.parent = this; this.children.push(child); } }
@@ -15,13 +20,14 @@ function fixture(t, { pageMax, create, painted } = {}) {
     setAttribute(name, value) { (this.attributes ??= {})[name] = value; } removeAttribute(name) { delete this.attributes?.[name]; }
     focus() { globalThis.document.activeElement = this; }
   }
-  globalThis.document = { createElement: () => new Element(), activeElement: null }; t.after(() => globalThis.document = previous);
+  globalThis.document = { createElement: () => new Element(), activeElement: null, addEventListener() {}, querySelector() { return null; }, getSelection() { return { isCollapsed: true }; } }; t.after(() => globalThis.document = previous);
   const nodes = Object.fromEntries(['host', 'list', 'more', 'message'].map(k => [k, new Element()]));
+  nodes.list.ownerDocument = globalThis.document;
   nodes.host.hidden = true; nodes.message.hidden = true;
   const queue = [], calls = [], opened = [], seen = [];
   const item = (seq, title = `Item ${seq}`, revision = 1, read_revision) => ({ id: `m${seq}`, seq, title, revision, read_revision, owner_scope: { kind: 'workspace', id: 'w1' }, source_ref: { kind: 'memory', id: `m${seq}`, revision } });
   const answer = (items, next_cursor = null) => ({ instance_id: 'instance', items, next_cursor });
-  const references = new OutcomeReferences({ ...nodes, scope: 'w1', ...(pageMax ? { pageMax } : {}), ...(create ? { create } : {}),
+  const references = new OutcomeReferences({ ...nodes, scope: 'w1', menuHandles, ...(pageMax ? { pageMax } : {}), ...(create ? { create } : {}),
     read: args => { calls.push(args); const next = queue.shift(); return typeof next === 'function' ? next() : Promise.resolve(next); },
     open: (...args) => opened.push(args), denied: error => error.status === 403, seen: items => seen.push(items.map(x => x.id)), ...(painted ? { painted } : {}) });
   const titles = () => nodes.list.children.map(row => row.textContent);
@@ -241,4 +247,41 @@ test('each paint tells its listener how many pages it lists, whether more remain
   f.queue.push(() => Promise.reject(Object.assign(Error('Denied'), { status: 403 })));
   await f.references.load();
   assert.deepEqual(told.at(-1), { count: 0, more: false, shown: false });
+});
+
+
+test('the outcome Notebook page chip confirms its own source and anchors the existing menu', async t => {
+  const reads = [], shown = [], acts = [];
+  const source = { instance_id: 'instance', source_ref: { kind: 'memory', id: 'm2' },
+    owner_scope: { kind: 'workspace', id: 'w1' } };
+  const handles = {
+    bootstrap: { instance_id: 'instance', actor: 'reader' }, readable: () => true,
+    view: async (...args) => { reads.push(args); return source; },
+    notebookMenu: (value, row, choose) => [{ label: 'Copy link', glyph: 'link', act: () => choose('copy', 'Copy link') }],
+    notebookMenuAction: (...args) => acts.push(args),
+  };
+  const f = fixture(t, { menuHandles: () => handles });
+  f.references.menus.show = options => { shown.push(options); return { close() {} }; };
+  f.queue.push(f.answer([f.item(1), f.item(2)]));
+  await f.references.load();
+  const chip = f.list.children[1];
+  const press = () => {
+    const event = { target: chip, clientX: 40, clientY: 60, preventDefault() { this.prevented = true; }, stopPropagation() {} };
+    f.list.listeners.contextmenu(event);
+    return event;
+  };
+  assert.equal(press().prevented, true, 'intercept synchronously before the read returns');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(reads, [['memory_current', { item_id: 'm2' }, 'foreground']]);
+  assert.equal(shown[0].label, 'This page');
+  assert.equal(shown[0].anchor, chip);
+  assert.deepEqual(shown[0].at, { x: 40, y: 60 });
+  assert.deepEqual(acts, []);
+  assert.deepEqual(f.opened, []);
+  source.owner_scope = { kind: 'topic', id: 'w1' };
+  assert.equal(press().prevented, true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(shown.length, 1, 'a changed owner scope exposes no actions');
+  assert.match(f.message.textContent, /could not be confirmed/);
+  f.references.dispose();
 });

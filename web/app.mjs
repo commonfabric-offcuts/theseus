@@ -141,7 +141,7 @@ import { showLine, lineText } from './lines.mjs';
 let retired = null, notebookSheet = null, outcomeColorPicker = null, mentionNotices = null;
 const $ = id => retired?.get(id) ?? document.getElementById(id);
 let outcomePageLayout = null, topicClosing = null, notebookDeleting=null, olderFeed = null, paragraphSwitch=null;
-const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { actionTimings?.dispose(); anchorWatch?.stop(); roomy?.(); roomy = null; clearPendingSends(ids.get('messages')); retired = ids; dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
+const thisRun = shell.begin({ open: (target, title) => openDestination(target, title), retire: ids => { actionTimings?.dispose(); anchorWatch?.stop(); roomy?.(); roomy = null; clearPendingSends(ids.get('messages')); retired = ids; dropCardDocuments(); olderFeed?.dispose(); mentionNotices?.dispose(); notebookSheet?.retire(); outcomeColorPicker?.dispose(); outcomeReferences?.dispose(); outcomePageLayout?.dispose(); paragraphSwitch?.dispose(); },
   updated: reload => updatedNotice(reload), refused: why => { shell.stayed(); stayedWhy(why); } });
 // The901 shell restores the foot and separator from copies for each run.
 railDensity();
@@ -5260,7 +5260,7 @@ function notebookViewsOf(){return notebookViews??=new NotebookViews(bootstrap);}
 function outcomePages(workspace,recorded) {
   pagesInPlace(workspace,recorded);
   return new OutcomeReferences({scope:workspace,host:$('outcome-references'),create:()=>notebookCreator($('outcome-references'),{kind:'workspace',id:workspace}),list:$('outcome-references-list'),more:$('more-references'),
-    message:$('outcome-references-status'),pageMax:pageMax(),viewPreference:notebookViewsOf(),denied:error=>readFailure(error).kind==='forbidden',painted:shown=>outcomePageLayout?.notes(shown),
+    message:$('outcome-references-status'),menuHandles:()=>!retired ? shell.handles : null,pageMax:pageMax(),viewPreference:notebookViewsOf(),denied:error=>readFailure(error).kind==='forbidden',painted:shown=>outcomePageLayout?.notes(shown),
     read:args=>pipelineView('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>openNotebook(ref.id,{opener:row}))});
 }
 // An outcome's team, which its owner and its coordinator may change. The owner
