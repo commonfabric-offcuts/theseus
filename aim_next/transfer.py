@@ -77,7 +77,8 @@ def probe_transport(request):
     require(parent.stat().st_dev == info.st_dev and os.path.ismount(mount), 'TRANSPORT_INVALID')
     return dict(mount_path=str(mount), folder_path=transport['folder_path'], volume_uuid=facts['VolumeUUID'],
                 device=info.st_dev, uid=os.getuid(), encrypted=facts['Encryption'],
-                ownership_enabled=facts['GlobalPermissionsEnabled'])
+                ownership_enabled=facts['GlobalPermissionsEnabled'], locked=facts['Locked'],
+                internal=facts['Internal'], filesystem_type=facts['FilesystemType'])
 
 
 def _claim_path(request):

@@ -75,7 +75,8 @@ class SourceTransferCase(unittest.TestCase):
     def medium_facts(self, request=None):
         return dict(mount_path=str(self.medium), volume_uuid=self.request['transport']['volume_uuid'],
                     folder_path=str(self.folder), device=self.medium.stat().st_dev,
-                    uid=os.getuid(), encrypted=False, ownership_enabled=False)
+                    uid=os.getuid(), encrypted=False, ownership_enabled=False,
+                    locked=False, internal=False, filesystem_type='apfs')
 
     def export(self, request=None):
         api = self.api()
@@ -272,6 +273,8 @@ class SourceTransferCase(unittest.TestCase):
                  mock.patch.object(api.os.path, 'ismount', return_value=True):
                 return api.probe_transport(self.request)
         self.assertEqual(probe(facts)['device'], self.medium.stat().st_dev)
+        self.assertIs(probe(facts)['locked'], False)
+        self.assertIs(probe(facts)['internal'], False)
         self.assertIs(probe(dict(facts, GlobalPermissionsEnabled=False))['ownership_enabled'], False)
         self.assertIs(probe(dict(facts, Encryption=False))['encrypted'], False)
         self.refused(lambda: probe(dict(facts, GlobalPermissionsEnabled='unknown')), 'TRANSPORT_INVALID')
