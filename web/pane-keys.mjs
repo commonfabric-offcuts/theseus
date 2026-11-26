@@ -122,7 +122,7 @@ export const MESSAGE_KEY_WORDS = [
   ['⌘↓', 'move the message\'s stack down; your order is yours, kept wherever you sign in'],
   ['⌘→', 'archive the selected dossier; a selected message archives its containing dossier'],
   ['→ ←', 'show a stack\'s every message, or only its latest and unread; past either, move to the right or left siderail'],
-  ['⇧⌘↑ ⇧⌘↓', 'join the stack to the one above or below, for everyone here; Split back out in ⋯ takes it out again'],
+  ['⇧⌘↑ ⇧⌘↓', 'open a named Join choice for the stack above or below; confirm it to join for everyone here. Split back out in ⋯ takes it out again'],
   ['x', 'folds the message to one line, for you alone, and x again unfolds it; a starred message stays open'],
   ['⌘Z', 'puts back your last move, fold, rename or join'],
 ];

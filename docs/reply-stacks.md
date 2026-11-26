@@ -538,7 +538,7 @@ On a message (its card focused, never in writing), these keys work:
 | ⌘↓ | move its stack down, for you alone |
 | ⌘→ | archive the selected dossier; a selected message archives its containing dossier, with the current selection |
 | → ← | show every message of its stack, or only its latest and unread; past either, move to the siderail at that end |
-| ⇧⌘↑ ⇧⌘↓ | join its stack to the stack above or below, for everyone |
+| ⇧⌘↑ ⇧⌘↓ | open a named Join choice for the stack above or below; explicitly confirm to join for everyone |
 | Return | invoke the visibly outlined message or dossier’s current Reply; with nothing outlined, New message here. A ringed control and writing retain Return |
 | x | fold it to its row, for you alone, or unfold it, a dossier's first message as any other; a starred message stays open, and on a dossier as a whole (its chevron, or its title row at latest and unread) x does nothing yet |
 | ⌘Z | undo the last of these, or the last Fold or Unfold (not a fold a reply or a 👍 made) |
@@ -1181,3 +1181,12 @@ boundaries below the browser, including line-only insertion, movement and remova
 structure and its current visibility predicate, without measuring layout or
 changing records. `arrangeStacks` calls it after `on.arranged` has placed the
 page's separators; the page also calls it after a line-only `placeLine` refresh.
+
+## Deliberate join (1269)
+
+Move remains immediate and personal. All join menu/shortcut paths first open
+a menu naming source and destination for everyone; Cancel starts focused. Only
+the explicit named Join choice sends the existing join command. Changed
+source/neighbor/visit/authority/revision refuses. See [the contract](deliberate-join-1269.md).
+Historical native direct-join checks above need the extra deliberate step;
+this source change does not claim those native checks have executed.

@@ -17,8 +17,8 @@ export function stackMenuItems(s, act) {
     choice('move-down', 'Move its stack down', 'down', ['down'], { keys: '⌘↓' }),
     ...(s.hasReplies && s.foldable ? [choice('fold-stack', 'Fold its stack', 'chevron', ['fold'], { keys: '←' })] : []),
     ...(s.hasReplies && s.openable ? [choice('open-stack', 'Open its stack', 'chevdown', ['open'], { keys: '→' })] : []),
-    choice('join-up', 'Join the stack above', 'joinup', ['up'], { keys: '⇧⌘↑' }),
-    choice('join-down', 'Join the stack below', 'joindown', ['down'], { keys: '⇧⌘↓' }),
+    choice('join-up', 'Join the stack above…', 'joinup', ['up'], { keys: '⇧⌘↑' }),
+    choice('join-down', 'Join the stack below…', 'joindown', ['down'], { keys: '⇧⌘↓' }),
     ...(s.placed ? [choice('reset', 'Reset position', 'unpin')] : []),
     ...(s.undo ? [choice('undo', 'Undo', 'undo', [], { keys: '⌘Z' })] : [])];
   return { first: items, last: s.phone ? [choice('moves', 'Move or join…', 'move', [moves])] : moves };
