@@ -37,9 +37,9 @@ test('998 unknown archive retries exact operation despite a fresh archived proje
  plan=await owner.prepare(h,image,()=>true);assert.match(plan.label,/Retry Archive/);await owner.perform(h,plan,()=>true);assert.deepEqual(sent[0],sent[1]);
  await assert.rejects(owner.perform(h,plan,()=>false),/changed/);assert.equal(sent.length,2);
 });
-test('998 stars remain refused and a later Undo revision refusal is surfaced',async()=>{
- const {h,item}=setup(),owner=new ImageArchive();item.stack_position.starred=['m1'];const plan=await owner.prepare(h,image,()=>true);assert.equal(plan.disabled,true);
- item.stack_position.starred=[];const next=await owner.prepare(h,image,()=>true),undo=await owner.perform(h,next,()=>true);
+test('998 a starred dossier can be archived and a later Undo revision refusal is surfaced',async()=>{
+ const {h,item}=setup(),owner=new ImageArchive();item.stack_position.starred=['m1'];const plan=await owner.prepare(h,image,()=>true);assert.equal(plan.label,'Archive its message');
+ const undo=await owner.perform(h,plan,()=>true);
  h.api.command=async()=>({status:'refused',recorded:true,error:{message:'changed elsewhere'}});await assert.rejects(undo(),/changed elsewhere/);
 });
 

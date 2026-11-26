@@ -3,7 +3,7 @@ import { openMessageMenu, copyText } from './message-menu.mjs';
 import { placeLink } from './links.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { RailMenuCommands } from './rail-menu-commands.mjs';
-import { stackActEnvelope, HELD_BY_STAR } from './stack-feed.mjs';
+import { stackActEnvelope } from './stack-feed.mjs';
 import { archiveReadConfirmed } from './archive-new.mjs';
 
 const TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -70,11 +70,10 @@ export class ImageArchive {
     const request = stackActEnvelope({ instanceId: handles.bootstrap.instance_id, authority: handles.bootstrap.authority,
       kind: 'stack.aside', item: { id: position.root_id, acts: { aside_revision: position.aside_revision } },
       args: { through: below ? null : latest.items[0].seq, ...(!below ? { clear_new: true } : {}) } });
-    return { key, label, request, topicId: image.topic_id, before: { through: position.through, key: position.order_key }, disabled: !below && Boolean(position.starred?.length) };
+    return { key, label, request, topicId: image.topic_id, before: { through: position.through, key: position.order_key } };
   }
   async perform(handles, plan, current) {
     still(current);
-    if (plan.disabled) throw Error(HELD_BY_STAR);
     if (plan.request.args.clear_new === true && !('finishArchive' in plan))
       plan.finishArchive = handles.captureArchiveReading?.(plan.request.target.message_id, plan.request.args.through, plan.topicId) ?? null;
     this.pending.set(plan.key, { ...plan, label: plan.label.replace(/^Retry /, '') });
@@ -165,7 +164,7 @@ export class ImageRailMenu {
           link.href = url; link.download = media.attachment.name; rail.doc.body.append(link); link.click(); link.remove();
           rail.win.setTimeout(() => URL.revokeObjectURL(url), 1000); this.notice('Download started.');
         }) },
-        { label: plan.label, glyph: 'archive', disabled: plan.disabled, description: plan.disabled ? HELD_BY_STAR : 'For you, including replies in its dossier', act: () => perform(async () => {
+        { label: plan.label, glyph: 'archive', description: 'For you, including replies in its dossier', act: () => perform(async () => {
           const undo = await this.archive.perform(handles, plan, current);
           if (current()) { this.notice(plan.undo ? 'Message action undone.' : plan.request.args.through === null ? 'Message brought back.' : 'Message archived, for you only.', undo); handles.menuChanged?.(); }
         }) },
