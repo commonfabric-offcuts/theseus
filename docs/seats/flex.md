@@ -16,6 +16,13 @@ request stack own the slice, source and remaining work.
 
 ## First recovery reads
 
+Follow [the supplied runtime and task paths](../runtime-roots.md). The trusted
+launch supplies the selected invocation, actor/binding and working directory;
+the current assignment supplies source-worktree and durable evidence
+destinations. Report a missing required destination before writing. Task paths
+are separate from permission roots, profiles and instance selection. Keep old
+evidence paths and saved-operation identities literal when new task roots differ.
+
 Use the CLI and profile supplied for this exact flex seat. In the commands
 below, `BOUND_CLI` means that complete supplied invocation, with its original
 actor and binding; it is notation, not an alternate executable or profile.

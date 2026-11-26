@@ -34,15 +34,20 @@ the refused content through a database or another surface.
 
 ## Work and evidence
 
-Own source lives under `/Users/commonfabric/aim-worktrees`; durable helpers and
-proof live under `/Users/commonfabric/.local/share/theseus/core-lane8/evidence`.
+Follow [the supplied runtime and task paths](../runtime-roots.md): use the
+trusted launch's exact CLI/profile or broker, actor/binding and working
+directory, and the current assignment's explicit source-worktree and durable
+evidence destinations. Report a missing required destination before writing.
+These task inputs do not change permission roots, profiles or authority.
 Recover the exact branch/head and proof from the assigned piece's topic and its
 source links or attachments. Recover assigned work there even if `inbox` is
 empty; no private checkpoint or old first-assignment text supplies current work.
 Temporary fixture roots, caches and old PID references are historical evidence,
 not an operating manual. Their absence after a physical reboot establishes
 neither a successful result nor cleanup and never authorizes replay. No required
-Core8 startup recipe depends on a temp folder.
+Core8 startup recipe depends on a temp folder. Preserve historical evidence
+paths and saved operations as recorded; do not substitute a new root or binding
+into them when a task destination changes.
 
 - Keep the live checkout read-only. Create a new own worktree and branch under
   the designated worktree root; preserve other owners' trees and coordinate

@@ -56,11 +56,18 @@ script is not the fresh seat's operating manual. Recover the assigned request,
 exact source and operation references from the board first. Missing references
 remain a named recovery gap rather than permission to reconstruct a result.
 
-Owned working sources are under `/Users/commonfabric/aim-worktrees`, normally
-with a `page-lane6-` worktree name and `page-lane6/` branch. Historical raw proof,
-per-attempt launch/capture helpers and retained checkpoints are under
-`/Users/commonfabric/.local/share/theseus/page-lane6/evidence/`. Those locations
-are durable evidence, not authority to resume their oldest unfinished entry.
+Follow [the supplied runtime and task paths](../runtime-roots.md). New working
+sources use the current assignment's explicit worktree destination, normally
+with a `page-lane6-` name and `page-lane6/` branch; new proof uses its assigned
+durable evidence destination. Report a missing required destination before
+writing. The trusted launch's exact CLI/profile or broker, actor/binding and
+working directory stay selected; task destinations do not widen permissions.
+
+Historical raw proof, per-attempt launch/capture helpers and checkpoints may
+refer to `/Users/commonfabric/.local/share/theseus/page-lane6/evidence/` and
+source trees under `/Users/commonfabric/aim-worktrees`. Preserve those literal
+references and original saved-operation identities. They are evidence, not
+new-task defaults or authority to resume their oldest unfinished entry.
 Read the board's exact pointer and inspect that own tree's HEAD, dirty/untracked
 writing, input hashes and original clocks before creating another tree or
 retrying anything. Preserve parked branches and failed/incomplete proof; do not

@@ -4,24 +4,21 @@ Keep Building Theseus moving from its records. The pipeline owns the queue;
 pieces own their stages and evidence; the current-rule record owns sourced
 rulings. This file describes the role, not today's queue or restart permission.
 
-## Launching this deployment's coordinator
+## Launching the coordinator
 
-The deployment is on Tony's Mac, with repository `/Users/commonfabric/aim-next`.
-Since Tony's physical reboot of 2026-11-24, fable runs only as a hosted seat:
-its configuration is
-`/Users/commonfabric/.local/share/theseus/instances/tony-first-01/fable.hosted.json`
-and its working directory `hosted/fable/work` beside it. No external fable chat
-exists. Use the trusted startup's exact actor, CLI, profile and binding; for
-actor `fable` the invocation is:
+Follow [the supplied runtime and task paths](../runtime-roots.md). Fable runs as
+a hosted seat. Use the trusted startup's exact actor, complete CLI invocation
+with its selected profile or broker, and binding. Read the role in the selected
+CLI's repository, and use the working directory supplied by that launch; do not
+derive it from a profile filename or a historical deployment layout.
 
-```sh
-/usr/bin/python3 -I /Users/commonfabric/aim-next/bin/aim-next --profile /Users/commonfabric/.local/share/theseus/instances/tony-first-01/fable.profile.json
-```
-
-The path identifies the existing credential; do not read, print, copy or replace
-its contents. This deployment reference does not override a trusted hosted
-invocation. A binding refusal stops the affected operation; it does not authorize
-another profile or database access.
+The current assignment supplies the source-worktree and durable evidence
+destinations. Report a missing required destination before writing. They are
+task inputs, not permission roots or a replacement instance. Keep the supplied
+credential private; never read, print, copy or replace its contents. A binding
+refusal stops the affected operation and does not authorize another profile or
+database access. Historical deployment paths below identify retained receipts,
+not defaults for a new launch or task.
 
 The move to hosted is recorded, and nothing else needs to be found before
 acting. Tony relieved the external coordinator's goal before the reboot (that
@@ -55,11 +52,12 @@ checkpoint or forecast is not proof of what is running now. A freeze request
 from warp is handled as soon as its item, its carry and the current rule have
 been read; the wider reconciliation of old pending operations follows it.
 
-After a reboot, the [boot plan](../fresh-agent-boot-plan.md) gives fable two
-duties beyond this file. It sends each refreshed hosted seat an identified first
-delivery, because a hosted seat with nothing waiting never starts its fresh
-agent. It also records the trial's observations under
-`/Users/commonfabric/.local/share/theseus/reboot-trial-20261124/`.
+The [boot plan](../fresh-agent-boot-plan.md) records the physical trial's two
+coordinator duties: send each refreshed hosted seat an identified first delivery
+and retain the trial observations. A hosted seat with nothing waiting never
+starts its fresh agent. That trial's historical observation path was
+`/Users/commonfabric/.local/share/theseus/reboot-trial-20261124/`; new work uses
+its explicitly assigned evidence destination.
 
 The outcome is `building-theseus`. Discover its current topics with `topics`
 and verify the title before replying. The current communication locations are:
@@ -120,25 +118,21 @@ external chat, resume its existing native wait after a wake and verify or
 re-arm it without duplicating a live watcher. Quiet inbox and end of turn do
 not end the standing coordinator assignment.
 
-The external route below is unused since the 2026-11-24 reboot; a hosted
-fable does not run it. Keep its folder
-`/Users/commonfabric/.local/share/theseus/fable-tools` all the same: the lanes'
-hosted working directories live under its `coordinator-20261117/`, and a lane
-whose working directory vanishes is refused when it resumes. For the external
-route, the posting helper is
+The external route below is historical and unused since the 2026-11-24 reboot;
+a hosted fable does not run it. Its original folder was
+`/Users/commonfabric/.local/share/theseus/fable-tools`, with hosted working
+directories under `coordinator-20261117/`. Preserve existing directories while
+current launches or retained work reference them: a missing selected working
+directory refuses a hosted resume. The historical posting helper was
 `/Users/commonfabric/.local/share/theseus/fable-tools/post.py` and its delivery
-wait is `wait-once.py theseus` beside it. Read their usage before use. Both use
+wait was `wait-once.py theseus` beside it. Their saved environment used
 `WAIT_ONCE_ARMED=/Users/commonfabric/.local/share/theseus/fable-tools/coordinator-20261117/watch/theseus.pid`.
-Reconcile the outgoing watch and supervisor identities from the public handoff
-before starting another wait; choosing another pid-file path does not establish
-exclusive ownership. Keep the tool's running-session handle and re-arm after a
-terminal wake. The helper's readback
-does not prove that this model read an incoming message; read and handle the
-actual source before acknowledging. Record the watch check-in in **codex**.
-If these deployment helpers are missing or incompatible, report that concrete
-gap through the unchanged bound CLI; do not revive an old automation or bypass
-a refusal. A whole-system boot must establish new owned waits after the old
-processes have been reconciled, not depend on an old supervisor surviving.
+Keep those literal references when interpreting old receipts; they are not
+current startup commands or a new task's path defaults. Recover any uncertain
+old operation and process ownership from its retained records. Missing helpers
+do not authorize reviving that route, changing identity or bypassing a refusal.
+A helper's readback never proves that this model read an incoming message;
+read and handle the current source before acknowledging it.
 
 For posts, save the exact text and original operation ID before sending. Use
 either `--asks` or `--tells`, never both; a factual ask uses `--no-go-ahead`.
@@ -166,9 +160,9 @@ in the board records they belong to: the item, the piece's stage note, and the
 operation with its source message. A refreshed thread recovers them from there
 and from this repository. A local checkpoint in the hosted working directory is
 a convenience only: a refreshed thread never reads it as input, and it does not
-prove what is running now. Documentation edits use a worktree under
-`/Users/commonfabric/aim-worktrees/fable-NAME`, made with `git worktree add`, so
-the live checkout is never edited. If connection or authority fails, preserve the refusal
+prove what is running now. Documentation edits use an own `fable-NAME` worktree
+at the current assignment's supplied source destination; keep the live checkout
+read-only. If connection or authority fails, preserve the refusal
 and the operation state, report the concrete failure through the unchanged
 working channel, and continue independent authorized work. Never claim a
 background watcher proves that this coordinator has read its messages.

@@ -30,7 +30,13 @@ neither a completion receipt nor permission to rerun it.
 
 ## Durable recovery
 
-Own source branches live under `/Users/commonfabric/aim-worktrees`. Publish the
+Follow [the supplied runtime and task paths](../runtime-roots.md). The trusted
+launch supplies the exact CLI/profile or broker, actor/binding and working
+directory; use the current assignment's explicit source-worktree and durable
+evidence destinations for new work. Report a missing required destination before
+writing. These task inputs do not widen permissions or select another instance.
+
+Own source branches use that assigned destination. Publish the
 exact pushed head and base in the existing request stack. Keep readiness,
 baseline blind spots, repair owners and raw proof links or attachments there or
 in the Notebook so a fresh reader can recover them without this chat. The hosted
@@ -38,7 +44,9 @@ workspace and its private `CHECKPOINT.json` are conveniences, not the work recor
 No operating recipe requires a temporary directory. Historical fixture,
 browser-profile and PID paths remain evidence; do not manufacture cleanup or a
 pass when those paths disappear after reboot. Reconcile an incomplete review
-from its retained sources, and name missing evidence explicitly.
+from its retained sources, and name missing evidence explicitly. Historical
+paths and original saved operations retain their literal identity; do not
+rewrite them to a new task root or replacement binding.
 
 ## Work
 

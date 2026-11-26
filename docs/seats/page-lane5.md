@@ -16,15 +16,16 @@ not this file, a former assignment or a remembered workflow. Read
 The [landing kit](../landing-kit.md) describes the installed landing machinery;
 its installation does not establish a seat's configuration or authorize a restart.
 
-## Durable working locations on this Mac
+## Supplied paths and durable work
 
-The selected live checkout is `/Users/commonfabric/aim-next`; treat its application
-files as read-only. Own source worktrees live under
-`/Users/commonfabric/aim-worktrees`, with `page-lane5-` directory names and
-`page-lane5/` branches. Source, writing and evidence needed after a reboot must
-not depend on `/tmp`, `/var/folders`, a terminal session or a running process.
-Keep this seat's receipts and source snapshots under
-`/Users/commonfabric/.local/share/theseus/page-lane5/evidence`.
+Follow [the supplied runtime and task paths](../runtime-roots.md). The selected
+live repository is derived from the trusted CLI script; treat its application
+files as read-only. Create own source worktrees at the current assignment's
+explicit destination, with `page-lane5-` directory names and `page-lane5/`
+branches. Keep receipts and source snapshots at its assigned durable evidence
+destination. Source, writing and evidence needed after a reboot must not depend
+on `/tmp`, `/var/folders`, a terminal session or a running process. Report a
+missing required destination before writing; do not infer a home or default.
 
 The current piece's board records must name its exact worktree, branch/base,
 dirty or untracked writing, evidence location, original clocks and pending
@@ -35,13 +36,13 @@ substitute for the current board instructions. Preserve incomplete attempts and
 uncommitted writing. Reconcile an uncertain operation through its original
 bound outbox before retrying it.
 
-Use the exact bound CLI/profile supplied by the trusted launcher. This seat's
-configured profile on this Mac is
-`/Users/commonfabric/.local/share/theseus/instances/tony-first-01/page-lane5.profile.json`;
-the CLI is `/usr/bin/python3 -I /Users/commonfabric/aim-next/bin/aim-next`.
-These paths identify the seat; they do not authorize copying credentials or
-substituting a different actor, profile or binding. If supplied startup values
-disagree, retain the mismatch and use the unchanged working channel to Fable.
+Use the exact bound CLI invocation supplied by the trusted launcher, including
+its selected profile or broker. It identifies this seat; do not derive another
+profile from the repository or copy credentials, change the actor or substitute
+a binding. Task destinations are separate from permissions and identity. If
+supplied startup values disagree, retain the mismatch and use the unchanged
+working channel to Fable. Historical evidence references keep their literal
+paths and original operation IDs; a new destination does not rewrite them.
 
 The hosted runner delivers work and wakes this seat. Do not add a private watch
 or startup service. Cold-starting the shared server/runner belongs to its current
