@@ -97,7 +97,7 @@ def snapshot(db_path, integrity=False, columns=None):
                                                         for c in names if c not in kept}}
         broken = db.execute('PRAGMA foreign_key_check').fetchall()
         value = {'schema_version': meta.get('schema_version'), 'commit_seq': meta.get('commit_seq'), 'rows': rows,
-                 'acts_sequence': db.execute("SELECT seq FROM sqlite_sequence WHERE name='message_acts'").fetchone()[0],
+                 'acts_sequence': db.execute("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='message_acts'), 0)").fetchone()[0],
                  'acts_table_sql_sha256': hashlib.sha256(db.execute(
                      "SELECT sql FROM sqlite_master WHERE name='message_acts'").fetchone()[0].encode()).hexdigest(),
                  'broken_references': len(broken), 'broken_sample': [list(r) for r in broken[:5]], 'columns': shape}
@@ -184,7 +184,7 @@ def child(wt, home, code, argv, tag):
 def serve(wt, home, copy, instance, binding):
     """The candidate's own server process on the upgraded copy, as 07-server and 10-verify meet it: started on a
     loopback port the OS picks, its ready line awaited, / and /api/bootstrap read, then stopped with SIGTERM. The
-    server makes no outbound call. It runs as warp through a scratch profile bound to the copy's scratch authority."""
+    server makes no outbound call. It runs as the configured seat through a profile bound to the copy's scratch authority."""
     import select, signal, urllib.error, urllib.request
     profile = home / 'serve-profile.json'
     fd = os.open(str(profile), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

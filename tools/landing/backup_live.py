@@ -20,11 +20,13 @@ SPEC = json.loads((OUT / 'SPEC.json').read_text()); BASE = SPEC['base']; PREV = 
 assert subprocess.check_output(['git', '-C', LIVE, 'rev-parse', 'HEAD'], text=True).strip() == BASE
 with sqlite3.connect('file:%s?mode=ro' % (Path(SETTINGS['instance']) / 'data.sqlite3'), uri=True) as db:
     assert db.execute('SELECT number,commit_sha FROM releases ORDER BY number DESC LIMIT 1').fetchone() == (PREV, BASE)
-destination = str(instance / 'backups' / ('pre-merge-' + ITEM + '-' + datetime.datetime.now().strftime('%Y%m%dT%H%M%S')))
+backups = instance / 'backups'
+backups.mkdir(mode=0o700, exist_ok=True)
+destination = str(backups / ('pre-merge-' + ITEM + '-' + datetime.datetime.now().strftime('%Y%m%dT%H%M%S')))
 
 
 def free():
-    s = os.statvfs(str(instance / 'backups')); return s.f_bavail * s.f_frsize, datetime.datetime.now().astimezone().isoformat()
+    s = os.statvfs(str(backups)); return s.f_bavail * s.f_frsize, datetime.datetime.now().astimezone().isoformat()
 
 
 # The bundle's cost on disk is the volume's free space read just before and just after the write: a clone shares its

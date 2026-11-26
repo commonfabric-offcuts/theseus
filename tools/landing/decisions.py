@@ -1,9 +1,26 @@
 """The landing's decisions that read only values, so each is tested without a board, a clone or a deploy (1196)."""
 import datetime
+import inspect
 
 
 def clock(ms):
     return datetime.datetime.fromtimestamp(ms / 1000).strftime('%-I:%M %p')
+
+
+def admission_options(kind, admit, judgment):
+    """Ordinary preflight uses the original API. Judged admission needs explicit support."""
+    if kind == 'ordinary':
+        if judgment is not None:
+            raise ValueError('Ordinary preflight cannot carry a judgment')
+        return {}
+    if kind != 'judged-first':
+        raise ValueError('Unrecognized landing kind: %s' % kind)
+    parameter = inspect.signature(admit).parameters.get('judgment')
+    if parameter is None or parameter.kind not in (parameter.POSITIONAL_OR_KEYWORD, parameter.KEYWORD_ONLY):
+        raise ValueError('The installed deploy tool does not support judged preflight (admit judgment)')
+    if judgment is None:
+        raise ValueError('Judged preflight needs its deterministic judgment')
+    return {'judgment': judgment}
 
 
 def carry_refusal(spec, source_parents):

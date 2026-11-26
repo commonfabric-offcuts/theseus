@@ -47,6 +47,8 @@ give its owner a bounded defect to fix.
 
 Keep relevant checks quick and meaningful. Do not make every feature repeat
 fault injection, broad suites, manual baseline comparisons or long proof prose.
+Every page feature decides at intake what the performance harness needs to
+prove the change. Add the needed component or fixture data in the same piece.
 Extra work follows a concrete risk, change or failure. Keep raw diagnostics
 behind links and explain unresolved results honestly.
 
@@ -62,6 +64,13 @@ For a browser check that is not straightforward, ask **Tony** with the preview
 URL, short exact steps and expected result. Keep automated checks relevant;
 avoid spending an hour fighting a browser harness. An unanswered or unperformed
 check stays pending and its wait remains in the end-to-end clock.
+
+## Stop when a fix adds failures
+
+The landing comparison is the gate. When a checked revision introduces a new
+failure, stop that landing and report the failing cases and the narrowest cut
+that still solves the problem. Preserve the receipts and get agreement on the
+cut before starting another revision.
 
 ## Roles and first use
 
