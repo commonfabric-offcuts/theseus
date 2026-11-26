@@ -177,9 +177,9 @@ test('a join the reader makes shows where it went: the stack it goes into open, 
     assert.deepEqual(words(after(up)), ['join m1', 'm1', 'm2', 'm3'], 'B whole, then A under its join line with every read reply');
     assert.ok(words(after(up)).includes(up.select), 'the message acted on shows');
   }
-  // Drawn as any stack is drawn, folded: the head as one row and only the newest reply, which is what Tony saw.
+  // Folded, the newest reply keeps its immediate parent under the join line.
   const joined = stacksOf(items.map(item => item.id === 'm1' ? { ...item, acts: { joined: { into: 'm4', by: 'owner', at_ms: 5 } } } : item));
-  assert.deepEqual(words(rowsOf(joined[0], { level: 'folded' })), ['2 earlier replies', 'm3'], 'folded hides A and its join line');
+  assert.deepEqual(words(rowsOf(joined[0], { level: 'folded' })), ['join m1', 'm1 (folded)', '1 more reply', 'm3'], 'folded keeps the latest reply and its immediate parent');
   // ⇧⌘↓ from a reply of the newer stack: it joins the older one below, which opens.
   const down = joinShown(stacksOf([message(1), message(2, { reply_to: 'm1' }), message(3), message(4, { reply_to: 'm3' })]), 0, 'down', 'm4');
   assert.deepEqual(down, { act: { id: 'm3', into: 'm1' }, open: 'm1', level: 'open', select: 'm4' });
@@ -209,7 +209,7 @@ test('a join interleaves both stacks oldest first under the head, the join line 
   assert.deepEqual(shownRows(later), ['join A', 'A', 'b1', 'a2', 'b3', 'a11'], 'a reply to the joined stack\'s message lands last');
   const after = stacksOf([...tonys(), named('a11', 11, { reply_to: 'A' }), named('b12', 12, { reply_to: 'b1' })])[0];
   assert.deepEqual(ids(after.replies).slice(-2), ['a11', 'b12'], 'a reply to the head\'s own reply lands last too');
-  assert.deepEqual(shownRows(after, 'folded'), ['5 earlier replies', 'b12'], 'latest plus unread: the newest across both stacks, at the bottom, everything older folded above it');
+  assert.deepEqual(shownRows(after, 'folded'), ['1 earlier reply', 'b1 (folded)', '3 more replies', 'b12'], 'the newest reply keeps one compact parent');
   // Joined by someone else first, or later: the rule is the sequence, not the order of the joins.
   assert.deepEqual(ids(stacksOf(tonys({ joined: { into: 'B', by: 'owner', at_ms: 1 } }))[0].replies), ['A', 'b1', 'a2', 'b3']);
 });

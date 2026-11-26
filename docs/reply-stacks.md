@@ -295,11 +295,16 @@ their acts.
   already read and not starred. The reader's starred replies remain visible
   in their chronological places in latest plus unread, including after a
   reload; once the star is off, an older read reply hides again at the next
-  change of the stack's state, on coming back, or after a reload. This uses
-  that reader's existing acts, never another reader's stars. Read asks do not
+  change of the stack's state, on coming back, or after a reload.
+  This uses that reader's existing acts, never another reader's stars. Read asks do not
   add an exception. An agent-only dossier's explicit header-only state is
   unchanged; opening it to latest plus unread applies the same star rule.
   Coming back also returns off-screen fully open stacks to the partial view.
+
+  Closing the dossier after revealing older history hides unrelated loaded
+  replies again and keeps their order for the next open. The latest and New
+  replies can show their immediate loaded parent in one compact row. Saved
+  individual message folds still apply to selected replies.
 - **Folded messages.** A message the reader folded stays folded for them, on
   every device and after a reload, until they unfold it; nobody else's view
   changes. Wherever its stack shows it, at every state, fully open included,
