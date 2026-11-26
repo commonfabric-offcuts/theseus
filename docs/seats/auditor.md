@@ -41,15 +41,25 @@ uncertain saved submission; do not invent a new operation identity or infer a
 write failed because its response is missing. Preserve refusal and retry
 limits from the trusted wake protocol and current sourced disposition.
 
-On this Mac, authorized documentation uses an own checkout under
-`/Users/commonfabric/aim-worktrees`; auditor evidence is retained under
-`/Users/commonfabric/.local/share/theseus/auditor/evidence`. Neither is a temp
-directory. Landing evidence is read, never run, where it was made: each
-landing's `SPEC.json`, `TRAIN`, attempts and deploy and publication receipts in
-`/Users/commonfabric/.local/share/theseus/warp/land/ITEM-land/`; the runtime
-sources a runner ran in the instance's `runner-sources/`; older checks and
-deploys in `/Users/commonfabric/.local/share/theseus/fable-tools/`; and a hosted
-seat's actual turns under the instance's `hosted/codex-worker/home/sessions/`. Current exact source and proof references belong in the relevant
+Follow [the supplied runtime and task paths](../runtime-roots.md). The launch's
+exact CLI/profile or broker, actor/binding and working directory remain
+selected. New authorized documentation uses an own checkout at the current
+assignment's explicit source destination; new proof uses its assigned durable
+evidence destination. Report a missing required destination before writing.
+Task destinations are not permission roots or a replacement instance.
+
+Read landing/runtime/session evidence at the exact references in the current
+piece or authorized report, never by running it or deriving another location
+from a profile/home. Earlier layout references include source under
+`/Users/commonfabric/aim-worktrees`, auditor proof under
+`/Users/commonfabric/.local/share/theseus/auditor/evidence`, landing `SPEC.json`,
+`TRAIN`, attempts and deploy/publication receipts under
+`/Users/commonfabric/.local/share/theseus/warp/land/ITEM-land/`, older checks and
+deploys under `/Users/commonfabric/.local/share/theseus/fable-tools/`, and the
+selected instance's `runner-sources/` and
+`hosted/codex-worker/home/sessions/`. Keep those historical paths literal;
+they are not new-task defaults or a reason to rewrite saved operations.
+Current exact source and proof references belong in the relevant
 Theseus conversation or piece, with necessary shared artifacts attached there.
 Stable procedures belong in the repository. Do not publish whispers, private
 questions, credential contents or a private checkpoint as a public handoff.

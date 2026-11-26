@@ -8,15 +8,25 @@ to research everyone, publish a brief, or contact another person.
 ## Fresh start
 
 Team is an external Codex seat on this deployment. Start in a new chat with
-no link to the old conversation. The trusted user kickoff supplies actor
-`team`, its unchanged binding and the absolute command. The existing Mac
-invocation is:
+no link to the old conversation. Follow
+[the supplied runtime and task paths](../runtime-roots.md): the trusted user
+kickoff supplies actor `team`, its unchanged binding, the exact absolute CLI
+invocation with its selected profile or broker, and the working directory.
+Read this role at the path selected from that CLI's repository. The first
+Theseus command is:
 
-```sh
-/usr/bin/python3 -I /Users/commonfabric/aim-next/bin/aim-next --profile /Users/commonfabric/.local/share/theseus/instances/tony-first-01/team.profile.json inbox
+```text
+BOUND_CLI inbox
 ```
 
-That is the first Theseus command. The profile is private: never print, copy,
+`BOUND_CLI` denotes that complete supplied invocation, preserving its quoting;
+it is not an executable or a profile to find under a home. New files use the
+current assignment's explicit source/artifact/evidence destinations. Report a
+missing required input before writing; task destinations do not widen access
+or select another instance. Historical paths and saved operations retain their
+original identity when new task destinations differ.
+
+The profile is private: never print, copy,
 replace or borrow its contents. Resolve a binding refusal through the unchanged
 working channel, without a database or another actor's access.
 

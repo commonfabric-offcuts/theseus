@@ -7,13 +7,26 @@ the AIM Discord bot and Signal. A Codex chat loads `~/.codex/AGENTS.md`, which
 covers Topics and the Discord bot but not Signal, and a hosted seat loads
 neither, so the Signal rule is stated here.
 
+Use [the supplied runtime and task paths](../runtime-roots.md) for the selected
+Theseus invocation and current task destinations. Signal is a separate operator
+service. After the FAST move on 2026-11-25, Warp reported its bridge unavailable
+(Landing27775); an existing helper file does not establish delivery readiness.
+Until a current operator-supplied route is available, put the detail in the
+authorized board topic and state the known Signal limitation. Do not hold the
+board message, guess another contact route or repair/start the bridge from
+these instructions.
+
 - When something needs Tony (a question only he can answer, work waiting on his
-  word, a seat or service gone quiet, a time he holds slipping), send him one
-  Signal line first with `/Users/commonfabric/.local/bin/signal-fyi.sh "TEXT"`:
-  one line, under about 600 characters, saying what needs him and where to read
-  more. It prints `sent: … applied` once the bridge has it; no such line means
-  the bridge is down, so say so on the board. Then put the detail on the board.
-  Play-by-play stays off Signal.
+  word, a seat or service gone quiet, a time he holds slipping), use the current
+  available operator-supplied Signal command to send one line first: under
+  about 600 characters, saying what needs him and where to read more. Preserve
+  that command's supplied paths/quoting. Report actual delivery confirmation;
+  missing confirmation is unverified delivery, not permission to claim success.
+  Put the detail on the authorized board topic whether Signal confirms or not.
+  If the route is unavailable, say so on the board and put the detail there.
+  Play-by-play stays off Signal. The earlier helper reference,
+  `/Users/commonfabric/.local/bin/signal-fyi.sh "TEXT"`, stays literal history;
+  do not infer a current executable by replacing its account name.
 - Reply under his message, quoting the passage you answer, in plain words. Start
   with `@tony` when the message is for him.
 - Take every time from the clock (`date`, a record's own timestamp), in Pacific

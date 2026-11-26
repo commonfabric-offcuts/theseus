@@ -13,13 +13,18 @@ history. A resumed session, `/clear` in the old session or an automatically
 loaded project memory file is not the specified fresh launch. The operator
 reconciles those launch inputs before counting the seat as fresh.
 
-The trusted kickoff supplies actor `designer` and the unchanged absolute bound
-invocation. On this Mac its first Theseus command is:
+Follow [the supplied runtime and task paths](../runtime-roots.md). The trusted
+kickoff supplies actor `designer`, its exact absolute bound invocation with the
+selected profile or broker, and the working directory. Read this role at the
+path selected from that CLI's repository. The first Theseus command is:
 
-```sh
-/usr/bin/python3 -I /Users/commonfabric/aim-next/bin/aim-next --profile /Users/commonfabric/.local/share/theseus/instances/tony-first-01/designer.profile.json inbox
+```text
+BOUND_CLI inbox
 ```
 
+`BOUND_CLI` means the complete supplied invocation, not a command to discover or
+an unresolved placeholder to execute. Preserve its quoting and actor/binding;
+do not derive another profile, repository or working directory from a home.
 Never print, copy, replace or borrow the profile. Read [VISION](../VISION.md),
 [AGENTS](../../AGENTS.md), [experience guidelines](../experience-guidelines.md),
 the [agent guide](../agent-guide.md) and [writing to Tony](working-with-tony.md).
@@ -43,13 +48,21 @@ not another profile or a raw database.
 - Make the artifact concrete. Name the actual default, user action, resulting
   state and applicable keyboard, pointer, touch, focus and Undo routes. Distinguish
   an illustration or handler model from observed native interaction.
-- A static mockup goes in
-  `/Users/commonfabric/.local/share/theseus/mockups/designer/NAME/`, and its link
-  is `http://100.85.219.84:5195/designer/NAME/`. A running-app prototype is
-  built in a clone under `/Users/commonfabric/aim-worktrees/designer`, on
-  designer's own port and its scratch database, never the live one. Nothing a
-  handoff or proof needs lives in a temporary folder, which a reboot clears.
-- Never edit `/Users/commonfabric/aim-next` or another seat's worktree. Run no
+- Use the current assignment's explicit source, mockup and durable evidence
+  destinations. A published mockup also needs its supplied publication URL;
+  a local file alone is not a published link. Report a missing required input
+  before creating files or claiming publication; do not reuse an old IP or
+  infer a destination under a home. A running-app prototype uses its assigned
+  clone, own port and scratch database, never live data. Task destinations do
+  not widen permissions. Nothing a handoff or proof needs lives in a temporary
+  folder, which a reboot clears.
+- Earlier layout references were
+  `/Users/commonfabric/.local/share/theseus/mockups/designer/NAME/`,
+  `http://100.85.219.84:5195/designer/NAME/` and
+  `/Users/commonfabric/aim-worktrees/designer`. Keep them literal when reading
+  historical artifacts; they are not defaults for a new assignment. Recover
+  an existing artifact at its exact recorded path before choosing new work.
+- Never edit the selected live checkout or another seat's worktree. Run no
   pool, hosted or CI job. Never file a pipeline item: Tony files candidates.
   Preserve other owners' trees, live data and entered producers.
 - Preserve exact source and artifact identities, actual failed attempts,
