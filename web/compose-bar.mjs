@@ -98,11 +98,12 @@ function trackKeyboard(win, doc) {
     // changed phone viewport; ordinary page scrolling does not pull it back.
     if (typing && event?.type === 'focusin') revealCardReply(field, win);
     const pencilSheet = field?.closest?.('dialog')?.matches?.('.composer-home:not(.notebook-mode)');
+    const cardReply = field?.closest?.('.card-reply-composer');
     if (typing && reduced && scrollingField !== field && win.matchMedia(PHONE).matches) {
-      // A phone pencil's own scroll pans the visual viewport. Answering that
-      // pan scrolls again and bounces the page. Focus/keyboard changes settle;
-      // typing only lifts a grown foot. Other composers retain their policy.
-      if (pencilSheet) {
+      // A composer scroll can pan the visual viewport. For the pencil and
+      // feed reply, settle on focus or keyboard resize and lift a growing
+      // field while typing without chasing that pan back down the page.
+      if (pencilSheet || cardReply) {
         if (widthChanged || vv.height !== last || event?.type === 'focusin') settle(false);
         else if (event?.type === 'input' && event.target === field) settle(true);
       } else if (changed || event?.type === 'focusin' || event?.type === 'input' && event.target === field) settle(false);

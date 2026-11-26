@@ -35,3 +35,15 @@ test('1173 inline opening and the existing close owner retain the exact draft af
   await f.open(); assert.equal(f.root.hidden, false); assert.equal(f.field.value, draft.body);
   assert.deepEqual(f.editor.draft, draft); assert.ok(f.focusOptions.every(value => value.preventScroll === true));
 }));
+
+
+test('a reply typed during visual viewport pans does not chase each pan', () => replyScroll1173(async f => {
+  await f.open(); f.emit('resize', { height: 430 }); f.pump(); f.trace.length = 0;
+  const top = f.state.pageTop;
+  for (const offsetTop of [100, 0, 100, 0]) {
+    f.emit('scroll', { offsetTop }); f.input(); f.pump();
+  }
+  assert.deepEqual(f.applications(), []);
+  assert.equal(f.state.pageTop, top);
+  assert.equal(f.doc.activeElement, f.field);
+}));

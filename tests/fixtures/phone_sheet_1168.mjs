@@ -71,6 +71,7 @@ export function viewport1168(surface, run, options = {}) {
     f.composer.parentElement = dialog;
     f.field.closest = selector => {
       if (selector === 'dialog') return dialog;
+      if (surface === 'reader' && selector === '.card-reply-composer') return null;
       if ((surface === 'pencil' || surface === 'notebook') &&
           (selector.includes('#reader') || selector.includes('card-reply'))) return null;
       return originalClosest(selector);
