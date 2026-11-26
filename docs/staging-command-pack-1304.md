@@ -86,6 +86,11 @@ preservation. Verify the copied full package with `codesign --verify --deep
 --version`, and confirm node/gh/dependencies and exact code SHAs through 1308's
 preflight. Any unsupported package metadata is a staging blocker, not an excuse
 to launch a partial runtime. Do not execute profiles, routes or copied scripts.
+Runtime pin from source/destination readiness27694: Node must be `v26.12.1`, as
+on the source, before reusing Node proof. Destination `v22.17.1` is a mismatch.
+1308 must verify an exact complete compatible Node installation and dependencies;
+select its resolved package/dependencies explicitly or report the blocker. This
+Python-only pack neither installs Node nor certifies a borrowed single binary.
 
 1304 runs only isolated synthetic controls. Actual external APFS encryption,
 mount/UID access, selected totals, throughput, destination binaries/signatures
