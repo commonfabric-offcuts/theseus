@@ -6995,6 +6995,56 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
     await press(p, device, selector);
   };
 
+  await check('reading stacks thumb and fold close only the same empty inline reply', async () => {
+    for (const device of ['laptop', 'phone']) {
+      const topic = 'close-empty-reply-' + device;
+      const ids = await seed(topic, [
+        ['root', { sender: other, join: true, addressees: [facts.actor], body: 'Dossier root.', read: true, divergence_reason: 'Independent inline reply fixture.' }],
+        ...['thumb', 'fold', 'space', 'last'].map(key =>
+          [key, { sender: other, reply_to: 'root', addressees: [facts.actor], body: 'Card for ' + key + '.', reply_without_quote: 'Testing the inline reply on this card.' }]),
+      ]);
+      const p = await open(topic, device, topic, ids.root);
+      const field = id => '#reply-' + id + '-writing-body';
+      const visible = id => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(field(id))})?.getClientRects().length)`);
+      const startReply = async id => {
+        const target = words(id);
+        await centre(p, target);
+        if (device === 'phone') {
+          if (!(await lit(p)).includes(id)) {
+            await tap(p, target, 'center');
+            await until(async () => (await lit(p)).includes(id), 'the touch lit the intended card');
+          }
+          await act('reply');
+        } else await press(p, device, target);
+        await until(() => visible(id), device + ': card reply is visible');
+      };
+      const act = async name => {
+        const control = '.message-bar [data-act=' + name + ']';
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(control)})?.getClientRects().length)`), 'action is visible');
+        await press(p, device, control);
+      };
+      try {
+        await fullyOpen(p, device, ids);
+        await startReply(ids.thumb);
+        await act('thumb');
+        await until(async () => await thumbedBy(ids.thumb) && !await visible(ids.thumb), device + ': committed thumb closes empty reply');
+        await startReply(ids.fold);
+        await act('fold');
+        await until(async () => await foldOf(topic, ids.fold) && !await visible(ids.fold), device + ': committed fold closes empty reply');
+        await until(async () => (await folded(p, ids.fold)).row, device + ': saved fold is visible');
+        await startReply(ids.space);
+        await p.send('Input.insertText', { text: '  ' });
+        await act('thumb');
+        await until(() => thumbedBy(ids.space), device + ': thumb with writing is recorded');
+        assert.equal(await visible(ids.space), true, device + ': whitespace protects the open reply');
+        assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(field(ids.space))}).value`), '  ');
+        assert.deepEqual(p.errors, []);
+      } finally {
+        await p.close();
+      }
+    }
+  });
+
   // Tony's 5418: a message shown whole in a dossier keeps its agent name's pill as it had it before item 471, the same
   // computed corner, fill, border and padding as the base drew; a folded row keeps 471's plain name.
   const BASE_PILL = { radius: '4.8px', border: 'none 0px', padding: '0px 4px', margin: '-4px' };
