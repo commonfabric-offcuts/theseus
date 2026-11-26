@@ -14,7 +14,9 @@ revision fencing, pending operation identity, retry, and Undo.
 
 Opening or dismissing the choice records nothing and keeps personal placement,
 names and covers. Escape, Tab, outside pointer and anchor-moving scroll use
-the existing menu dismissal and focus restoration. Repeated activation cannot
+the existing menu dismissal, positioned at the visible activator (including a
+folded row or dossier header) and restoring that stop, never its hidden inner
+card. A stop that has become hidden is not focused. Repeated activation cannot
 commit twice. A deliberate join keeps the existing reveal/focus and Undo;
 1268 Split back out remains available.
 

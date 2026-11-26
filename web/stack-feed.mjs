@@ -837,10 +837,20 @@ export class StackFeed {
       entry.dataset.id, source.id, from.id, dossierOf(from), destination.id, target.id, dossierOf(target),
       Boolean(positionOf(from)?.below), revision, acts.joined?.into ?? null, ...names]) };
   }
-  join(entry, way) {
+  join(entry, way, { anchor = this.doc.activeElement } = {}) {
     const choice = this.joinChoice(entry, way);
     if (!choice) { this.say('No current neighboring dossier to join. Read this dossier again.'); return; }
-    return openDossierJoin({ anchor: cardIn(entry), choice, current: () => this.joinChoice(entry, way),
+    const visible = node => {
+      if (!node?.isConnected || !node.getClientRects?.().length) return false;
+      for (let at = node; at; at = at.parentElement) if (at.hidden) return false;
+      return true;
+    };
+    const section = stackOf(this.list, entry)?.section;
+    const origin = visible(anchor) && (entry.contains(anchor) || section?.contains(anchor)) ? anchor
+      : [entry.querySelector('.fold-line'), cardIn(entry)].find(visible);
+    if (!origin) { this.say('Open Join from the visible dossier or message.'); return; }
+    return openDossierJoin({ anchor: origin, canRestore: () => visible(origin), choice,
+      current: () => visible(origin) ? this.joinChoice(entry, way) : null,
       commit: now => this.joinConfirmed(entry, way, now), say: words => this.say(words), doc: this.doc });
   }
   // The named choice delegates to the existing join owner, after rechecking.
@@ -1285,7 +1295,7 @@ export class StackFeed {
       return found ? this.setAside(found.stack, true) : false;
     }
     if (action === 'move-up' || action === 'move-down') return this.move(entry, action.slice(5));
-    if (action === 'join-up' || action === 'join-down') return this.join(entry, action.slice(5));
+    if (action === 'join-up' || action === 'join-down') return this.join(entry, action.slice(5), { anchor: at });
   }
   // x on a message (item 388): folds it to its row, as Fold in ⋯ does
   // (setFold), and x again unfolds it; the keys stay on its row, and ⌘Z puts

@@ -1,9 +1,9 @@
 import { StackFeed } from '../../web/stack-feed.mjs';
 import { renderer799 } from './renderer799.mjs';
-import { cardIn } from '../../web/fold.mjs';
+import { cardIn, foldCard } from '../../web/fold.mjs';
 
 // Actual renderer/feed/menu code, inert geometry; no native input claims.
-export function joinFixture({ unloaded = false, phone = false } = {}) {
+export function joinFixture({ unloaded = false, phone = false, header = false } = {}) {
   const r = renderer799('reader'), doc = r.list.ownerDocument;
   doc.body = doc.byId('body'); doc.body.append(r.list); r.list.id = 'messages';
   const listeners = [];
@@ -14,6 +14,9 @@ export function joinFixture({ unloaded = false, phone = false } = {}) {
   const create = doc.createElement;
   doc.createElement = tag => { const node = create(tag); node.nodeType = 1;
     node.getBoundingClientRect = () => ({ top: 40, left: 50, right: 100, bottom: 80 });
+    const visible = () => { for (let at = node; at; at = at.parentElement) if (at.hidden) return false; return true; };
+    node.getClientRects = () => visible() ? [node.getBoundingClientRect()] : [];
+    node.focus = () => { if (visible() && node.isConnected) doc.activeElement = node; };
     Object.defineProperties(node, { offsetWidth: { value: 280 }, offsetHeight: { value: 120 } }); return node; };
   doc.getElementById = id => ['new-message', 'reader-aside'].includes(id) ? { querySelector: () => ({ cloneNode: () => doc.createElementNS('', 'svg') }) } : null;
   const position = (id, order) => ({ root_id: id, order_key: order, order_tie: order, name: { text: id + ' dossier' }, name_revision: 1,
@@ -22,7 +25,8 @@ export function joinFixture({ unloaded = false, phone = false } = {}) {
     acts: { join_revision: 3, name: { text: root + ' dossier' }, cover: { stands: root + ' cover' } }, stack_position: position(root, order) });
   const source = item(unloaded ? 'branch' : 'source', 2, 'source', 20);
   if (unloaded) source.reply_to = 'source';
-  r.add([item('above', 3, 'above', 30), source, item('below', 1, 'below', 10)]);
+  r.add([item('above', 3, 'above', 30), source, item('below', 1, 'below', 10),
+    ...(header ? [{ ...item('source-reply', 4, 'source', 20), reply_to: 'source' }] : [])]);
   const calls = [], focuses = [], notices = [], authority = { authority_id: 'authority', authority_epoch: 'epoch' };
   const feed = Object.create(StackFeed.prototype);
   Object.assign(feed, { list: r.list, doc, messages: () => r.messages, instanceId: 'instance', viewer: 'reader', authority: () => authority,
@@ -43,5 +47,11 @@ export function joinFixture({ unloaded = false, phone = false } = {}) {
   const confirm = () => { const button = menu()?.querySelectorAll('button').find(b => b.text.startsWith('Join “'));
     if (!button) throw Error('No explicit named Join choice'); return click(button); };
   const close = () => opened.forEach(menu => menu.close(false));
-  return { ...r, doc, feed, calls, focuses, notices, authority, selected, entry, key, menu, click, confirm, listeners, opened, close };
+  const foldSource = () => {
+    const card = cardIn(entry()), parent = card.parentElement, next = card.nextElementSibling;
+    const fold = foldCard(card, { ...r.messages.get(selected), addressees: [] }, doc);
+    parent.insertBefore(fold, next); feed.arrange(); return fold.querySelector('.fold-line');
+  };
+  const pressFrom = at => { at.focus(); return feed.key({ key: 'ArrowUp', metaKey: true, shiftKey: true, target: at, preventDefault() {} }); };
+  return { ...r, doc, feed, calls, focuses, notices, authority, selected, entry, key, menu, click, confirm, listeners, opened, close, foldSource, pressFrom };
 }

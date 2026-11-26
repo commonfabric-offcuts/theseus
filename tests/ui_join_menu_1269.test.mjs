@@ -39,3 +39,20 @@ test('1269 keyboard while the menu owns focus cannot send a hidden join', async 
   f.feed.key({ key: 'ArrowUp', metaKey: true, shiftKey: true, target: at, preventDefault() { throw Error('Menu owns its keys'); } });
   await f.feed.chain; assert.equal(f.calls.length, 0);
 });
+for (const originKind of ['folded row', 'dossier header']) for (const dismissal of ['Cancel', 'Escape', 'Tab']) test(`1269 ${originKind} ${dismissal} restores the visible activator; hidden cards refuse focus`, async t => {
+  const f = joinFixture({ header: originKind === 'dossier header' }); t.after(f.close);
+  const origin = originKind === 'folded row' ? f.foldSource() : f.entry().closest('.reply-stack').querySelector('.stack-toggle');
+  assert.ok(origin);
+  cardIn(f.entry()).hidden = true;
+  const m = f.pressFrom(origin); assert.ok(m); assert.equal(f.calls.length, 0);
+  if (dismissal === 'Cancel') f.click(m.root.querySelectorAll('button')[0]); else key(m, dismissal);
+  await f.feed.chain; assert.equal(f.calls.length, 0); assert.ok(f.doc.activeElement === origin, 'visible activator keeps focus');
+  assert.ok(m.anchor === origin, 'menu uses the visible activator'); assert.equal(origin.getClientRects().length, 1);
+});
+for (const originKind of ['folded row', 'dossier header']) test(`1269 ${originKind} can deliberately join using its visible anchor`, async t => {
+  const f = joinFixture({ header: originKind === 'dossier header' }); t.after(f.close);
+  const origin = originKind === 'folded row' ? f.foldSource() : f.entry().closest('.reply-stack').querySelector('.stack-toggle');
+  cardIn(f.entry()).hidden = true;
+  const m = f.pressFrom(origin); assert.ok(m.anchor === origin, 'menu uses the visible activator'); assert.equal(f.calls.length, 0);
+  f.confirm(); await f.feed.chain; assert.equal(f.calls.length, 1); assert.equal(f.calls[0].target.message_id, 'source');
+});
