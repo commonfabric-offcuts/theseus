@@ -16,6 +16,9 @@ import sys
 import time
 import uuid
 
+TRANSPORT_FOLDER = Path('/Volumes/secretsky/theseus-move')
+TRANSPORT_UUID = 'E899C601-EF65-4C1E-9F0B-4D90AD6A7ABC'
+
 
 class Refused(ValueError):
     pass
@@ -253,10 +256,11 @@ def copy(m, digest, destination, user, extra, reserve, from_directory=None):
 
 def mount_facts(info, volume, volume_uuid):
     require(info.get('FilesystemType') == 'apfs', 'transport is not APFS')
-    require(info.get('Encryption') is True and info.get('Locked') is False, 'transport is not unlocked encrypted APFS')
+    require(type(info.get('Encryption')) is bool and info.get('Locked') is False, 'unknown encryption/locked transport')
     require(info.get('Internal') is False, 'transport is not external')
     require(info.get('WritableVolume') is True, 'transport is not writable')
-    require(info.get('GlobalPermissionsEnabled') is True, 'transport ownership is disabled')
+    require(type(info.get('GlobalPermissionsEnabled')) is bool, 'unknown transport ownership policy')
+    require(info['GlobalPermissionsEnabled'] is False, 'cross-UID transport must ignore ownership')
     require(info.get('MountPoint') == str(volume) and info.get('VolumeUUID') == volume_uuid, 'transport identity mismatch')
     return {k: info[k] for k in ('VolumeUUID', 'MountPoint', 'FilesystemType',
                                 'Encryption', 'Locked', 'Internal', 'WritableVolume',
@@ -268,11 +272,15 @@ def preflight(user, volume, volume_uuid, parent, selected, extra, reserve):
     require(sys.version_info[:2] == (3, 9), 'CPython 3.9 required')
     require(platform.system() == 'Darwin' and platform.machine() == 'arm64', 'unsupported runtime architecture')
     volume, parent = canonical(volume), private_parent(parent)
+    require(volume == TRANSPORT_FOLDER.parent and volume_uuid == TRANSPORT_UUID, 'unselected transport volume')
+    folder = canonical(TRANSPORT_FOLDER)
+    require(stat.S_ISDIR(facts(folder).st_mode), 'transport folder is not a directory')
+    require(folder.stat().st_dev == volume.stat().st_dev, 'transport folder device mismatch')
     proc = subprocess.run(['/usr/sbin/diskutil', 'info', '-plist', str(volume)],
                           capture_output=True, check=True, timeout=15)
     mount = mount_facts(plistlib.loads(proc.stdout), volume, volume_uuid)
     require(volume.is_mount(), 'not a mount root')
-    return dict(who, v=1, status='readiness_only', mount=mount,
+    return dict(who, v=1, status='readiness_only', mount=mount, transport_folder=str(folder),
                 parent_device=parent.stat().st_dev, volume_device=volume.stat().st_dev,
                 local_capacity=capacity(parent, selected, extra, reserve),
                 transport_capacity=capacity(volume, selected, 0, reserve),
@@ -286,11 +294,11 @@ def copy_preflight(a, m):
     result = preflight(a.account, volume, a.volume_uuid, destination.parent,
                        m['bytes'], a.extra_bytes, a.reserve_bytes)
     if a.from_directory is None:
-        require(volume in destination.parents, 'source leg must target selected transport')
+        require(TRANSPORT_FOLDER in destination.parents, 'source leg must target selected transport folder')
         require(destination.parent.stat().st_dev == volume.stat().st_dev, 'transport device mismatch')
     else:
         source = canonical(a.from_directory)
-        require(volume in source.parents, 'input outside selected transport')
+        require(TRANSPORT_FOLDER in source.parents, 'input outside selected transport folder')
         require(source.stat().st_dev == volume.stat().st_dev, 'input transport device mismatch')
         require(destination.parent.stat().st_dev != volume.stat().st_dev, 'destination must be local, not transport')
         info = subprocess.run(['/usr/sbin/diskutil', 'info', '-plist', str(destination.parent)],

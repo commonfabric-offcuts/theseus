@@ -1,110 +1,107 @@
 # Destination staging pack (1304)
 
-This is an offline file preparation tool, not a board transfer or authority
-tool. Warp owns execution in 1313; the destination executor must actually be
-logged in as its local `commonfabric` account. No Core import, service start,
-profile/route installation, autostart, final database export or deletion occurs.
+This offline CPython3.9 file tool is preparation only. Warp owns real1313
+execution through destination cf-hands, actually logged in as its commonfabric
+account. No Core, service, profile/route installation, autostart, final database
+export, authority change or deletion occurs.1305/1306 own final export,
+reservation, exclusion and activation; this manifest supplies no authority.
 
-`tools/stage_destination.py` snapshots an explicit selection of files/directories
-into a private manifest. Each selection root has a unique label, canonical
-absolute path and `private` boolean. It records every regular file's bytes,
-SHA256, source mode/owner and executable bit; directories are recorded too.
-Symlinks, multiply linked files, special files, cross-mount children, writable
-group/other permissions, unowned source files and changing inputs refuse.
-Private roots additionally require no group/other permissions. Unsupported
-links must be resolved by the responsible owner, never silently followed.
+Tony's27713 decision/current-rule19 selects ONLY `/Volumes/secretsky/theseus-move`
+on external APFS VolumeUUID `E899C601-EF65-4C1E-9F0B-4D90AD6A7ABC`. Encryption is
+observed/recorded, not required. The tool records ownership policy and requires
+ownership ignored for this cross-UID route. Source501 private files would be
+unreadable by destination502 with ownership enabled. Local destination files
+remain strictly private and owned by its actual account; never apply source
+numeric UID/GID. Other secretsky files stay outside all write targets. No volume
+creation, mount-policy, password, sudo/chown or erasure command is embedded.
 
-The entire pinned Codex package is one selected root, launched as `bin/codex`;
-not a single executable or app bundle. Select exact checked-out code/tool SHAs,
-private configuration, original outboxes/receipts and all retained raw evidence
-explicitly. Preserve historical path strings and request bytes. A source-side
-file inventory is not a consistent database backup. Never select the live DB,
-authority anchor/locks, sockets or active services here. The old 18:02 bundle is
-staging only. Core8's 1305/1306 protocol owns final bundle, reservation, exclusion
-and activation. This manifest cannot satisfy that protocol's reservation.
+`tools/stage_destination.py` snapshots explicit selected roots into a private
+manifest: relative path, bytes/SHA256, source mode/UID/GID and executable status.
+It rejects symlinks, hardlinks, special files, cross-mount children, group/other
+write, unowned or changing source inputs. `private:true` additionally rejects
+all group/other mode bits. Existing0644 evidence/outbox/W roots need
+`private:false`: that is source-mode classification, never public disclosure.
+All resulting transport/local directories are0700; files0600 or0700 for executables.
+Manifest/configuration/outbox contents remain opaque and off-board.
 
-Manifest and private receipt contents stay off-board. Share only their digest,
-totals, tool/source identity and status. Pin the manifest SHA256 separately on
-each leg. `copy` creates a new inactive directory, copies bytes under the
-executing user's ownership (never source numeric UID/GID), normalizes directories
-to 0700 and files to 0600/0700, verifies the full resulting tree and then writes
-`complete.json`. Existing/partial targets refuse and are retained. A completion
-marker is staging evidence only. A lost response is reconciled with `verify`
-against the original target/digest; never delete or overwrite that target.
-No automatic partial-copy resume is provided. Reject extras, missing entries,
-changed bytes, modes, ownership, hardlinks and symlinks on verification.
-
-Run all commands with CPython 3.9 and `-I`. First prepare a private selection JSON:
+Selection JSON is private0600, under a private existing0700 parent:
 
 ```json
-{"v":1,"selection_id":"a locally minted canonical UUID","roots":[
+{"v":1,"selection_id":"a canonical locally minted UUID","roots":[
   {"label":"codex-runtime","path":"/Users/commonfabric/.local/share/theseus/runtimes/codex-0.167.0-alpha.3.2","private":false},
-  {"label":"selected-private-input","path":"an explicitly reviewed canonical path","private":true}
+  {"label":"selected-evidence","path":"an explicitly reviewed canonical path","private":false},
+  {"label":"selected-private-config","path":"an explicitly reviewed canonical path","private":true}
 ]}
 ```
 
-The following is the command template; Warp supplies and records the exact
-reviewed paths, digests and byte budgets before execution. Angle-bracket values
-are required inputs, not runnable defaults. Never use another actor's profile
-to run these commands. They do not call Theseus at all.
+Select exact code/tool SHAs, the ENTIRE pinned Codex package, private configuration,
+original outboxes/receipts and all raw proof explicitly. Git refs do not replace
+proof. Preserve original request bytes and historical path strings. Do not select
+the live DB, authority anchor/locks, sockets or active services. The18:02 bundle is
+staging only; this byte inventory is not a consistent database backup.
 
-1. As source commonfabric: `snapshot --selection <private-selection.json>
-   --manifest <new-private-manifest.json>`. Record selected byte/file totals.
-2. Tony plugs/unlocks the encrypted APFS SSD. Run `preflight --account
-   commonfabric --volume <SSD-mount> --volume-uuid <observed-volume-UUID>
-   --parent <existing-private-stage-parent>
+Warp fills each angle-bracket input with reviewed exact values and records them
+before execution. Prefix each subcommand below with `/usr/bin/python3 -I
+<reviewed-checkout>/tools/stage_destination.py`. No actor profile is used.
+
+1. Source commonfabric: `snapshot --selection <private-selection.json>
+   --manifest <new-private-local-manifest.json>`. Retain its SHA256 and full
+   selected byte/file totals. Keep that digest pinned on both copy legs.
+2. After Tony mounts the selected SSD, create an explicit new0700 staging parent
+   INSIDE `/Volumes/secretsky/theseus-move`; never alter the folder or its siblings.
+   Resolve `id -u`/`id -g` independently on each Mac. Run `preflight --account
+   commonfabric --volume /Volumes/secretsky --volume-uuid
+   E899C601-EF65-4C1E-9F0B-4D90AD6A7ABC --parent <existing-private-stage-parent>
    --selected-bytes <measured> --extra-bytes <candidate-media-final-bundle-budget>
-   --reserve-bytes <explicit-reserve> --receipt <new-private-receipt.json>` on
-   each Mac. It validates actual account, Python/architecture, encrypted mounted
-   external APFS, ownership policy and refreshed local/transport capacity.
-   Unsupported/ambiguous mount facts refuse. It does not change mount policy.
-3. Source: `copy --manifest <manifest> --digest <pinned-sha256>
-   --destination <new-SSD-pack> --account commonfabric --volume <SSD-mount>
-   --volume-uuid <observed-volume-UUID> --extra-bytes <budget>
-   --reserve-bytes <reserve>`. Source roots must remain stable during this leg.
-   Copy the private manifest separately to the SSD; verify its pinned digest on
-   the destination. Retain a complete verification receipt before detach.
-4. In the destination commonfabric session, run the preflight again. Run
-   `verify --manifest <SSD-manifest> --digest <pinned-sha256> --directory
-   <SSD-pack> --transport` to prove that this account can read every transport
-   byte. It checks private modes, links and hashes but permits the source UID on
-   transport. A UID/access refusal is a stop for Warp/Tony, not permission to
-   sudo, chown broadly or relax modes.
+   --reserve-bytes <explicit-reserve> --receipt <new-private-local-receipt.json>`.
+   It validates actual user, Python3.9/arm64, unlocked external APFS UUID/mount,
+   the exact selected folder, ownership policy and refreshed local/transport
+   space. Unknown observations refuse.138GiB at19:29:14 is historical, not this check.
+3. Source: `copy --manifest <local-manifest> --digest <pinned-sha256>
+   --destination <new-pack-under-selected-private-transport-parent> --account
+   commonfabric --volume /Volumes/secretsky --volume-uuid
+   E899C601-EF65-4C1E-9F0B-4D90AD6A7ABC --extra-bytes <budget>
+   --reserve-bytes <reserve>`. Copy the private manifest alongside the pack ONLY
+   within that same selected private parent and verify its separately pinned
+   digest. Before detach retain the completion/verification receipt.
+4. Destination commonfabric: repeat preflight; `verify --manifest <SSD-manifest>
+   --digest <pinned-sha256> --directory <SSD-pack> --transport` proves this account
+   can read every selected transport byte. A real read/mode/link/hash barrier is
+   a stop, never permission to relax local ownership checks.
 5. Destination: `copy --manifest <SSD-manifest> --digest <pinned-sha256>
    --from-directory <SSD-pack> --destination <new-private-LOCAL-stage>
-   --account commonfabric --volume <SSD-mount> --volume-uuid <observed-volume-UUID>
-   --extra-bytes <budget> --reserve-bytes <reserve>`.
-   Then `verify` without `--transport`; every local inode must belong to the
-   actual destination account. Confirm stage parent is on local storage by its
-   recorded preflight/device facts; live authority never resides on the SSD.
+   --account commonfabric --volume /Volumes/secretsky --volume-uuid
+   E899C601-EF65-4C1E-9F0B-4D90AD6A7ABC --extra-bytes <budget>
+   --reserve-bytes <reserve>`. Then `verify` without `--transport` checks every
+   local inode against the actual account. CLI copy repeats mount/capacity and
+   exact folder placement checks immediately before copying; local import must
+   be on internal storage, not removable media.
 
-At each step prefix the subcommand with `/usr/bin/python3 -I
-<reviewed-checkout>/tools/stage_destination.py`. This script copies normal file
-bytes and executable status; it does not promise ACL/xattr/resource-fork/signature
-preservation. Verify the copied full package with `codesign --verify --deep
---strict <stage>/data/codex-runtime/CodexCLI.app`, then its reviewed `bin/codex
---version`, and confirm node/gh/dependencies and exact code SHAs through 1308's
-preflight. Any unsupported package metadata is a staging blocker, not an excuse
-to launch a partial runtime. Do not execute profiles, routes or copied scripts.
-Runtime pin from source/destination readiness27694: Node must be `v26.12.1`, as
-on the source, before reusing Node proof. Destination `v22.17.1` is a mismatch.
-1308 must verify an exact complete compatible Node installation and dependencies;
-select its resolved package/dependencies explicitly or report the blocker. This
-Python-only pack neither installs Node nor certifies a borrowed single binary.
+Copy creates targets exclusively, streams normal file bytes without numeric
+ownership preservation, fsyncs files, verifies the complete tree and writes
+`complete.json` last. Reject missing/extra entries, changed bytes/modes/type,
+links and local wrong ownership. Existing/partial targets refuse and stay kept.
+For a lost response, `verify` the SAME target/digest; do not overwrite/delete it.
+There is no automatic partial-copy resume. Completion means staged files only,
+not authority or durable cross-host handoff. Cooperative same-user operation is
+assumed; hostile ancestor replacement is outside the guarantee.
 
-1304 runs only isolated synthetic controls. Actual external APFS encryption,
-mount/UID access, selected totals, throughput, destination binaries/signatures
-and space are 1313 execution receipts, not claims from these tests. The 124 GiB
-19:06 report is historical; refresh immediately before copying. Account/login is
-a Tony dependency. Use the dedicated encrypted `theseus-move` volume after Tony
-creates/unlocks it, pinned by observed VolumeUUID rather than a transient disk
-number. `secretsky` is unencrypted with ownership disabled and contains Tony's
-other files: never copy private material there or alter its mode/files. This
-pack requires ownership enabled on the dedicated transport; enabling it or
-resolving cross-account readability is a separate Tony/Warp access step. No
-password, sudo or mount-policy command is embedded. CLI `copy` rechecks encrypted
-external APFS, ownership, UUID, device placement and capacity immediately before
-creating the target; the destination leg additionally requires internal storage.
-SSD erasure belongs to the separately confirmed 1311/Tony/Warp
-step after receipts/archives and round trip are preserved; no erase command is
-included here. Off switch: do not invoke the pack; no installed hooks exist.
+This copier does not promise ACL/xattr/resource-fork/signature preservation.
+Verify the copied full Codex package with `codesign --verify --deep --strict
+<stage>/data/codex-runtime/CodexCLI.app`, its reviewed `bin/codex --version` and
+all dependencies before adoption; an unsupported metadata need blocks execution.
+1308 pins Nodev26.12.1, matching source `/opt/homebrew/Cellar/node/26.12.1/bin/node`
+(SHA2564a8ab2181dd5648befd2d4932bd4ceb9782d8b81fad23ae758ecc4e170e972f9).
+Stage a supported complete native package/dependencies, not that single Mach-O.
+Destination22.17.1 was an earlier same-binary report under tonyespinoza, not a
+cf-hands version read or compatibility verdict. cf-hands must directly verify
+version/architecture/dependencies. Python3.9.x arm64 and
+Codex0.167.0-alpha.3.2 remain pinned; installation/login/execution receipts belong
+to1313/1308 and their adoption owners, not these synthetic controls.
+
+Actual both-Mac mount/readability, selected totals, throughput, capacity and
+runtime/signature proof remain execution obligations before any live fence.
+1304's real-byte synthetic UID-fact model does not establish actual502 OS access.
+After verified1311, Tony/Warp handle only the selected transfer folder under
+Tony's chosen cleanup policy, preserving required receipts/archives; this pack
+contains no deletion. Off switch: do not invoke it; no hooks are installed.

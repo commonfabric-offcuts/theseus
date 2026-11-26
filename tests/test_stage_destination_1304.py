@@ -15,6 +15,19 @@ import uuid
 
 
 TOOL = Path(os.environ.get('STAGE1304_SOURCE', str(Path(__file__).resolve().parents[1] / 'tools' / 'stage_destination.py')))
+if os.environ.get('STAGE1304_CACHE_RECEIPT'):
+    Path(os.environ['STAGE1304_CACHE_RECEIPT']).write_text(json.dumps({
+        'pycache_prefix': sys.pycache_prefix, 'ignore_environment': sys.flags.ignore_environment,
+        'isolated': sys.flags.isolated, 'executable': sys.executable, 'argv': sys.argv}) + '\n')
+
+
+def python_argv(tag):
+    result = [sys.executable, '-I']
+    if sys.pycache_prefix:
+        result += ['-X', 'pycache_prefix=' + str(Path(sys.pycache_prefix) / tag)]
+    return result
+
+
 spec = importlib.util.spec_from_file_location('stage1304', TOOL)
 stage = importlib.util.module_from_spec(spec) if TOOL.exists() else None
 if stage is not None:
@@ -23,7 +36,7 @@ if stage is not None:
 
 class NewCommand(unittest.TestCase):
     def test_new_command_can_show_help_without_core_or_a_profile(self):
-        p = subprocess.run([sys.executable, '-I', str(TOOL), '--help'], capture_output=True, text=True)
+        p = subprocess.run(python_argv('help') + [str(TOOL), '--help'], capture_output=True, text=True)
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertIn('snapshot', p.stdout)
 
@@ -57,21 +70,42 @@ class Staging(unittest.TestCase):
         self.copy()
         self.assertEqual(stage.verify(self.manifest, self.target)['manifest_digest'], self.digest)
         destination = self.root / 'local'
-        # Source UID metadata is descriptive; it is never applied to the destination.
+        # Model an ownership-ignored mount: historical source UID differs from
+        # this caller's apparent/actual local UID. Real two-Mac access is separate.
         for row in self.manifest['entries']:
-            row['source_uid'] = 123456
-        stage.copy(self.manifest, self.digest, destination, self.user, 0, 0, self.target)
+            row['source_uid'] = os.getuid() + 1000
+        alternate = self.root / 'historical-source-manifest.json'
+        digest = stage.write_new(alternate, self.manifest)
+        receipt_path = self.target / 'complete.json'
+        receipt = json.loads(receipt_path.read_bytes())
+        receipt['manifest_digest'] = digest
+        receipt_path.write_text(json.dumps(receipt))
+        pinned, actual_digest = stage.read_json(alternate, digest)
+        stage.verify(pinned, self.target, transport=True)
+        with mock.patch.object(stage.os, 'chown', side_effect=AssertionError('numeric owner applied')):
+            stage.copy(pinned, actual_digest, destination, self.user, 0, 0, self.target)
         copied = destination / 'data/opaque/original-request.json'
         self.assertEqual(copied.read_bytes(), b'{"old_binding":"unchanged"}\n')
         self.assertEqual(copied.stat().st_uid, os.getuid())
         self.assertEqual(copied.stat().st_mode & 0o777, 0o600)
         self.assertEqual((destination / 'data/opaque/bin/tool').stat().st_mode & 0o777, 0o700)
 
+    def test_nonprivate_source_classification_still_creates_private_copy(self):
+        (self.source / 'original-request.json').chmod(0o644)
+        self.selection['roots'][0]['private'] = False
+        self.manifest = stage.snapshot(self.selection)
+        path = self.root / 'classified-manifest.json'
+        self.digest = stage.write_new(path, self.manifest)
+        self.copy()
+        copied = self.target / 'data/opaque/original-request.json'
+        self.assertEqual(copied.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(copied.stat().st_uid, os.getuid())
+
     def test_cli_manifest_and_copy_entrypoints(self):
         selection = self.root / 'selection.json'
         stage.write_new(selection, self.selection)
         out = self.root / 'cli-manifest.json'
-        p = subprocess.run([sys.executable, '-I', str(TOOL), 'snapshot', '--selection', str(selection), '--manifest', str(out)], capture_output=True, text=True)
+        p = subprocess.run(python_argv('snapshot') + [str(TOOL), 'snapshot', '--selection', str(selection), '--manifest', str(out)], capture_output=True, text=True)
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertEqual(json.loads(p.stdout)['files'], 2)
         self.assertNotIn(str(self.source), p.stdout)
@@ -154,18 +188,19 @@ class Staging(unittest.TestCase):
             stage.validate_manifest(m)
 
     def test_mount_identity_encryption_ownership_and_external_required(self):
-        info = {'FilesystemType': 'apfs', 'Encryption': True, 'Locked': False,
-                'Internal': False, 'WritableVolume': True, 'GlobalPermissionsEnabled': True,
-                'MountPoint': '/Volumes/theseus-move', 'VolumeUUID': 'expected-volume'}
-        stage.mount_facts(info, Path('/Volumes/theseus-move'), 'expected-volume')
-        for key, bad in [('Encryption', False), ('GlobalPermissionsEnabled', False),
+        info = {'FilesystemType': 'apfs', 'Encryption': False, 'Locked': False,
+                'Internal': False, 'WritableVolume': True, 'GlobalPermissionsEnabled': False,
+                'MountPoint': '/Volumes/secretsky', 'VolumeUUID': stage.TRANSPORT_UUID}
+        stage.mount_facts(info, Path('/Volumes/secretsky'), stage.TRANSPORT_UUID)
+        for key, bad in [('Encryption', None), ('GlobalPermissionsEnabled', None),
+                         ('GlobalPermissionsEnabled', True),
                          ('Internal', True), ('Locked', True), ('VolumeUUID', 'other'),
-                         ('MountPoint', '/Volumes/secretsky')]:
+                         ('MountPoint', '/Volumes/other')]:
             with self.subTest(key=key), self.assertRaises(stage.Refused):
-                stage.mount_facts(dict(info, **{key: bad}), Path('/Volumes/theseus-move'), 'expected-volume')
+                stage.mount_facts(dict(info, **{key: bad}), Path('/Volumes/secretsky'), stage.TRANSPORT_UUID)
 
     def test_cli_copy_refuses_wrong_account_before_volume_or_target_access(self):
-        p = subprocess.run([sys.executable, '-I', str(TOOL), 'copy',
+        p = subprocess.run(python_argv('refused-copy') + [str(TOOL), 'copy',
             '--manifest', str(self.path), '--digest', self.digest,
             '--destination', str(self.target), '--account', 'root',
             '--volume', '/Volumes/theseus-move', '--volume-uuid', 'observed',
@@ -178,12 +213,13 @@ class Staging(unittest.TestCase):
         args = mock.Mock(destination=str(self.target), volume=str(self.root),
                          volume_uuid='observed', account=self.user,
                          extra_bytes=0, reserve_bytes=0, from_directory=None)
-        with mock.patch.object(stage, 'preflight', return_value={'checked': True}) as guard:
+        with mock.patch.object(stage, 'preflight', return_value={'checked': True}) as guard, mock.patch.object(stage, 'TRANSPORT_FOLDER', self.root):
             self.assertEqual(stage.copy_preflight(args, self.manifest), {'checked': True})
             guard.assert_called_once()
-            args.volume = str(self.source)
+            args.destination = str(self.root.parent / 'outside-selected-folder')
             with self.assertRaisesRegex(stage.Refused, 'selected transport'):
                 stage.copy_preflight(args, self.manifest)
+            args.destination = str(self.target)
             args.volume = str(self.root)
             args.from_directory = str(self.source)
             with self.assertRaisesRegex(stage.Refused, 'local, not transport'):
