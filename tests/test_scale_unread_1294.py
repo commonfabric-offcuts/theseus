@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 
@@ -32,18 +33,21 @@ class UnreadScaleCase(unittest.TestCase):
     def test_public_read_mutation_breaks_fixed_frontier_then_exact_restore_passes(self):
         seed = fixture.Seed(self.root / "mutation", 100)
         original = fixture.verify_unread(seed.root)
-        before = seed.path.read_bytes()
-        try:
-            seed.command("topic.read_through", {"seq": original["oldest_unread"]["seq"]},
-                         {"topic_id": "target"}, actor="reader")
-            changed = seed.view("topic_unread", {"topic_id": "target"})
-            self.assertNotEqual(changed["oldest_unread"]["id"], original["oldest_unread"]["id"])
-            with self.assertRaisesRegex(AssertionError, "frontier|pending"):
-                fixture.verify_unread(seed.root)
-        finally:
-            seed.path.write_bytes(before)
+        with sqlite3.connect(str(seed.path)) as db, sqlite3.connect(":memory:") as backup:
+            before = list(db.iterdump())
+            db.backup(backup)
+            try:
+                seed.command("topic.read_through", {"seq": original["oldest_unread"]["seq"]},
+                             {"topic_id": "target"}, actor="reader")
+                changed = seed.view("topic_unread", {"topic_id": "target"})
+                self.assertNotEqual(changed["oldest_unread"]["id"], original["oldest_unread"]["id"])
+                self.assertNotEqual(list(db.iterdump()), before)
+                with self.assertRaisesRegex(AssertionError, "frontier|pending"):
+                    fixture.verify_unread(seed.root)
+            finally:
+                backup.backup(db)
+            self.assertEqual(list(db.iterdump()), before)
         self.assertEqual(fixture.verify_unread(seed.root), original)
-        self.assertEqual(seed.path.read_bytes(), before)
 
 
 if __name__ == "__main__":
