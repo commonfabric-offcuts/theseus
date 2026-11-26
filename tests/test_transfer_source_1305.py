@@ -36,13 +36,16 @@ class SourceTransferCase(unittest.TestCase):
         self.create('positive-before-retirement')
         self.medium = self.root/'transport'
         self.medium.mkdir(mode=0o700)
+        self.folder = self.medium/'approved-transfer-folder'
+        self.folder.mkdir(mode=0o700)
         self.request = dict(v=1, handoff_id=str(uuid.uuid4()),
             source=dict(self.store.binding, instance_id=self.store.instance_id, db_path=str(self.path)),
             destination=dict(machine_id='destination-fixture', reservation_id=str(uuid.uuid4()),
                 activation_id=str(uuid.uuid4()), authority_path='/private/destination/authority.json',
                 candidate_path='/private/destination/new/data.sqlite3'),
-            transport=dict(mount_path=str(self.medium), volume_uuid=str(uuid.uuid4()).upper()),
-            bundle_path=str(self.medium/'bundle'))
+            transport=dict(mount_path=str(self.medium), volume_uuid=str(uuid.uuid4()).upper(),
+                           folder_path=str(self.folder)),
+            bundle_path=str(self.folder/'bundle'))
 
     def api(self):
         self.assertIsNotNone(importlib.util.find_spec('aim_next.transfer'), 'fenced transfer owner exists')
@@ -71,7 +74,8 @@ class SourceTransferCase(unittest.TestCase):
 
     def medium_facts(self, request=None):
         return dict(mount_path=str(self.medium), volume_uuid=self.request['transport']['volume_uuid'],
-                    device=self.medium.stat().st_dev, uid=os.getuid())
+                    folder_path=str(self.folder), device=self.medium.stat().st_dev,
+                    uid=os.getuid(), encrypted=False, ownership_enabled=False)
 
     def export(self, request=None):
         api = self.api()
@@ -103,6 +107,8 @@ class SourceTransferCase(unittest.TestCase):
         result = self.export()
         self.assertEqual(result['status'], 'retired')
         self.assertIs(result['durability_confirmed'], True)
+        self.assertIs(result['transport_observation']['ownership_enabled'], False)
+        self.assertIs(result['transport_observation']['encrypted'], False)
         self.assertEqual(result['source_commit'], {k: metadata[k] for k in ('commit_seq', 'commit_id')})
         self.assertEqual(self.logical(), before)
         self.old_callers_refused()
@@ -187,7 +193,7 @@ class SourceTransferCase(unittest.TestCase):
         self.refused(lambda: self.export(request), 'SOURCE_MISMATCH')
         self.assertFalse(Path(str(self.anchor)+'.transfers').exists())
 
-    def test_unencrypted_transport_refuses_before_claim(self):
+    def test_unverified_transport_refuses_before_claim(self):
         api = self.api()
         with mock.patch.object(api, 'probe_transport', side_effect=io.RecoveryError('TRANSPORT_INVALID')):
             self.refused(lambda: api.export_source(self.request), 'TRANSPORT_INVALID')
@@ -255,7 +261,7 @@ class SourceTransferCase(unittest.TestCase):
         self.assertEqual(target.stat().st_uid, os.getuid())
         self.assertNotEqual(target.stat().st_ino, blob.stat().st_ino)
 
-    def test_actual_transport_parser_requires_encryption_ownership_and_matching_uuid(self):
+    def test_transport_parser_records_plaintext_and_ignored_ownership_and_pins_folder(self):
         api = self.api()
         facts = dict(MountPoint=str(self.medium), VolumeUUID=self.request['transport']['volume_uuid'],
             FilesystemType='apfs', Internal=False, Encryption=True, EncryptionThisVolumeProper=True,
@@ -266,9 +272,16 @@ class SourceTransferCase(unittest.TestCase):
                  mock.patch.object(api.os.path, 'ismount', return_value=True):
                 return api.probe_transport(self.request)
         self.assertEqual(probe(facts)['device'], self.medium.stat().st_dev)
-        for key in ('Encryption', 'EncryptionThisVolumeProper', 'GlobalPermissionsEnabled', 'WritableVolume'):
+        self.assertIs(probe(dict(facts, GlobalPermissionsEnabled=False))['ownership_enabled'], False)
+        self.assertIs(probe(dict(facts, Encryption=False))['encrypted'], False)
+        self.refused(lambda: probe(dict(facts, GlobalPermissionsEnabled='unknown')), 'TRANSPORT_INVALID')
+        self.refused(lambda: probe(dict(facts, Encryption='unknown')), 'TRANSPORT_INVALID')
+        for key in ('WritableVolume',):
             self.refused(lambda key=key: probe(dict(facts, **{key: False})), 'TRANSPORT_INVALID')
         self.refused(lambda: probe(dict(facts, VolumeUUID='wrong-volume')), 'TRANSPORT_INVALID')
+        outside = copy.deepcopy(self.request)
+        outside['bundle_path'] = str(self.medium/'outside-approved-folder')
+        self.refused(lambda: api.export_source(outside), 'INVALID_REQUEST')
 
     def test_cli_readback_uses_private_request_and_does_not_create_claim(self):
         self.api()

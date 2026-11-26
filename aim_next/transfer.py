@@ -35,7 +35,8 @@ def _request(value):
     source, destination, transport = value['source'], value['destination'], value['transport']
     require(isinstance(source, dict) and set(source) == SOURCE_FIELDS, 'INVALID_REQUEST')
     require(isinstance(destination, dict) and set(destination) == DESTINATION_FIELDS, 'INVALID_REQUEST')
-    require(isinstance(transport, dict) and set(transport) == {'mount_path', 'volume_uuid'}, 'INVALID_REQUEST')
+    require(isinstance(transport, dict) and set(transport) == {'mount_path', 'volume_uuid', 'folder_path'},
+            'INVALID_REQUEST')
     for key in ('instance_id', 'authority_id', 'authority_epoch'):
         require(io.identifier(source[key]), 'INVALID_REQUEST')
     require(io.identifier(destination['machine_id']) and io.identifier(transport['volume_uuid']), 'INVALID_REQUEST')
@@ -44,7 +45,9 @@ def _request(value):
     paths = [io.canonical(source[k]) for k in ('db_path', 'authority_path')]
     paths += [io.canonical(destination[k]) for k in ('authority_path', 'candidate_path')]
     bundle, mount = io.canonical(value['bundle_path']), io.canonical(transport['mount_path'])
-    require(bundle != mount and bundle.is_relative_to(mount), 'INVALID_REQUEST')
+    folder = io.canonical(transport['folder_path'])
+    require(folder != mount and folder.is_relative_to(mount) and bundle != folder
+            and bundle.is_relative_to(folder), 'INVALID_REQUEST')
     require(all(not p.is_relative_to(mount) for p in paths), 'INVALID_REQUEST')
     control = Path(source['authority_path']+'.transfers')
     require(not control.is_relative_to(bundle) and not bundle.is_relative_to(control)
@@ -65,14 +68,16 @@ def probe_transport(request):
     require(isinstance(facts, dict) and facts.get('MountPoint') == str(mount)
             and facts.get('VolumeUUID') == transport['volume_uuid']
             and facts.get('FilesystemType') == 'apfs' and facts.get('Internal') is False
-            and facts.get('Encryption') is True and facts.get('EncryptionThisVolumeProper') is True
-            and facts.get('Locked') is False and facts.get('GlobalPermissionsEnabled') is True
+            and type(facts.get('Encryption')) is bool
+            and facts.get('Locked') is False and type(facts.get('GlobalPermissionsEnabled')) is bool
             and facts.get('WritableVolume') is True, 'TRANSPORT_INVALID')
     info = mount.lstat()
     parent = Path(request['bundle_path']).parent
     io.checked(parent, True, 'TRANSPORT_INVALID')
     require(parent.stat().st_dev == info.st_dev and os.path.ismount(mount), 'TRANSPORT_INVALID')
-    return dict(mount_path=str(mount), volume_uuid=facts['VolumeUUID'], device=info.st_dev, uid=os.getuid())
+    return dict(mount_path=str(mount), folder_path=transport['folder_path'], volume_uuid=facts['VolumeUUID'],
+                device=info.st_dev, uid=os.getuid(), encrypted=facts['Encryption'],
+                ownership_enabled=facts['GlobalPermissionsEnabled'])
 
 
 def _claim_path(request):
@@ -256,6 +261,7 @@ def _export(request):
                 receipt = dict(v=1, status='retired', durability_confirmed=True,
                     handoff_id=request['handoff_id'], request_digest=io.digest_record(request),
                     source=source, destination=request['destination'], transport=request['transport'],
+                    transport_observation=medium,
                     source_commit={k: metadata[k] for k in ('commit_seq', 'commit_id')},
                     history_complete=history if type(history) is bool else None,
                     bundle_digest=bundle_digest, retired_anchor_digest=io.digest_record(retired))
