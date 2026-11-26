@@ -16,14 +16,14 @@ assert.equal(execFileSync('git',['-C',repo,'status','--porcelain'],{encoding:'ut
 const report={productHead:head,startedMs:Date.now(),status:'incomplete',arrivals:[],errors:[],network:[],coverage:[],unsupported:[],qualification:'One instrumented synthetic baseline; not general speed, native interaction acceptance or Tony incident attribution.'};
 await save('native-intent.json',{head,startedMs:report.startedMs});
 const fixture=spawn('/usr/bin/python3',['-X',`pycache_prefix=${root}/fixture-pycache`,'-I',`${here}/1298_fixture.py`,'serve'],{cwd:repo});
-let serial=0, ended=false, fixtureStderr='';const requests=new Map();
+let serial=0, ended=false, stopped=false, fixtureStderr='';const requests=new Map();
 fixture.stderr.on('data',x=>fixtureStderr+=x);
 const fixtureExit=new Promise(resolve=>fixture.once('exit',(code,signal)=>{ended=true;for(const p of requests.values())p.reject(Error('fixture exited'));requests.clear();resolve({code,signal});}));
 createInterface({input:fixture.stdout}).on('line',line=>{const value=JSON.parse(line),pending=requests.get(value.id);requests.delete(value.id);if(!pending)return;value.failure?pending.reject(Error(value.failure)):pending.resolve(value.answer);});
-const control=value=>new Promise((resolve,reject)=>{if(ended)return reject(Error('fixture ended'));const id=++serial;requests.set(id,{resolve,reject});fixture.stdin.write(JSON.stringify({...value,id})+'\n');});
+const control=value=>new Promise((resolve,reject)=>{if(ended||stopped&&value.method!=='stop')return reject(Error('fixture stopped'));const id=++serial;requests.set(id,{resolve,reject});fixture.stdin.write(JSON.stringify({...value,id})+'\n');});
 const bounded=async(promise,ms,label)=>{let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(`Deadline: ${label}`)),ms);})]);}finally{clearTimeout(timer);}};
 let browser, context, page, cdp, browserProfile, profiler=false,tracing=false;
-try {
+try { await bounded((async()=>{
   report.fixture=await bounded(control({method:'ready'}),10000,'fixture ready');
   browser=await chromium.launch({headless:false,executablePath:'/Users/commonfabric/Library/Caches/ms-playwright/chromium-1223/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing',args:['--window-size=1512,982','--theseus-1298-baseline471']});
   const bc=await browser.newBrowserCDPSession();report.browser=await bc.send('Browser.getVersion');
@@ -101,8 +101,10 @@ try {
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   report.coverSnapshot=await snapshot();verify(report.coverSnapshot,expected);report.coverProjection=await control({method:'projection'});
   report.bodyEndedMs=Date.now();assert.ok(report.bodyEndedMs-bodyStarted<=90000);report.status='complete';
-} catch(error){report.failure={name:error.name,message:error.message,stack:error.stack,atMs:Date.now()};report.status='incomplete';}
+})(),90000,'whole native pass including setup');
+} catch(error){stopped=true;report.failure={name:error.name,message:error.message,stack:error.stack,atMs:Date.now()};report.status='incomplete';}
 finally {
+  stopped=true;report.passEndedMs=Date.now();
   if(page){try{report.observations=await page.evaluate(()=>{const q=__body1298;return{events:q.events,requests:q.requests,mutations:q.mutations,inputs:q.inputs,errors:q.errors,dropped:q.dropped,overheadMs:q.overheadMs,last:q.snapshot?.()};});}catch(error){report.observationFailure=String(error);}}
   if(cdp&&profiler){try{report.cpuProfile=(await cdp.send('Profiler.stop')).profile;report.finalCoverage=await cdp.send('Profiler.takePreciseCoverage');await cdp.send('Profiler.stopPreciseCoverage');}catch(error){report.profilerFailure=String(error);}}
   if(cdp&&tracing){try{const done=new Promise(resolve=>cdp.once('Tracing.tracingComplete',resolve));await cdp.send('Tracing.end');const end=await bounded(done,10000,'trace stop');let text='';for(;;){const v=await cdp.send('IO.read',{handle:end.stream});text+=v.data;if(text.length>64*1024*1024)throw Error('trace cap');if(v.eof)break;}await cdp.send('IO.close',{handle:end.stream});await writeFile(`${root}/trace.json`,text);report.traceBytes=Buffer.byteLength(text);}catch(error){report.traceFailure=String(error);}}
