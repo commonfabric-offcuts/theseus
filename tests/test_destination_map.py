@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import fcntl
+import inspect
+from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
@@ -21,7 +23,7 @@ import test_authority_relocation as fixture
 
 AVAILABLE=importlib.util.find_spec('aim_next.destination_map') is not None
 if AVAILABLE:from aim_next import destination_map as maps
-EVIDENCE={'staged':[],'prohibited_outputs':[],'fixture_setup':[],'already_current_loaders':[],'current_mixed':[],'preservation':[],'flush_faults':[],'startup_refusals':[],'budget':[]}
+EVIDENCE={'staged':[],'prohibited_outputs':[],'fixture_setup':[],'already_current_loaders':[],'current_mixed':[],'preservation':[],'flush_faults':[],'startup_refusals':[],'budget':[],'close_faults':[]}
 THREADS={'managed-a':'11111111-2222-4333-8444-555555555555','managed-b':'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'}
 ROLE='Keep exact role λ.\nPreserve trailing spaces.  '
 
@@ -309,13 +311,45 @@ class MapCase(unittest.TestCase):
         with mock.patch.object(hosted,'_connect',side_effect=traced),mock.patch.object(broker,'_connect',side_effect=traced),mock.patch.object(io,'write_record',side_effect=checked):self.call()
         self.assertTrue(connections)
 
-    def test_final_root_close_uncertainty_keeps_observed_not_confirmed(self):
+    def test_nested_parent_root_close_uncertainty_after_visible_manifest(self):
         real=os.close;identity=io.identity(io.checked(Path(self.request['output_root']),True));hit=[]
         def fail(fd):
+            context=[dict(function=f.function,file=f.filename,line=f.lineno) for f in inspect.stack(context=0)]
             same=io.identity(os.fstat(fd))==identity and (self.output()/'manifest.json').exists();real(fd)
-            if same and not hit:hit.append(True);raise OSError('final close uncertainty')
+            if same and not hit:
+                hit.append(True);EVIDENCE['close_faults'].append({'test':self.id(),'kind':'nested parent close','fd':fd,'context':context,'manifest_exists':True})
+                raise OSError('nested parent close uncertainty')
         with mock.patch.object(os,'close',side_effect=fail):self.rejected(code='RECOVERY_UNCONFIRMED')
         self.assertEqual(hit,[True]);observed=maps.inspect_destination_map(self.request);self.assertEqual(observed['status'],'cold_map_observed');self.assertFalse(observed['durability_confirmed'])
+        self.assertIn('inspect_destination_profiles',[f['function'] for f in EVIDENCE['close_faults'][-1]['context']])
+
+    def test_exact_outer_root_fd_final_close_is_unconfirmed_with_complete_artifacts(self):
+        real_opened=io.opened;real_close=os.close;target=[];events=[];root=Path(self.request['output_root'])
+        @contextmanager
+        def opened(path,directory=False):
+            with real_opened(path,directory) as fd:
+                if not target and Path(path)==root and directory:
+                    target.append(fd);events.append({'event':'outer root captured','fd':fd,'identity':io.identity(os.fstat(fd)),
+                        'context':[dict(function=f.function,file=f.filename,line=f.lineno) for f in inspect.stack(context=0)]})
+                yield fd
+        def close(fd):
+            if target and fd==target[0]:
+                self.assertTrue((self.output()/'manifest.json').exists())
+                context=[dict(function=f.function,file=f.filename,line=f.lineno) for f in inspect.stack(context=0)]
+                self.assertNotIn('_artifacts',[f['function'] for f in context])
+                self.assertNotIn('_observed',[f['function'] for f in context])
+                self.assertIn('stage_destination_map',[f['function'] for f in context])
+                events.append({'event':'exact outer root final close','fd':fd,'context':context,'manifest_exists':True})
+                real_close(fd);raise OSError('exact outer root close uncertainty')
+            return real_close(fd)
+        before=self.preserved()
+        with mock.patch.object(io,'opened',side_effect=opened),mock.patch.object(os,'close',side_effect=close):self.rejected(code='RECOVERY_UNCONFIRMED')
+        self.assertEqual(len(target),1);self.assertEqual([e['event'] for e in events],['outer root captured','exact outer root final close'])
+        self.assertEqual(events[0]['fd'],events[1]['fd']);self.assertEqual(before,self.preserved())
+        self.assertEqual(set(p.name for p in self.output().iterdir()),{'routes.json','manifest.json'})
+        observed=maps.inspect_destination_map(self.request);self.assertEqual(observed['status'],'cold_map_observed');self.assertFalse(observed['durability_confirmed'])
+        EVIDENCE['close_faults'].append({'test':self.id(),'kind':'exact outer root final close','events':events,'observed':observed,
+            'complete_artifacts':self.case['fx'].bytes(self.output()),'whole_bytes_preserved':True,'code':'RECOVERY_UNCONFIRMED'})
 
     def test_original_three_identity_replacement_and_busy_authority_are_refused(self):
         fx=self.case['fx'];paths=[self.store.path,Path(str(self.store._authority.path)+'.lock'),Path(str(self.store._authority.path)+'.runner.lock')]
