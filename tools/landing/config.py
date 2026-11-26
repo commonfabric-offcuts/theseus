@@ -35,7 +35,8 @@ KEYS = {
     'dossier_tells': 'who a dossier is addressed to',
 }
 # A command run with the item and the release once a release is live, for the seat's own bookkeeping.
-OPTIONAL = {'on_live': 'a command run as: on_live ITEM "live RELEASE"'}
+OPTIONAL = {'on_live': 'a command run as: on_live ITEM "live RELEASE"',
+            'rehearsal_topic': "the topic whose newest root the landing rehearsal's stack read checks (unset: the newest root anywhere)"}
 
 
 def path():
