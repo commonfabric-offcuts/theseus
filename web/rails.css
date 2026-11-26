@@ -89,8 +89,12 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
    Heights come from the actual rows, including earlier stars and wrapping. */
 .ol-own[data-topic-fold]>.ol-topic-list{overflow:clip;max-height:var(--topic-fold-end);mask-image:linear-gradient(to bottom,#000 var(--topic-fold-start),transparent var(--topic-fold-end));transition:max-height .22s ease .35s}
 .ol-own[data-topic-fold]>.ol-topic-foot{overflow:clip;max-height:0;transition:max-height .22s ease .35s}
-.ol-own[data-topic-fold]:is(:focus-within,[data-topic-current],[data-topic-revealed])>.ol-topic-list{max-height:var(--topic-fold-full);mask-image:none;transition-delay:0s}
-.ol-own[data-topic-fold]:is(:focus-within,[data-topic-current],[data-topic-revealed])>.ol-topic-foot{max-height:var(--topic-fold-foot);transition-delay:0s}
+.ol-own[data-topic-fold]:is([data-topic-keys],[data-topic-revealed])>.ol-topic-list{max-height:var(--topic-fold-full);mask-image:none;transition-delay:0s}
+.ol-own[data-topic-fold]:is([data-topic-keys],[data-topic-revealed])>.ol-topic-foot{max-height:var(--topic-fold-foot);transition-delay:0s}
+.ol-own{position:relative}
+.ol-own[data-topic-fold][data-topic-current]:not([data-topic-keys],[data-topic-revealed])>.ol-topic-list>[data-rail-fold=peek]{opacity:0;pointer-events:none}
+#outline .ol-own[data-topic-fold][data-topic-current]:not([data-topic-keys],[data-topic-revealed]) a[data-topic-id][aria-current=page]{position:absolute;inset:var(--topic-fold-current-top) 0 auto;margin:0;z-index:1}
+.ol-own[data-topic-fold][data-topic-current]:not([data-topic-keys],[data-topic-revealed])>.ol-topic-foot a[data-topic-id][aria-current=page]{max-height:var(--topic-fold-peek-height);overflow:clip;mask-image:linear-gradient(to bottom,#000,transparent)}
 @media(prefers-reduced-motion:reduce){.ol-own[data-topic-fold]>:is(.ol-topic-list,.ol-topic-foot){transition:none}}
 /* Only New hides rows. Waiting keeps the rail's shape with 973's dim paint. */
 .outline[data-only=new] .ol-topics :is(.topic-list,#topics) a.nav-item:not(:has(.unread-count)),

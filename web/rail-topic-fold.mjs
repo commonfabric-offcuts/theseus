@@ -1,21 +1,31 @@
 // The outline's visual fold, never a second topic list. TopicRail retains
 // every link, its marks, order and navigation; the keyboard tree retains reach.
 export const TOPICS_AT_REST = 7;
+const REST_MS = 250, REST_DISTANCE = 6;
+const MODIFIERS = new Set(['Alt', 'Control', 'Meta', 'Shift']);
+const addListener = (target, type, fn, options) => target?.addEventListener?.(type, fn, options);
 
 export class RailTopicFold {
-  constructor({ area, host, footer, doc = area.ownerDocument }) {
+  constructor({ area, host, footer, doc = area.ownerDocument, listen = addListener }) {
     Object.assign(this, { area, host, footer, doc, win: doc?.defaultView });
     this.pending = null; this.frame = null; this.disposed = false; this.dirty = true;
     // Detached HTML documents have no browsing context. Leave their list
     // available; there is no viewport, pointer or animation frame to fold for.
     if (!this.win) return;
+    const open = () => area.hasAttribute('data-topic-revealed') || area.hasAttribute('data-topic-keys');
+    const folded = () => area.hasAttribute('data-topic-fold') && !open();
+    const atPeek = event => {
+      const link = event.target.closest?.('a[data-topic-id]');
+      return link && area.contains(link) && (link.dataset.railFold === 'peek' ||
+        (area.hasAttribute('data-topic-current') && link.getAttribute('aria-current') === 'page'));
+    };
+    const reveal = () => { this.cancelRest(); area.setAttribute('data-topic-revealed', ''); };
     this.down = event => {
       this.pending = null;
-      if (event.pointerType !== 'touch' || !this.win.matchMedia('(max-width: 760px)').matches ||
-          !area.hasAttribute('data-topic-fold') || area.hasAttribute('data-topic-revealed') ||
-          area.hasAttribute('data-topic-current') || area.contains(doc.activeElement)) return;
-      const link = event.target.closest('a[data-topic-id]');
-      if (link?.dataset.railFold === 'peek') this.pending = link;
+      if (event.button !== 0 || !folded() || !atPeek(event)) return;
+      this.openingPress = true;
+      if (event.pointerType === 'touch') this.pending = event.target.closest('a[data-topic-id]');
+      reveal();
     };
     this.click = event => {
       const link = this.pending; this.pending = null;
@@ -24,31 +34,65 @@ export class RailTopicFold {
       event.preventDefault(); event.stopPropagation();
       link.focus({ preventScroll: true });
     };
-    // Only movement near the measured fade reveals more. Once revealed,
-    // leaving or scrolling cannot close it; the next page action does.
     this.revealMove = event => {
-      if (event.pointerType === 'touch' || !this.win.matchMedia?.('(hover: hover)').matches ||
-          !area.hasAttribute('data-topic-fold') || !this.revealZone || !Number.isFinite(event.clientY)) return;
-      const y = event.clientY - host.getBoundingClientRect().top;
-      if (y >= this.revealZone.start && y <= this.revealZone.end) area.setAttribute('data-topic-revealed', '');
+      const zone = this.revealZone;
+      const y = zone && event.clientY - host.getBoundingClientRect().top;
+      if (!folded() || event.pointerType === 'touch' || !this.win.matchMedia?.('(hover: hover)').matches ||
+          !zone || !atPeek(event) || !(y >= zone.start && y <= zone.end) || !Number.isFinite(event.clientX)) {
+        this.cancelRest(); return;
+      }
+      if (this.rest && Math.hypot(event.clientX - this.rest.x, event.clientY - this.rest.y) < REST_DISTANCE) return;
+      this.cancelRest();
+      this.rest = { x: event.clientX, y: event.clientY };
+      this.rest.timer = this.win.setTimeout(reveal, REST_MS);
     };
-    this.closeReveal = () => area.removeAttribute('data-topic-revealed');
-    area.addEventListener('pointermove', this.revealMove, { passive: true });
-    // Window capture also precedes application handlers that stop document
-    // capture, and includes both rails when their own handlers stop bubbling.
-    // Never cancel the click/key whose action dismisses the pointer reveal.
-    this.actionRoot = this.win.addEventListener ? this.win : doc;
-    this.actionRoot.addEventListener?.('click', this.closeReveal, true);
-    this.actionRoot.addEventListener?.('keydown', this.closeReveal, true);
-    // A sideways trackpad swipe outside the list archives or folds a dossier with no click or key press, so it is a
-    // page action too, as the archive shelf's menu treats it. Vertical scrolling, and anything inside the list, is not.
+    this.cancelRest = () => {
+      if (this.rest) this.win.clearTimeout(this.rest.timer);
+      this.rest = null;
+    };
+    this.closeReveal = () => {
+      this.cancelRest();
+      area.removeAttribute('data-topic-revealed');
+      area.removeAttribute('data-topic-keys');
+    };
+    this.press = event => {
+      this.keyboard = false; this.openingPress = false;
+      this.cancelRest();
+      if (!area.contains(event.target)) area.removeAttribute('data-topic-keys');
+    };
+    this.dismissClick = event => {
+      const inside = area.contains(event.target);
+      const keyboardClick = event.detail === 0 && area.hasAttribute('data-topic-keys');
+      if (!inside || !(this.openingPress || keyboardClick)) this.closeReveal();
+      this.openingPress = false;
+    };
+    this.key = event => {
+      if (MODIFIERS.has(event.key)) {
+        if (!area.contains(event.target)) this.closeReveal();
+        return;
+      }
+      this.keyboard = true;
+      if (area.contains(event.target)) area.setAttribute('data-topic-keys', '');
+      else this.closeReveal();
+    };
+    this.focus = () => { if (this.keyboard) area.setAttribute('data-topic-keys', ''); };
+    this.blur = event => { if (!area.contains(event.relatedTarget)) area.removeAttribute('data-topic-keys'); };
     this.swipe = event => {
-      if (area.contains(event.target) || !(Math.abs(event.deltaX) > Math.abs(event.deltaY))) return;
-      this.closeReveal();
+      if (!area.contains(event.target) && Math.abs(event.deltaX) > Math.abs(event.deltaY)) this.closeReveal();
     };
-    this.actionRoot.addEventListener?.('wheel', this.swipe, true);
-    area.addEventListener('pointerdown', this.down, true);
-    area.addEventListener('click', this.click, true);
+    this.localEvents = [
+      ['pointermove', this.revealMove, { passive: true }], ['pointerleave', this.cancelRest], ['pointercancel', this.cancelRest],
+      ['pointerdown', this.down, true], ['click', this.click, true], ['focusin', this.focus], ['focusout', this.blur],
+    ];
+    for (const args of this.localEvents) area.addEventListener(...args);
+    // These capture listeners belong to the persistent shell, including when
+    // a page's capture handlers stop delivery or its navigation scope ends.
+    this.actionRoot = this.win.addEventListener ? this.win : doc;
+    this.actions = [
+      ['pointerdown', this.press, true], ['click', this.dismissClick, true],
+      ['keydown', this.key, true], ['wheel', this.swipe, true], ['scroll', this.cancelRest, true],
+    ];
+    for (const args of this.actions) listen(this.actionRoot, ...args);
     this.invalidate = () => { if (!this.disposed) { this.dirty = true; this.soon(); } };
     this.changed = records => !records || records.some(record => record.type !== 'attributes' ||
       record.oldValue !== record.target.getAttribute(record.attributeName));
@@ -69,9 +113,9 @@ export class RailTopicFold {
       this.sizes = new this.win.ResizeObserver(this.invalidate);
       this.sizes.observe(host); this.sizes.observe(footer);
     }
-    this.win.addEventListener?.('resize', this.invalidate);
+    listen(this.win, 'resize', this.invalidate);
     area.addEventListener('load', this.invalidate, true);
-    doc.fonts?.addEventListener?.('loadingdone', this.invalidate);
+    if (doc.fonts) listen(doc.fonts, 'loadingdone', this.invalidate);
     this.soon();
   }
   soon() {
@@ -84,39 +128,49 @@ export class RailTopicFold {
   measure() {
     if (this.disposed || !this.win || !this.host.getBoundingClientRect || !this.area.style) return;
     this.dirty = false;
+    const previousZone = this.revealZone;
     this.revealZone = null;
+    // Measure each row in its normal position, even when the selected row is
+    // currently painted over the faded slot.
+    this.area.removeAttribute('data-topic-current');
     const current = this.area.querySelector('a[aria-current=page]');
     const group = current?.closest('details.topic-group');
     // A selected Done/Archived row must not remain behind its disclosure.
     if (group && !group.open) group.open = true;
     const all = [...this.host.children].filter(node => node.matches('a[data-topic-id]'));
     const boxes = new Map();
-    const rows = all.filter(node => {
-      if (!node.getClientRects().length) return false;
-      const box = node.getBoundingClientRect(); boxes.set(node, box); return box.height > 0;
-    });
-    const keep = Boolean(current && (group || rows.indexOf(current) >= TOPICS_AT_REST));
-    const peek = rows[TOPICS_AT_REST], origin = this.host.getBoundingClientRect();
-    // Finish the current reads before any measured fold styles/markers change.
-    const box = boxes.get(peek), full = this.host.scrollHeight, foot = this.footer.scrollHeight;
-    const zoneStart = boxes.get(rows[TOPICS_AT_REST - 1])?.top - origin.top;
+    let count = 0;
     for (const row of all) {
-      const index = rows.indexOf(row), mark = index < TOPICS_AT_REST ? null : index === TOPICS_AT_REST ? 'peek' : 'past';
+      if (!row.getClientRects().length) continue;
+      const box = row.getBoundingClientRect();
+      if (box.height > 0) boxes.set(row, { box, index: count++ });
+    }
+    const keep = Boolean(current && (group || boxes.get(current)?.index > TOPICS_AT_REST));
+    const origin = this.host.getBoundingClientRect();
+    const peek = [...boxes.values()][TOPICS_AT_REST]?.box;
+    const full = this.host.scrollHeight, foot = this.footer.scrollHeight;
+    const currentTop = peek?.top - this.area.getBoundingClientRect().top;
+    for (const row of all) {
+      const index = boxes.get(row)?.index ?? -1;
+      const mark = index < TOPICS_AT_REST ? null : index === TOPICS_AT_REST ? 'peek' : 'past';
       if (mark === null) { if (row.dataset.railFold !== undefined) delete row.dataset.railFold; }
       else if (row.dataset.railFold !== mark) row.dataset.railFold = mark;
     }
-    this.area.toggleAttribute('data-topic-current', keep);
-    if (!peek || !Number.isFinite(origin.top)) { this.area.removeAttribute('data-topic-fold'); return; }
-    const start = box.top - origin.top, end = start + box.height * .85;
-    // A detached/hidden list cannot supply geometry. Keep the fail-open view.
-    if (![zoneStart, start, end, full, foot].every(Number.isFinite) || start < 0 || end <= start || full < end) {
-      this.area.removeAttribute('data-topic-fold'); return;
+    if (!peek || !Number.isFinite(origin.top)) {
+      this.cancelRest(); this.area.removeAttribute('data-topic-fold'); return;
     }
-    for (const [name, value] of Object.entries({ start, end, full, foot })) {
+    const start = peek.top - origin.top, end = start + peek.height * .85;
+    // A detached/hidden list cannot supply geometry. Keep the fail-open view.
+    if (![start, end, full, foot, currentTop].every(Number.isFinite) || start < 0 || end <= start || full < end) {
+      this.cancelRest(); this.area.removeAttribute('data-topic-fold'); return;
+    }
+    for (const [name, value] of Object.entries({ start, end, full, foot, 'current-top': currentTop, 'peek-height': end - start })) {
       const key = '--topic-fold-' + name, text = value + 'px';
       if (this.area.style.getPropertyValue(key) !== text) this.area.style.setProperty(key, text);
     }
-    this.revealZone = { start: zoneStart, end };
+    if (previousZone && (previousZone.start !== start || previousZone.end !== end)) this.cancelRest();
+    this.revealZone = { start, end };
+    this.area.toggleAttribute('data-topic-current', keep);
     this.area.setAttribute('data-topic-fold', '');
   }
   dispose() {
@@ -127,14 +181,8 @@ export class RailTopicFold {
     this.doc.fonts?.removeEventListener?.('loadingdone', this.invalidate);
     if (this.frame !== null) this.win.cancelAnimationFrame(this.frame);
     this.frame = null;
-    if (this.revealMove) this.area.removeEventListener('pointermove', this.revealMove);
-    if (this.closeReveal) {
-      this.actionRoot.removeEventListener?.('click', this.closeReveal, true);
-      this.actionRoot.removeEventListener?.('keydown', this.closeReveal, true);
-      this.actionRoot.removeEventListener?.('wheel', this.swipe, true);
-      this.closeReveal();
-    }
-    if (this.down) this.area.removeEventListener('pointerdown', this.down, true);
-    if (this.click) this.area.removeEventListener('click', this.click, true);
+    for (const args of this.localEvents ?? []) this.area.removeEventListener(...args);
+    for (const args of this.actions ?? []) this.actionRoot.removeEventListener?.(...args);
+    this.closeReveal?.();
   }
 }
