@@ -47,14 +47,24 @@ export class OutlineMenus {
   constructor(outline, { show = openMessageMenu, copy = copyText } = {}) {
     Object.assign(this, { outline, show, copy }); this.serial = 0; this.commands = new RailMenuCommands();
     this.cancelDoor = menuDoor(outline.list, target => this.row(target), (row, at) => this.open(row, at));
-    outline.doc.addEventListener('pointerdown', event => {
+    this.dismissPointer = event => {
       if (this.pending && !this.pending.contains(event.target)) { ++this.serial; this.pending = null; }
-    }, true);
-    outline.doc.addEventListener('keydown', event => { if (this.pending && event.key === 'Escape') { ++this.serial; this.pending = null; } }, true);
+    };
+    this.dismissKey = event => {
+      if (this.pending && event.key === 'Escape') { ++this.serial; this.pending = null; }
+    };
+    outline.doc.addEventListener('pointerdown', this.dismissPointer, true);
+    outline.doc.addEventListener('keydown', this.dismissKey, true);
+  }
+  dispose() {
+    this.reset();
+    const { doc } = this.outline;
+    doc.removeEventListener?.('pointerdown', this.dismissPointer, true);
+    doc.removeEventListener?.('keydown', this.dismissKey, true);
   }
   row(target) {
     if (!this.outline.handles || target.closest?.('[inert], input, textarea, select, [contenteditable]')) return null;
-    const row = target.closest?.('a.ol-name, a.ol-dossier[data-dossier-id], a[data-topic-id], a.ol-page[data-page-id]');
+    const row = target.closest?.('a.ol-name, a.ol-dossier[data-dossier-id], a[data-topic-id], a.ol-page[data-page-id], button.reference[data-page-id]');
     return row && this.outline.list.contains(row) ? row : null;
   }
   reset() { ++this.serial; this.pending = null; this.cancelDoor(); this.menu?.close(false); this.menu = null; }
