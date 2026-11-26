@@ -1371,6 +1371,9 @@ dialog[data-width-edges][open]:not(.notebook-mode):not([data-card-reply]){width:
 .composer-edge:hover::after,.composer-edge:focus-visible::after{opacity:1}
 dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[data-card-reply]>.composer-edge{display:none}
 @media(max-width:760px){dialog[data-width-edges][open]:not(.notebook-mode):not([data-card-reply]){width:min(var(--composer-width,100vw),100vw);min-width:min(280px,100vw);margin-inline:auto}}
+/* On phones, the pencil's resize grip and text field can overlap as the
+   sheet grows. Give the field the overlap and leave the outside grip usable. */
+@media(max-width:760px){dialog.composer-home[open]:not(.notebook-mode) #inline-composer>.field-box{z-index:7}}
 /* Item 643: Done occupies the same space as + Add; touch reaches its names. */
 .topic-people .add-chip{display:inline-grid;grid-template-areas:"word"}
 .topic-people .add-chip>span,.topic-people .add-chip::after{grid-area:word}
