@@ -5,6 +5,8 @@ It does not install or start anything. A local activation receipt supplies the
 actual paths, revision, port, IDs and results. Existing AIM remains available;
 no migration, legacy data access or legacy wake-route change is part of setup.
 
+For a new delivery team, select the portable [build-master role](seats/build-master.md) and its [short shipping agreement](how-we-ship.md) before native provisioning.
+
 ## Prepare one instance
 
 Use a new canonical private root outside the repository's temporary test data.
