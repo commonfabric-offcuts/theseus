@@ -92,7 +92,10 @@ export class CardReplies {
             }, sent: (p, result) => this.sent(id, p, result) }, { root, prefix, cardReply: true });
           const preview = card.querySelector(':scope > .message-preview');
           const sourceHeight = preview?.clientHeight ? Math.max(24, Math.min(preview.clientHeight, card.clientHeight - (card.scrollHeight - preview.clientHeight))) : 240;
-          row = { ui, card, p, sourceHeight }; this.rows.set(id, row); card.insertBefore(root, card.querySelector(':scope > .note-corner'));
+          row = { ui, card, p, sourceHeight, composing: false };
+          ui.field.addEventListener('compositionstart', () => { row.composing = true; });
+          ui.field.addEventListener('compositionend', () => { row.composing = false; });
+          this.rows.set(id, row); card.insertBefore(root, card.querySelector(':scope > .note-corner'));
           root.addEventListener('click', event => event.stopPropagation());
           root.addEventListener('keydown', event => {
             if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || ui.bar.panel || ui.naming.sheet.open) return;
@@ -151,6 +154,26 @@ export class CardReplies {
     this.closed.add(id); row.ui.bar.close(); row.ui.root.hidden = true; row.card.removeAttribute('data-card-reply');
     row.ui.root.removeAttribute('data-tall'); row.ui.$('taller-field').setAttribute('aria-pressed', 'false'); row.paintHeight?.();
     if (focus) row.card.focus({ preventScroll: true }); this.changed(); return true;
+  }
+  // Capture only the visible empty reply on which the action began. A later
+  // receipt cannot close writing, a different card, or a new opening.
+  captureEmpty(id) {
+    const row = this.rows.get(id);
+    if (!row) return null;
+    const { card, p, ui } = row, editor = p.editors.reply;
+    const safe = () => this.rows.get(id) === row && row.card === card && this.shown(id) &&
+      this.registry.isCurrent(p, editor) && !row.composing && ui.field.value === '' &&
+      !holdsWriting(editor.draft) && !uploadWork(editor) &&
+      !editor.submissions.some(item => item.status !== 'confirmed' || item.detached) &&
+      this.registry.saveSign(editor).state === 'saved' && !this.registry.doubt(editor).label;
+    if (!safe()) return null;
+    const { opening } = ui, { localVersion, clientCycleId } = editor;
+    return () => {
+      if (ui.opening !== opening || editor.localVersion !== localVersion ||
+          editor.clientCycleId !== clientCycleId || !safe()) return false;
+      const focus = ui.root.contains(ui.root.ownerDocument.activeElement);
+      return this.hide(id, row, { focus });
+    };
   }
   readerClosed(p) {
     // Registry.close has already kept this Reader's registered writing. Only
