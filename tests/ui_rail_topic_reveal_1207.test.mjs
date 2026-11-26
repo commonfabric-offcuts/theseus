@@ -162,3 +162,13 @@ test('press opens the fading row immediately and keyboard focus holds until a fe
   f.action('click');
   assert.equal(f.revealed(), false);
 });
+
+test('a keyboard click on More topics preserves the keyboard hold until focus leaves', t => {
+  const f = fixture(t);
+  const more = f.outcome.parts.more;
+  f.action('keydown', more, { key: 'Enter' });
+  f.action('click', more, { detail: 0 });
+  assert.ok(f.area.hasAttribute('data-topic-keys'));
+  f.action('click', f.doc.createElement('button'), { detail: 0 });
+  assert.equal(f.area.hasAttribute('data-topic-keys'), false);
+});

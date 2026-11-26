@@ -61,7 +61,9 @@ export class RailTopicFold {
       if (!area.contains(event.target)) area.removeAttribute('data-topic-keys');
     };
     this.dismissClick = event => {
-      if (!this.openingPress || !area.contains(event.target)) this.closeReveal();
+      const inside = area.contains(event.target);
+      const keyboardClick = event.detail === 0 && area.hasAttribute('data-topic-keys');
+      if (!inside || !(this.openingPress || keyboardClick)) this.closeReveal();
       this.openingPress = false;
     };
     this.key = event => {
