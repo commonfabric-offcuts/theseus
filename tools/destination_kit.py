@@ -12,14 +12,16 @@ import shlex
 import stat
 import subprocess
 import uuid
+from urllib.parse import urlsplit
 
 LANDING_PATHS = {'profile', 'live', 'instance', 'work', 'clone', 'worktrees', 'scratch', 'coordinator', 'ship', 'posts'}
 IDENTITY = {'seat', 'workspace', 'remote', 'repo', 'release_branch', 'guard', 'cards_note', 'releases_topic', 'dossier_tells'}
 DEPLOY_REQUIRED = {'live', 'instance', 'server_profile', 'port', 'runner_profile', 'runner_id', 'routes'}
 DEPLOY_OPTIONAL = {'python', 'tailnet_origin', 'outcome', 'reporter_profile', 'release_branch', 'repository', 'pipeline_outcome', 'pipeline_instance', 'pipeline_broker', 'pipeline_profile', 'seat_template'}
 PENDING = ['1306 confirmed durable activation', '1307 supported profile/route rebinding',
-           'destination commonfabric account, staged kit and Python3.9/native architecture/Node/gh/Codex0.167.0-alpha.3.2 receipts',
+           'destination account/staged kit and Python3.9/native architecture/Node v26.12.1/gh/Codex0.167.0-alpha.3.2 receipts',
            'Warp1315 reviewed adoption and selected encrypted APFS medium identity/behavior']
+REQUIRED_VERSIONS = {'python': 'CPython3.9.x', 'node': 'v26.12.1', 'codex': '0.167.0-alpha.3.2', 'architecture': 'arm64'}
 
 
 class Refused(ValueError):
@@ -102,6 +104,10 @@ def inventory(landing_config, repo):
     repo = canonical(str(repo))
     paths.update(p for p in (repo / 'tools/landing').iterdir() if p.is_file() and p.suffix in {'.py', '.sh', '.mjs', '.json'})
     paths.update(p for p in Path(config['ship']).parent.glob('*.py') if p.is_file())
+    if config.get('on_live'):
+        argv = shlex.split(config['on_live'])
+        require(len(argv) == 2 and argv[0] in ['bash', '/bin/bash'], 'unsupported on_live inventory command')
+        paths.add(canonical(argv[1]))
     result = {'v': 1, 'source_host': platform.node(), 'source_head': subprocess.check_output(['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip(),
               'guard_head': guard['head'], 'identity': {k: config[k] for k in IDENTITY},
               'files': [{'path': str(p), 'sha256': sha(p.read_bytes())} for p in sorted(paths)]}
@@ -136,7 +142,17 @@ def validate(request):
     require(type(deploy['port']) is int and 0 < deploy['port'] < 65536, 'invalid port')
     require(deploy.get('release_branch') == landing['release_branch'] and deploy.get('repository') == landing['repo'], 'release identity differs')
     require(('outcome' in deploy) == ('reporter_profile' in deploy), 'reporter/outcome pair required')
-    require(not ('pipeline_broker' in deploy and 'pipeline_profile' in deploy), 'one pipeline binding route only')
+    admission = {k for k in deploy if k.startswith('pipeline_')}
+    if admission:
+        require({'pipeline_outcome', 'pipeline_instance'} <= admission and
+                (('pipeline_broker' in admission) != ('pipeline_profile' in admission)),
+                'admission needs outcome, instance and exactly one broker or profile')
+    require('seat_template' not in deploy or re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', deploy['seat_template']), 'invalid seat_template')
+    require(re.fullmatch(r'[A-Za-z0-9._/-]+', deploy['release_branch']) and not deploy['release_branch'].startswith(('-', '/')) and '..' not in deploy['release_branch'], 'invalid release branch')
+    require(re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', deploy['repository']), 'invalid repository')
+    if 'tailnet_origin' in deploy:
+        origin = urlsplit(deploy['tailnet_origin'])
+        require(origin.scheme == 'https' and origin.hostname == dest['host'] and origin.port == deploy['port'] and not origin.username and not origin.password and origin.path in ['', '/'] and not origin.query and not origin.fragment, 'explicit destination HTTPS origin required')
     if 'on_live' in landing:
         argv = shlex.split(landing['on_live'])
         require(len(argv) == 2 and argv[0] in ['bash', '/bin/bash'] and home in canonical(argv[1]).parents, 'explicit destination on_live script required')
@@ -151,7 +167,13 @@ def sync_dir(path):
 
 def save_exact(path, data):
     if path.exists() or path.is_symlink():
-        private(path);require(path.read_bytes() == data, 'occupied bytes differ: ' + path.name);return
+        private(path)
+        fd = os.open(str(path), os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd, 'rb') as f:
+            require(f.read() == data, 'occupied bytes differ: ' + path.name)
+            os.fsync(f.fileno())
+        sync_dir(path.parent)
+        return
     fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, 'wb') as f:
         f.write(data);f.flush();os.fsync(f.fileno())
@@ -181,7 +203,7 @@ def prepare(request, output, disabled=False, checkpoint=None):
             save_exact(output / name, raw)
             if checkpoint:checkpoint(name)
         receipt = {'v': 1, 'status': 'prepared', 'packet_id': request['packet_id'], 'request_digest': sha(data['request.json']),
-                   'mode': 'report-only', 'authorized_for_effects': False, 'pending': PENDING,
+                   'mode': 'report-only', 'authorized_for_effects': False, 'pending': PENDING, 'required_versions': REQUIRED_VERSIONS,
                    'files': {name: sha(raw) for name, raw in data.items()}}
         save_exact(output / 'manifest.json', encoded(receipt));sync_dir(output.parent)
         return receipt
@@ -198,7 +220,7 @@ def preflight(pack):
         private(pack / name);require(sha((pack / name).read_bytes()) == digest, 'pack hash differs')
     request = read(pack / 'request.json');validate(request)
     expected = {'v': 1, 'status': 'prepared', 'packet_id': request['packet_id'], 'request_digest': sha(encoded(request)),
-                'mode': 'report-only', 'authorized_for_effects': False, 'pending': PENDING,
+                'mode': 'report-only', 'authorized_for_effects': False, 'pending': PENDING, 'required_versions': REQUIRED_VERSIONS,
                 'files': {name: sha(raw) for name, raw in payloads(request).items()}}
     require(receipt == expected, 'manifest/request differs')
     return dict(receipt, status='preflight-report')

@@ -17,7 +17,10 @@ destination absolute config paths must be canonical descendants of `home`;
 the host differs from the source. Release branch/repository/workspace/seat and
 guard source identity remain unchanged. Service profile/route names stay local
 relative file names. No binding/activation observation is accepted as an input.
-Source hashes are rechecked before any output. The pack contains only proposed
+When tailnet_origin is supplied its HTTPS host/port must name the explicit
+destination. The complete deploy admission group (outcome, instance, exactly
+one broker/profile) is preserved. Source hashes are rechecked before any output.
+The pack contains only proposed
 landing/deploy JSON, unchanged inventory and a canonical request/receipt.
 
 The output parent must be owned by the actual uid and private, with no symlink
@@ -25,13 +28,16 @@ component. Pack directories use0700, files0600; hard-linked files are refused.
 Each file is created exclusively and fsynced. The exact request is written first,
 the manifest last, with directory sync. A partial same-request retry verifies
 existing bytes and fills missing files; changed requests/occupied bytes refuse.
+A matching-file retry reflushes the file and its containing pack directory;
+failed confirmation still fails the retry, even when all bytes are present.
 A missing manifest means incomplete, not success. `--disabled` writes nothing.
 
 `preflight --pack DIRECTORY` verifies every sealed byte, private local ownership,
 the source inventory's unchanged inputs and proposed config schema. It reports
 dependencies1306 durable activation,1307 supported rebinding, destination account,
 staged kit/tool versions and Warp1315 adoption as pending. It cannot clear these
-from copied JSON or fixture results. Python3.9/native architecture, Node, gh and
+from copied JSON or fixture results. Python3.9/native arm64 architecture,
+Node v26.12.1, gh and
 pinned Codex0.167.0-alpha.3.2 need fresh destination receipts in1315. Existing
 permanent enforcement remains; this new tool is report-only with `--disabled`
 as the off switch and the reviewed manual config process as fallback.

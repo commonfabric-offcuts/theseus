@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import copy
+import ast
 import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -141,6 +143,57 @@ class DestinationKit(unittest.TestCase):
         self.assertFalse((self.out / 'manifest.json').exists())
         linked = self.root / 'linked';linked.symlink_to(self.root)
         with self.assertRaisesRegex(kit.Refused, 'symlink'):kit.prepare(self.request, linked / 'other')
+
+    def test_failed_manifest_flush_cannot_be_confirmed_by_matching_bytes(self):
+        real_sync = os.fsync
+        for kind in ['file', 'directory']:
+            out = self.root / ('flush-' + kind)
+            def failed_sync(fd):
+                manifest = out / 'manifest.json'
+                if manifest.exists():
+                    expected = manifest if kind == 'file' else out
+                    if os.fstat(fd).st_ino == expected.stat().st_ino:
+                        raise OSError('retained ' + kind + ' flush failure')
+                return real_sync(fd)
+            with patch.object(kit.os, 'fsync', side_effect=failed_sync):
+                with self.assertRaisesRegex(OSError, 'flush failure'):kit.prepare(self.request, out)
+                self.assertTrue((out / 'manifest.json').exists())
+                with self.assertRaisesRegex(OSError, 'flush failure'):kit.prepare(self.request, out)
+            kit.prepare(self.request, out)
+            self.assertFalse(kit.preflight(out)['authorized_for_effects'])
+
+    def test_proposed_deploy_config_matches_actual_consumer_admission(self):
+        # Execute the actual immutable consumer function with only its library
+        # dependencies; importing deployment would bring unrelated runtime owners.
+        source = Path(__file__).resolve().parents[1] / 'tools/deploy.py'
+        tree = ast.parse(source.read_text())
+        selected = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'load_config']
+        namespace = dict(json=json, Path=Path, os=os, re=re, Refused=kit.Refused, require=kit.require,
+                         Config=lambda **kw: kw, PYTHON='/usr/bin/python3')
+        for n in tree.body:
+            if isinstance(n, ast.Assign):
+                for target in n.targets:
+                    if isinstance(target, ast.Name) and target.id in ['REQUIRED_KEYS', 'OPTIONAL_KEYS']:
+                        namespace[target.id] = ast.literal_eval(n.value)
+        exec(compile(ast.Module(body=selected, type_ignores=[]), str(source), 'exec'), namespace)
+        path = self.root / 'consumer.json'
+        path.write_text(json.dumps(self.request['destination']['deploy']))
+        namespace['load_config'](str(path))
+        kit.prepare(self.request, self.out)
+        for missing in ['pipeline_profile', 'pipeline_outcome', 'pipeline_instance']:
+            request = copy.deepcopy(self.request)
+            del request['destination']['deploy'][missing]
+            path.write_text(json.dumps(request['destination']['deploy']))
+            with self.assertRaises(kit.Refused):namespace['load_config'](str(path))
+            with self.assertRaises(kit.Refused):kit.prepare(request, self.root / ('missing-' + missing))
+
+    def test_destination_origin_and_runtime_pin_are_explicit(self):
+        request = copy.deepcopy(self.request)
+        request['destination']['deploy']['tailnet_origin'] = 'https://destination-host:5192'
+        result = kit.prepare(request, self.out)
+        self.assertEqual(result['required_versions']['node'], 'v26.12.1')
+        request['destination']['deploy']['tailnet_origin'] = 'https://source-host:5192'
+        with self.assertRaisesRegex(kit.Refused, 'origin'):kit.prepare(request, self.root / 'wrong-origin')
 
 
 if __name__ == '__main__':
