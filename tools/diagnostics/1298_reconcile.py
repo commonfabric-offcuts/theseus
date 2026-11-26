@@ -102,12 +102,34 @@ def reconcile(root, repo):
             frames.append(nodes[at]["callFrame"])
             at = parents.get(at)
         chains[node] = frames
-    samples, at = [], profile["startTime"]
-    for node, dt in zip(profile["samples"], profile["timeDeltas"]):
+    samples, negative, at = [], [], profile["startTime"]
+    boundaries = [r["idleCoverage"]["timestamp"] * 1e6] + [row["coverage"]["timestamp"] * 1e6 for row in r["arrivals"]]
+    for index, (node, dt) in enumerate(zip(profile["samples"], profile["timeDeltas"])):
+        before = at
         at += dt
         samples.append((at, node, dt))
-    trace = json.loads((root / "trace.json").read_text())["traceEvents"]
+        if dt < 0:
+            negative.append({"index": index, "node": node, "delta_us": dt, "before_us": before, "after_us": at,
+                             "inside_arrival_brackets": boundaries[0] <= at < boundaries[-1],
+                             "crosses_coverage_boundary": any(at < bound <= before for bound in boundaries),
+                             "frames": chains[node]})
+    # A backwards profile clock has no justified nonnegative duration conversion.
+    # Keep exact signed arithmetic; never clamp, sort or silently repair its sign.
     owners = ["paintStack", "arrangeStacks", "repaintStackReading", "paintArrangement", "messagesPage"]
+    qualified = {name: {"samples": 0, "signed_delta_sum_us": 0, "negative_samples": 0,
+                        "negative_delta_sum_us": 0, "duration_ms": None} for name in owners}
+    for time, node, dt in samples:
+        if not boundaries[0] <= time < boundaries[-1]:
+            continue
+        for name in owners:
+            if any(f["functionName"] == name for f in chains[node]):
+                value = qualified[name]
+                value["samples"] += 1
+                value["signed_delta_sum_us"] += dt
+                if dt < 0:
+                    value["negative_samples"] += 1
+                    value["negative_delta_sum_us"] += dt
+    trace = json.loads((root / "trace.json").read_text())["traceEvents"]
     per_arrival, expected = [], list(ledger["initial_ids"])
     previous_take = r["idleCoverage"]["timestamp"] * 1e6
     for row in r["arrivals"]:
@@ -135,17 +157,17 @@ def reconcile(root, repo):
                 if f["functionName"] in owners + ["coverSheet", "coverKey"]:
                     coverage.append({"url": script["url"], "function": f["functionName"], "range": f["ranges"][0]})
         until = row["coverage"]["timestamp"] * 1e6
-        cost = {name: {"samples": 0, "weight_ms": 0} for name in owners}
+        cost = {name: {"samples": 0, "signed_delta_sum_us": 0, "duration_ms": None} for name in owners}
         self_frames = Counter()
         for time, node, dt in samples:
             if not previous_take <= time < until:
                 continue
             frames = chains[node]
-            self_frames[(frames[0]["functionName"], frames[0]["url"])] += dt / 1000
+            self_frames[(frames[0]["functionName"], frames[0]["url"])] += dt
             for name in owners:
                 if any(f["functionName"] == name for f in frames):
                     cost[name]["samples"] += 1
-                    cost[name]["weight_ms"] += dt / 1000
+                    cost[name]["signed_delta_sum_us"] += dt
         layout = defaultdict(lambda: {"events": 0, "wall_ms": 0, "thread_ms": 0})
         for e in trace:
             if e.get("ph") == "X" and e.get("name") in ["Layout", "UpdateLayoutTree", "Paint", "PrePaint"] and previous_take <= e["ts"] < until:
@@ -160,13 +182,16 @@ def reconcile(root, repo):
                             "coverage_functions": coverage, "mutation_records": len(muts), "mutation_dossiers": dict(counts),
                             "mutation_types": dict(Counter(m["type"] for m in muts)),
                             "inclusive_sampled_cost": cost,
-                            "sampled_self_top": [{"function": k[0], "url": k[1], "weight_ms": v} for k, v in self_frames.most_common(12)],
+                            "sampled_self_top": [{"function": k[0], "url": k[1], "signed_delta_sum_us": v} for k, v in self_frames.most_common(12)],
                             "layout_bracket": dict(layout), "request_indexes": [q["index"] for q in selected],
                             "view_multiplicity": dict(Counter(q["request"].get("name", "command") if q["request"] else q["url"] for q in selected)),
                             "unchanged_D0_D8_html_equal_to_previous": [s["dossiers"][j]["html"] == (r["initial"] if ordinal == 0 else r["arrivals"][ordinal - 1]["snapshot"])["dossiers"][j]["html"] for j in range(9)]})
         previous_take = until
 
-    result = {"kind": "1298-offline-baseline-reconciliation-v1", "product_head": r["productHead"],
+    result = {"kind": "1298-offline-baseline-reconciliation-v2", "product_head": r["productHead"],
+              "profile_time_qualification": {"sample_count": len(samples), "negative_count": len(negative),
+                  "negative_sum_us": sum(x["delta_us"] for x in negative), "minimum_delta_us": min(profile["timeDeltas"]),
+                  "duration_interpretation_refused": bool(negative), "owners": qualified, "negative_records": negative},
               "raw": {file: digest(root / file) for file in ["result.json", "trace.json", "seed-ledger.json", "seed/frozen.sqlite3"]},
               "fixed_native_input_count": len(entered), "queued_entry_after_equal_and_current_hashes_match": True,
               "module_bytes": r["moduleBytes"], "observer_identity": r["observerIdentity"],
@@ -180,7 +205,7 @@ def reconcile(root, repo):
                                 "mutations": dict(Counter(labels.get(m["dossier"], "outer") for m in obs["mutations"] if m["phase"] == "cover-control"))},
               "terminals": {file: json.loads((root / file).read_text()) for file in ["capture-terminal.json", "native-one-entered-terminal.json", "native-one-wrapper/terminal.json", "fixture-terminal.json"]},
               "limits": ["Nested spans and inclusive sampled weights overlap and must not be added.",
-                         "1ms sampling weights are estimates, not paintStack call durations or isolated unchanged-folder savings.",
+                         "The raw profile has negative deltas and a nonmonotonic clock. Signed sums are raw arithmetic, never calibrated CPU durations or isolated savings. Duration interpretation is refused; no clamp/sort/sign repair or cause is inferred.",
                          "Coverage brackets include snapshots and background work; observerOverhead excludes profiler/trace and all fetch wrapper overhead.",
                          "Fetch/JSON facts are browser wall intervals, not exclusive server CPU; signed inter-request gaps may be negative.",
                          "CDP response event delivery can follow transfer completion: signed event deltas are not transfer durations. ResourceTiming.receiveHeadersEnd is retained separately.",
