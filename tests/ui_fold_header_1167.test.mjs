@@ -8,6 +8,7 @@ import { withReaderArchive } from './fixtures/reader_archive.mjs';
 import { arrangeStacks, stackState, setLevel, headerClick, foldedClick } from '../web/reply-stacks.mjs';
 import { foldCard } from '../web/fold.mjs';
 import { StackFeed } from '../web/stack-feed.mjs';
+import { answered, contact } from '../web/api.mjs';
 
 // The renderer uses direct-child chains; extend only this file's DOM port.
 const query = Element.prototype.querySelectorAll;
@@ -192,4 +193,51 @@ test('1176 header effects are gated only by header hover in either fold state', 
   }
   assert.ok(rules.includes('[data-earlier=true]>.message-header-chevron{display:none!important}'));
   assert.ok(rules.includes('transition:transform .16s ease')); assert.ok(rules.includes('@media(prefers-reduced-motion:reduce)'));
+});
+
+
+test('a fold confirmed on retry closes the captured empty opening once', async () => {
+  const f = fixture(), item = f.messages.get('m2'), requests = [];
+  let closes = 0;
+  Object.assign(f.feed, {
+    act: StackFeed.prototype.act,
+    captureEmptyReply: () => () => { ++closes; return true; },
+    instanceId: 'fixture', authority: () => ({ authority_id: 'fixture', authority_epoch: 'one' }),
+    pending: new Map(), made: new WeakMap(), makes: 0, clock: () => 20, chain: Promise.resolve(),
+    acted() {}, settled() {}, listen() {}, reread() {}, paintNotice() {},
+    doubts: new Map(), notices: new Map(),
+    commandOf: async envelope => {
+      requests.push(envelope);
+      if (requests.length === 1) throw new TypeError('Fetch did not return a receipt');
+      return { status: 'committed', result: { folded: true, fold_revision: 1 } };
+    },
+  });
+  await assert.rejects(f.feed.setFold(item, true), /did not commit/);
+  assert.equal(f.feed.doubts.size, 1);
+  assert.equal(closes, 0);
+  const previous = contact.answered;
+  answered();
+  assert.ok(contact.answered > previous);
+  f.feed.askAgain();
+  await f.feed.chain;
+  assert.deepEqual(requests, [requests[0], requests[0]]);
+  assert.equal(closes, 1);
+});
+
+test('fold-through closes only empty openings for cards named in its receipt', async () => {
+  const f = fixture(), closed = [];
+  f.feed.captureEmptyReply = id => () => { closed.push(id); return true; };
+  f.feed.settled = () => {};
+  let committed;
+  f.feed.act = (kind, item, args, also, options) => {
+    assert.equal(kind, 'message.fold_through');
+    committed = options.committed;
+    return Promise.resolve({ folds: [] });
+  };
+  const [stack] = f.state.stacks;
+  f.feed.foldThrough(stack, f.messages.get('m3'));
+  assert.deepEqual(closed, []);
+  f.messages.get('m2').acts.folded = true;
+  committed({ folds: [{ message_id: 'm2' }, { message_id: 'not loaded' }] });
+  assert.deepEqual(closed, ['m2']);
 });

@@ -466,7 +466,7 @@ export class StackFeed {
   // Answered, refused or not settled, it is no longer drawn over what Core
   // holds: one not settled shows once Core says it is recorded. also: what
   // else it shows at once, as [message id, acts] (Option's fold, on several).
-  act(kind, item, args, also = [], { quiet = false } = {}) {
+  act(kind, item, args, also = [], { quiet = false, committed = null } = {}) {
     const shown = shownAct(kind, args, this.viewer, this.clock());
     const shows = [[item.id, shown], ...also];
     if (!quiet && !QUIET.has(kind)) for (const [id] of shows) this.acted(id);
@@ -481,7 +481,7 @@ export class StackFeed {
       this.settled(item.id);
     });
     this.chain = sent.catch(() => {});
-    sent.catch(error => this.failed({ kind, item, args }, error, true));
+    sent.then(result => committed?.(result), error => this.failed({ kind, item, args, committed }, error, true));
     return sent;
   }
   // An act that did not commit (docs/reply-stacks.md, "When an answer is lost").
@@ -515,7 +515,7 @@ export class StackFeed {
       const sent = this.chain.then(() => this.send(doubt.kind, doubt.item, doubt.args, doubt.envelope));
       this.chain = sent.catch(() => {});
       const over = () => { this.doubts.delete(op); this.notices.delete(op); };
-      sent.then(() => { over(); this.paintNotice(); }, error => { over(); this.failed(doubt, error, false); })
+      sent.then(result => { over(); this.paintNotice(); doubt.committed?.(result); }, error => { over(); this.failed(doubt, error, false); })
         .finally(() => { this.settled(doubt.item.id); if (this.gone && !this.doubts.size) this.deafen(); });
     }
   }
@@ -954,10 +954,9 @@ export class StackFeed {
     if (Boolean(acts.folded) === on) return false;
     this.state.peeked.delete(item.id);
     const closeReply = on && this.captureEmptyReply?.(item.id);
-    const sent = this.act('message.fold', item, { folded: on });
-    if (closeReply) sent.then(() => {
+    const sent = this.act('message.fold', item, { folded: on }, [], { committed: closeReply ? () => {
       if (this.actsOf(item.id, item).folded && closeReply()) this.arrange();
-    }, () => {});
+    } : null });
     if (undoable) this.remember(() => { this.setFold(item, !on, { undoable: false }); });
     // In motion (fold-motion.mjs): the message closes to its row, or opens out of it.
     foldInMotion(this.list.ownerDocument, () => this.entryFor(item.id), () => this.arrange(), on);
@@ -1023,8 +1022,21 @@ export class StackFeed {
     const run = [stack.head, ...stack.replies], upTo = run.findIndex(each => each.id === item.id);
     const shown = run.slice(0, upTo + 1).map(each => this.messages().get(each.id) ?? each)
       .filter(each => { const acts = this.actsOf(each.id, each); return !acts.folded && !acts.starred; });
-    for (const each of shown) this.state.peeked.delete(each.id);
-    const folded = this.act('message.fold_through', item, {}, shown.map(each => [each.id, { folded: true }]))
+    const replies = new Map();
+    for (const each of shown) {
+      this.state.peeked.delete(each.id);
+      const close = this.captureEmptyReply?.(each.id);
+      if (close) replies.set(each.id, close);
+    }
+    const committed = result => {
+      let closed = false;
+      for (const { message_id } of result.folds) {
+        const close = replies.get(message_id);
+        if (close && this.actsOf(message_id).folded && close()) closed = true;
+      }
+      if (closed) this.arrange();
+    };
+    const folded = this.act('message.fold_through', item, {}, shown.map(each => [each.id, { folded: true }]), { committed })
       .then(result => result.folds.map(({ message_id }) => this.messages().get(message_id) ?? this.standIns.get(message_id)));
     folded.then(each => {
       for (const one of each) this.settled(one.id);
