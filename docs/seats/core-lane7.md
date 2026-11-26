@@ -29,13 +29,21 @@ Preserve Tony's recorded Stop/Continue state and every original clock.
 
 ## Durable source and evidence
 
-Build own checkouts under `/Users/commonfabric/aim-worktrees`. Recover the
+Follow [the supplied runtime and task paths](../runtime-roots.md). The trusted
+launch selects the exact CLI/profile or broker, actor/binding, repository and
+working directory. The current assignment supplies the source-worktree and
+durable evidence destinations; report a missing required destination before
+writing. These are task inputs, not permission roots or a new instance choice.
+
+Build own checkouts at that assignment's source destination. Recover the
 assigned branch and exact source head from its current Theseus piece/topic,
 and use the pushed branch when a former local checkout is gone. Keep proof
 needed for handoff attached to that same board stack, alongside its source and
 result references. Temporary fixtures, cached files and a private checkpoint
 are not a reboot recovery index; their absence must not manufacture a result,
-replace an original operation or cause completed work to run again.
+replace an original operation or cause completed work to run again. Keep
+historical evidence paths and saved requests literal; a changed task root does
+not change their identity or permit a new binding.
 
 ## What this seat does
 
