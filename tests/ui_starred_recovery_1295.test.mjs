@@ -100,13 +100,14 @@ test('1295 a failed More resumes its exact cursor and keeps prior extent', async
   assert.deepEqual(f.state.stars.map(s => s.star), [10, 9, 8, 7]); assert.equal(f.state.extent, 7);
 });
 
-for (const retirement of ['navigation', 'actor', 'authority', 'hidden group', 'hidden document', 'removed', 'topic access'])
+for (const retirement of ['navigation', 'actor', 'authority', 'hidden group', 'hidden parent', 'hidden document', 'removed', 'topic access'])
   test('1295 recovery is retired by ' + retirement, async t => {
     const f = fixture(t); f.jobs.push(offline); await f.load();
     if (retirement === 'navigation') f.subject.begin();
     if (retirement === 'actor') f.handles.bootstrap.actor = 'someone-else';
     if (retirement === 'authority') f.handles.bootstrap.authority.authority_epoch = 'later';
     if (retirement === 'hidden group') f.state.visible = false;
+    if (retirement === 'hidden parent') f.parent.getClientRects = () => [];
     if (retirement === 'hidden document') f.doc.visibilityState = 'hidden';
     if (retirement === 'removed') f.box.remove();
     if (retirement === 'topic access') f.handles.topicReadAllowed = () => false;

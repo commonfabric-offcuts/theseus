@@ -130,6 +130,7 @@ export class OutlineDossiers {
     const mine = () => owned() && (!recovering || recovering());
     const recoveryCurrent = () => owned() && this.states?.get(state.id) === state && state.visible !== false &&
       state.box.isConnected !== false && state.parent?.isConnected !== false &&
+      state.parent?.getClientRects?.().length !== 0 &&
       this.outline.doc?.visibilityState !== 'hidden' && handles.topicReadAllowed?.() !== false;
     state.box.setAttribute('aria-busy','true');
     // Defer the read to a microtask so busy is set before sync can run again.
