@@ -80,7 +80,9 @@ try{
      const defaultField=choice==='darker'&&name==='own'?expected[1]:expected[0];
      const field=choice==='darker'&&name==='other'&&intensity==='vivid'?deepPeach[theme]:defaultField;
      if(name==='reader')assert.equal(p.background,row.paints[choice].other.background);else{assert.equal(p.background,rgb(field));assert.ok(p.image.includes(rgb(field)),'line field actually paints '+field);assert.deepEqual(p.selection,row.paints.Middle[name].selection,'native selection unchanged');}
-     if(choice==='lighter')assert.equal(p.ink,rgb(expected[1]));else assert.equal(p.ink,row.paints.Middle[name].ink,'darker keeps existing ink');
+     if(choice==='lighter')assert.equal(p.ink,rgb(expected[1]));
+     else if(look==='paper'&&name==='notebook')assert.equal(p.ink,rgb(theme==='light'?'#fbf8f1':'#f2eee5'),'Paper Notebook Darker uses the paper colour');
+     else assert.equal(p.ink,row.paints.Middle[name].ink,'Darker keeps the other ink colours');
     }
    }
    await choose('colour','darker');await choose('light','off');await openRail();assert.equal(await page.locator('.look-switch[data-switch="lightColour"]').isVisible(),false);await closeRail();
