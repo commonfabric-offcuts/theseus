@@ -64,6 +64,11 @@ or that it was not reached; the node suite's case events (each case's file, name
 TAP. The carry keeps its merge, push and preflight output in the folder as `carry-*.out`. Each publication keeps `<work>/ITEM-land/publish-<stamp>/` the same way, so a failed
 publication and its recovery stay apart from the deploy's result.
 
+For publication after a judged landing, pass its successful attempt to `publish.sh`.
+The dossier names the audit from that release's recorded train. If the deploy
+migrated the database, the dossier gives the recorded schema versions and the
+verified pre-merge backup used for the successful rehearsal.
+
 ## What it refuses
 
 - a kit changed since the folder was made, or run from the live checkout

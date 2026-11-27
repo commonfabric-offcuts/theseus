@@ -439,6 +439,137 @@ elif args[0] == 'read':
 """
 
 
+class DossierEvidence(Seat):
+    def setUp(self):
+        super().setUp()
+        self.folder = Path(self.settings['work']) / '27-land'
+        self.attempt = self.folder / 'attempts' / 'successful'
+        self.attempt.mkdir(parents=True)
+        self.dossier = self.root / 'dossier.txt'
+        self.draft = 'Release 21 is live\n\nEvidence: EVIDENCE_TO_FILL\n\nKeep this paragraph.\n'
+        self.dossier.write_text(self.draft)
+        (self.attempt / 'land.exit').write_text('0\n')
+        (self.attempt / 'node-suite.exit').write_text('0\n')
+        (self.attempt / 'node-suite.out').write_text(
+            'carry: tests 6478 pass 6451 fail 27\nlive: tests 6476 pass 6449 fail 27\n'
+            'same cause for all 27 failures shared with live\n'
+            'every case that passed on live runs on the carry (6449 cases, 0 stopped with a named reason)\n'
+            'no new node failure (live carries 27 known)\n')
+        work = {'item': {'pieces': [{'id': 'p-build', 'kind': 'piece',
+                                    'freeze': {'head_commit': A, 'at_ms': 2000}, 'approval': {'at_ms': 3000}}]}}
+        cli = Path(self.settings['live']) / 'bin' / 'aim-next'
+        cli.write_text('import json\nprint(json.dumps(%r))\n' % work)
+        self.audit = {'message': 'm-' + '1' * 32, 'revision': 1}
+        self.judgment = {'version': 1131, 'audit': self.audit, 'carry': {'head': A, 'base': BASE, 'tree': CARRY}}
+        self.spec = {'kind': 'judged-first', 'items': [27], 'piece': 'p-build', 'approved_head': A, 'source': A,
+                     'tree': CARRY, 'base': BASE, 'release': 21, 'pr': 648, 'review': 'Approved', 'judgment': self.judgment}
+        self.train = {'kind': 'judged-first', 'pr': 648, 'merge_commit': B, 'merged_tree': CARRY, 'hosted_run': None,
+                      'items': [{'item': 27, 'approved_head': A, 'review': 'Approved'}], 'judgment': self.judgment}
+        bundle = {'bundle_path': str(self.root / 'pre-merge-27'), 'bundle_digest': '2' * 64}
+        result = self.folder / 'realdata' / 'rehearse' / 'RESULT.json'
+        self.save('PRE-MERGE-BACKUP.json', bundle)
+        self.save('BACKUP-VERIFIED.json', dict(bundle, verified=True))
+        self.save('REHEARSAL.json', {'exit': 0, 'stdout': json.dumps({'ok': True, 'result': str(result)})})
+        self.save(result, {'backup': bundle['bundle_path'], 'versions': {'rehearse': {
+            'passed': True, 'head': A, 'tree': CARRY, 'before': {'schema_version': '69'}, 'after': {'schema_version': '70'}}}})
+        self.save('SPEC.json', self.spec)
+        self.save('TRAIN.json', self.train)
+        self.save('DEPLOY-END.json', {'release': 21, 'exit': 0, 'merge': B})
+        record = {'release': 21, 'commit': B, 'previous': BASE, 'items': [27],
+                  'measurements': {'train': dict(self.train, deterministic={'audit': self.audit})}}
+        self.save('deploy/11-release.json', {'records': [record], 'writes': [
+            {'release': 21, 'exit': 0, 'stdout': json.dumps({'ok': True, 'recorded': True, 'release': record})}]})
+        self.migrate({'exit': 0, 'stderr': '', 'stdout': json.dumps({
+            'ok': True, 'migrated': True, 'from_version': '69', 'schema_version': '70'})})
+
+    def save(self, name, value):
+        path = self.folder / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+
+    def migrate(self, migration):
+        self.save('deploy/06-migrate.json', migration)
+        (self.attempt / 'land.out').write_text('06-migrate %s\nDEPLOY EXIT0 %s\n' % (json.dumps(migration), B))
+
+    def evidence(self):
+        return self.run_kit('dossier_evidence.py', '27', self.dossier, self.attempt)
+
+    def refuses(self, words):
+        out = self.evidence()
+        self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
+        self.assertIn(words, out.stdout)
+        self.assertEqual(self.dossier.read_text(), self.draft)
+
+    def test_records_the_release_21_audit_backup_and_actual_schema_step(self):
+        out = self.evidence()
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        words = self.dossier.read_text()
+        for expected in (self.audit['message'] + ' revision 1', 'pre-merge-27 in BACKUP-VERIFIED.json',
+                         'rehearsed schema 69 → 70', 'Live migrated from schema 69 to 70', 'Keep this paragraph.'):
+            self.assertIn(expected, words)
+
+    def test_each_required_receipt_must_exist_and_the_attempt_must_have_succeeded(self):
+        for name in ('attempts/successful/land.exit', 'DEPLOY-END.json', 'TRAIN.json', 'deploy/11-release.json',
+                     'deploy/06-migrate.json', 'PRE-MERGE-BACKUP.json', 'BACKUP-VERIFIED.json', 'REHEARSAL.json',
+                     'realdata/rehearse/RESULT.json'):
+            with self.subTest(name=name):
+                path = self.folder / name
+                old = path.read_bytes()
+                path.unlink()
+                try:
+                    self.refuses('REFUSED')
+                finally:
+                    path.write_bytes(old)
+                    self.dossier.write_text(self.draft)
+        (self.attempt / 'land.exit').write_text('1\n')
+        self.refuses('successful deploy')
+
+    def test_rejects_inconsistent_train_audit_migration_backup_and_rehearsal(self):
+        changes = (
+            ('DEPLOY-END.json', ('merge',), A, 'successful deploy'),
+            ('TRAIN.json', ('judgment', 'audit', 'revision'), 2, 'exact judged release'),
+            ('deploy/11-release.json', ('records', 0, 'measurements', 'train', 'judgment', 'audit', 'revision'), 2, 'record this judged deploy'),
+            ('deploy/06-migrate.json', ('stdout',), json.dumps({'ok': True, 'migrated': True,
+                                                                'from_version': '68', 'schema_version': '70'}), 'match the attempt schema'),
+            ('BACKUP-VERIFIED.json', ('bundle_digest',), '3' * 64, 'verify the pre-merge backup'),
+            ('realdata/rehearse/RESULT.json', ('versions', 'rehearse', 'after', 'schema_version'), '71', 'carry and schema'),
+        )
+        for name, fields, changed, reason in changes:
+            with self.subTest(name=name):
+                path = self.folder / name
+                original = path.read_text()
+                data = target = json.loads(original)
+                for part in fields[:-1]:
+                    target = target[part]
+                target[fields[-1]] = changed
+                self.save(path, data)
+                try:
+                    self.refuses(reason)
+                finally:
+                    path.write_text(original)
+                    self.dossier.write_text(self.draft)
+
+    def test_judged_no_step_keeps_the_audit_without_requiring_migration_receipts(self):
+        self.migrate({'skipped': True, 'schema': '70', 'why': 'compatible hosted source'})
+        (self.folder / 'REHEARSAL.json').unlink()
+        (self.folder / 'BACKUP-VERIFIED.json').unlink()
+        out = self.evidence()
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn(self.audit['message'] + ' revision 1', out.stdout)
+        self.assertIn('no database step (schema 70)', out.stdout)
+
+    def test_ordinary_path_refuses_a_step_and_does_not_need_judged_receipts(self):
+        self.save('SPEC.json', dict(self.spec, kind='ordinary'))
+        self.refuses('an ordinary landing reports a database step')
+        self.migrate({'skipped': True, 'schema': '70', 'why': 'compatible hosted source'})
+        (self.folder / 'TRAIN.json').unlink()
+        (self.folder / 'deploy' / '11-release.json').unlink()
+        out = self.evidence()
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn('no database step (schema 70)', out.stdout)
+        self.assertNotIn('independent audit', out.stdout)
+
+
 class Publication(Seat):
     DOSSIER = 'Release NNN is live: a thing.\n\nEvidence: read.\n'
 
