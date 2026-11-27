@@ -49,19 +49,30 @@ test('copy writes both types once, falls back to plain, and says when both fail'
   assert.deepEqual(notices, ['Text copied.', 'Text copied.', 'Could not copy. Select the text and use Copy.']);
 });
 
-test('copy selected text preserves the exact plain words and never writes a rich item', async () => {
+test('copy selected text writes both flavors and keeps exact plain text on fallback', async () => {
   const writes = [], notices = [];
+  let refused = false;
+  class ClipboardItem { constructor(blobs) { this.blobs = blobs; } }
   const clipboard = {
-    write() { assert.fail('A selection never writes a rich item'); },
+    async write([item]) {
+      if (refused) throw Error('rich clipboard denied');
+      const [plain, html] = await Promise.all(Object.values(item.blobs));
+      writes.push([await plain.text(), await html.text()]);
+    },
     writeText(text) { writes.push(text); },
   };
-  const doc = { defaultView: { navigator: { platform: 'MacIntel', clipboard } } };
-  const choice = copyWordsChoice({ doc, selection: 'exact\n  selected words', status: text => notices.push(text) });
+  const doc = { defaultView: { ClipboardItem, navigator: { platform: 'MacIntel', clipboard } } };
+  const selection = { plain: 'exact\n  selected words', html: '<pre><code>exact\n  selected words</code></pre>' };
+  const choice = copyWordsChoice({ doc, selection, status: text => notices.push(text) });
   assert.equal(choice.label, 'Copy selected text');
   assert.equal(choice.keys, '⌘C');
   await choice.act();
-  assert.deepEqual(writes, ['exact\n  selected words']);
-  assert.deepEqual(notices, ['Selection copied.']);
+  refused = true;
+  await choice.act();
+  const whitespace = copyWordsChoice({ doc, selection: { plain: '  ', html: '  ' }, status: text => notices.push(text) });
+  await whitespace.act();
+  assert.deepEqual(writes, [[selection.plain, selection.html], selection.plain, '  ']);
+  assert.deepEqual(notices, ['Selection copied.', 'Selection copied.', 'Selection copied.']);
 });
 
 test('copy cannot write a whole source that arrives after its opening changes', async () => {
