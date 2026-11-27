@@ -21,3 +21,23 @@
 .notebook-start-line input{width:100%;box-sizing:border-box}.notebook-start-line button{min-height:2rem}
 @media(pointer:coarse){.notebook-palette .notebook-menu-marks>button,.notebook-palette .notebook-menu-view>button,.notebook-palette .notebook-menu-start>button,.notebook-palette .notebook-menu-keys>button,.notebook-palette>button{min-width:44px;min-height:44px}}
 @media(max-width:760px){.message-menu-list.notebook-palette.menu-sheet{width:calc(100% - 16px);max-height:calc(100dvh - 24px)}.notebook-palette .notebook-menu-marks>button{width:44px;min-height:44px}}
+
+
+/* Notebook page menus use the same material as their sheet. */
+:root:not([data-look=paper]) .message-menu-list.notebook-surface{
+  --panel:#0b0f10;--ink:#e3eae7;--muted:#97a6a3;--line:#252c2e;
+  --menu-hover:#1a1d1e;--menu-current:#262a2a;--focus:#b1b7b4}
+:root[data-look=paper] .message-menu-list.notebook-surface{
+  --panel:#f2eee5;--ink:#27241f;--muted:#7a7468;--line:#e0dacd;
+  --menu-hover:#ebe7de;--menu-current:#dcd8cf;--focus:#54504b}
+@media(prefers-color-scheme:light){:root[data-look=paper] .message-menu-list.notebook-surface{
+  --panel:#fbf8f1;--menu-hover:#f4f1ea;--menu-current:#e4e1da;--focus:#56534d}}
+:root .message-menu-list.notebook-surface{background:var(--panel);color:var(--ink);border-color:var(--line)}
+/* Rows: hover and keyboard focus are the same one-step fill (one row is active at a time). Keyboard focus also
+   draws a 2px --focus ring inside the row, so it reads without a pointer. A checked row is one step past hover. */
+:root .message-menu-list.notebook-surface button:hover{background:var(--menu-hover)}
+:root .message-menu-list.notebook-surface button:focus-visible{background:var(--menu-hover);outline:2px solid var(--focus);outline-offset:-2px}
+:root .message-menu-list.notebook-surface [aria-checked=true]{background:var(--menu-current)}
+:root .message-menu-list.notebook-surface .palette-sep{background:var(--line)}
+/* The fixed right rail sits above ordinary page menus when it opens as a sheet. */
+[data-things-open] body>.message-menu-list.notebook-surface{z-index:26}

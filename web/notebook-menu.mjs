@@ -7,6 +7,7 @@ export function openNotebookMenu(options) {
   const {items,doc=globalThis.document,win=globalThis,anchor,at=null}=options;
   const menu=openMessageMenu({...options,doc,win});if(!menu)return menu;
   const root=menu.root,buttons=[...root.children];root.classList.add('notebook-palette');
+  if (anchor.dataset?.pageId && anchor.closest?.('#things, #outcome-references')) root.classList.add('notebook-surface');
   let group=null,groupName=null;
   for(let i=0;i<items.length;i++) {
     const item=items[i],button=buttons[i],place=item.place??'row';

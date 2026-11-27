@@ -113,7 +113,7 @@
 .reply-stack:not(.only-new *) .message-card{--stack-folded-ink:var(--muted);outline:none;border-color:transparent;box-shadow:var(--stack-contact)}
 /* Only the current message gets a strong ring. Keyboard focus left behind
    when the pointer moves is not a second selection. */
-.reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--stack-ring)}
+.reply-stack:not(.only-new *) .message-card.lit{outline:none;border-color:transparent;box-shadow:0 0 0 2px var(--focus)}
 .reply-stack:not(.only-new *) .message-fold>.fold-line{outline:none;box-shadow:none}
 .reply-stack:not(.only-new *) .message-fold.lit>.fold-line{box-shadow:0 0 0 2px var(--stack-ring)}
 /* The ring is the lit card's or fold line's own, drawn on its own box, so it
@@ -583,3 +583,5 @@
 /* Source-item rows keep separate lines, including singleton cards. */
 .row-pills>.cover-item{flex-basis:100%;min-width:0;overflow-wrap:anywhere}
 .cover-item .cover-words{overflow-wrap:anywhere}
+
+@media(prefers-color-scheme:dark){.reply-stack:not(.only-new *) .message-card:not(.own-message,.agent-card):hover{background:#353f41}}

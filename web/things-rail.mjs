@@ -413,6 +413,7 @@ export class ThingsRail {
   // A run starts: on a topic or a Conversation the rail shows, and the page's
   // header gets the button that opens it where it is not beside the page.
   begin(feed, route = null) {
+    this.notebookPage = null;
     this.close(false);
     const shown = feed && route?.kind !== 'workspace';
     this.host.hidden = !shown;
@@ -549,6 +550,14 @@ export class ThingsRail {
     return { items, next: cursor, reader_may_write: mayWrite };
   }
   notebookName(item) { return item.title || 'Notebook page'; }
+
+  setNotebookPage(id) {
+    this.notebookPage = id;
+    for (const link of this.sections.get('notebook').body.querySelectorAll('a.row[data-page-id]')) {
+      if (link.dataset.pageId === id) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    }
+  }
   // A deliberate Note choice needs every destination, including pages beyond
   // the rail's More boundary. Same scoped reader/order, bounded calls, no poll.
   async notebookPages(topicId) {
@@ -717,6 +726,7 @@ export class ThingsRail {
       const list = element(doc, 'ul', { className: 'things-list' }, ...items.map(item => {
         const link = this.placeLink({ ...scope, page: item.id }, this.notebookName(item));
         link.classList.add('ol-page'); link.dataset.pageId = item.id;
+        if (item.id === this.notebookPage) link.setAttribute('aria-current', 'page');
         link.pageTarget = { ...scope, page: item.id }; link.notebookScope = scope;
         paintChanged(link, item);
         // A page shows its own first words under its title, so it reads as a page rather than a link.

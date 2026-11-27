@@ -28,6 +28,6 @@ test('867 card tint uses the existing palette background and readable quiet ink 
  const dark=css.slice(css.indexOf('@media(prefers-color-scheme:dark){.agent-'));
  assert.match(light,/\.deck-card\.deck-tinted\{--muted:#56616a;\}/);
  assert.match(dark,/\.deck-card\.deck-tinted\{--muted:#9aaba8;--accent:#79c7ab;\}/);
- assert.match(css,/\.deck-card\.deck-tinted\{background:var\(--agent-card\)\}/);
- assert.match(css,/\.deck-card\.deck-tinted\[aria-current=true\]\{background:var\(--agent-hover\)\}/);
+ assert.match(css,/\.deck-card\.deck-tinted\{background:var\(--card-tint,var\(--agent-card\)\);/);
+ assert.match(css,/\.deck-card\.deck-tinted\[aria-current=true\]\{background:var\(--card-tint-hover,var\(--agent-hover\)\);/);
 });

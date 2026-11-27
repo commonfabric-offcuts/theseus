@@ -33,7 +33,7 @@
   .ol-outcome{margin:0}
   .ol-row{position:relative;grid-template-columns:.85rem minmax(0,1fr) 0;align-items:center;border-radius:.4rem}
   .ol-row:hover{background:var(--rail-hover)}
-  .ol-row:has(>.ol-name[aria-current=page]){background:var(--soft)}
+  .ol-row:has(>.ol-name[aria-current=page]){background:var(--row-current);color:var(--ink)}
   .ol-disclosure{width:.85rem;height:1.625rem;min-height:0;border-radius:.3rem;justify-self:end}
   .ol-disclosure:hover{background:transparent}
   .ol-disclosure svg{width:.7rem;height:.7rem;transition:transform .12s}
@@ -52,7 +52,7 @@
   /* The pencil covers the end of the name while the row has the pointer, never the count. */
   .ol-row>.ol-new-topic{position:absolute;right:.25rem;top:50%;transform:translateY(-50%);width:1.5rem;height:1.4rem;min-height:0;border-radius:.3rem;background:var(--rail-hover)!important}
   .ol-row:has(.unread-count)>.ol-new-topic{right:1.85rem}
-  .ol-row:has(>.ol-name[aria-current=page])>.ol-new-topic{background:var(--soft)!important}
+  .ol-row:has(>.ol-name[aria-current=page])>.ol-new-topic{background:var(--row-current)!important}
   .ol-row>.ol-new-topic svg{width:.8rem;height:.8rem}
 
   /* A New topic or New outcome title line: one quiet field the height of a row, under the name. */
@@ -74,7 +74,7 @@
     font-size:.77rem;line-height:1.5rem;font-weight:400;color:color-mix(in srgb,var(--rail-ink-2) 88%,transparent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
   .ol-topics :is(.topic-list,#topics) a.nav-item:hover{background:var(--rail-hover);color:var(--ink)}
   .ol-topics :is(.topic-list,#topics) a.nav-item:has(.unread-count){color:var(--ink);font-weight:450;padding-right:1.9rem}
-  .ol-topics :is(.topic-list,#topics) a.nav-item[aria-current=page]{background:var(--soft);color:var(--ink);font-weight:500;border:0}
+  .ol-topics :is(.topic-list,#topics) a.nav-item[aria-current=page]{background:var(--row-current);color:var(--ink);font-weight:500;border:0}
   /* The marks a topic carries (its state, its count) are shared with Roomy, below; here, the room they keep. */
   .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state){padding-right:6.4rem}
   .ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state.mine),.ol-topics :is(.topic-list,#topics) a.nav-item:has(.topic-state[data-state=waiting]){padding-right:1.9rem}
@@ -119,6 +119,7 @@
 .ol-topics a.nav-item .topic-state.mine{border:0;background:var(--accent)}
 .ol-topics a.nav-item .topic-state.mine::before{content:"?";font-size:var(--rail-mark-glyph);font-weight:800;color:var(--on-accent)}
 .ol-topics a.nav-item .topic-state[data-state=waiting]:not(.mine){border:1.2px solid var(--muted);background:transparent;line-height:calc(var(--rail-mark) - .2rem)}
+.ol-topics a.nav-item[aria-current=page] .topic-state{color:var(--ink)}
 .ol-topics a.nav-item .topic-state[data-state=waiting]:not(.mine)::before{content:"\2026";font-size:var(--rail-mark-glyph);font-weight:800;color:var(--muted)}
 .ol-topics a.nav-item .unread-count{position:absolute;right:.35rem;top:var(--rail-mark-y);transform:translateY(-50%);margin:0;min-width:1.15rem;height:1rem;padding:0 .3rem;font-size:.66rem;line-height:1rem;font-variant-numeric:tabular-nums}
 .ol-topics a.nav-item .unread-count:not(.addressed){background:transparent;color:color-mix(in srgb,var(--ink) 78%,var(--paper));font-weight:600}
