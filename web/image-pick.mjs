@@ -123,9 +123,10 @@ function inlineCardImage(row, image, name) {
   image.onclick = activate;
   image.onkeydown = event => {
     if (event.key === 'Escape' && expanded) collapse(event);
-    else if (event.key === 'Enter' || (event.key === ' ' && !expanded)) {
-      if (!event.repeat) activate(event);
-      else { event.preventDefault(); event.stopPropagation(); }
+    else if (event.key === 'Enter' || event.key === ' ') {
+      if (event.repeat) { event.preventDefault(); event.stopPropagation(); }
+      else if (event.key === ' ' && expanded) collapse(event);
+      else activate(event);
     }
   };
   fold.onclick = collapse;

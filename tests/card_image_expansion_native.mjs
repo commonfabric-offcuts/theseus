@@ -141,12 +141,14 @@ try {
         await page.bringToFront();
         assert.equal(page.url(), destination);
       };
-      const expand = async (image, target = 'press') => {
+      const expand = async (image, key = null) => {
         await reveal(image);
+        if (key) await image.focus();
         const before = await layout(image), tabs = context.pages().length;
-        if (target === 'key') {
-          await image.focus();
-          await page.keyboard.press('Enter');
+        assert.equal(before.expanded, false);
+        if (key) {
+          assert.equal(before.focused, true);
+          await page.keyboard.press(key);
         } else await press(image);
         const after = await layout(image);
         assert.equal(after.expanded, true);
@@ -164,7 +166,7 @@ try {
         assert.equal(context.pages().length, tabs);
         assert.ok(after.documentWidth <= width + 2);
         assert.equal(await page.locator('#reader[open], .card-reply-composer:not([hidden]), .deck-writing').count(), 0);
-        result.steps.push({ action: 'expand', target, before, after });
+        result.steps.push({ action: 'expand', target: key ?? 'press', before, after });
       };
       const row = host => host.locator('.card-image-actions');
       const actions = row(firstHost);
@@ -231,7 +233,7 @@ try {
       await page.keyboard.press('Escape');
       assert.equal((await layout(tall)).expanded, false);
       assert.equal((await layout(tall)).focused, true);
-      await expand(first, 'key');
+      await expand(first, 'Enter');
       await tabFrom(() => page.keyboard.press('Enter'), first);
       await first.focus();
       await page.keyboard.press('Tab');
@@ -242,14 +244,55 @@ try {
       await page.keyboard.press('Escape');
       assert.equal((await layout(first)).expanded, false);
       assert.equal((await layout(first)).focused, true);
-      await expand(first, 'key');
+      await expand(first, 'Enter');
       await page.keyboard.press('Tab');
       assert.equal(await fold.evaluate(focusedRing), true);
       await page.keyboard.press('Enter');
       assert.equal((await layout(first)).expanded, false);
       assert.equal((await layout(first)).focused, true);
 
-      await expand(first);
+      await expand(first, 'Space');
+      const beforeSpace = await layout(first), tabs = context.pages().length, destination = page.url();
+      assert.equal(beforeSpace.focused, true);
+      await first.evaluate(image => {
+        image.addEventListener('keydown', event => {
+          window.expandedImageSpace = { key: event.key, defaultPrevented: event.defaultPrevented };
+        }, { once: true });
+      });
+      await page.keyboard.down('Space');
+      const afterSpace = await layout(first);
+      assert.equal(afterSpace.expanded, false, 'Space folds the expanded image');
+      assert.equal(afterSpace.focused, true, 'Space returns focus to the thumbnail');
+      assert.equal(afterSpace.src, beforeSpace.src);
+      assert.equal(await actions.isVisible(), false);
+      assert.equal(await first.getAttribute('role'), 'button');
+      const spaceEvent = await page.evaluate(() => window.expandedImageSpace);
+      assert.deepEqual(spaceEvent, { key: ' ', defaultPrevented: true });
+
+      await page.keyboard.down('Space');
+      await page.keyboard.up('Space');
+      assert.equal((await layout(first)).expanded, false, 'holding Space keeps the thumbnail folded');
+      assert.equal(context.pages().length, tabs, 'Space on the expanded image opens no tab');
+      assert.equal(page.url(), destination);
+      assert.equal(await page.locator('#reader[open], .card-reply-composer:not([hidden]), .deck-writing').count(), 0);
+
+      // Check off-image Space after the last expansion so browser scrolling
+      // cannot overlap a measurement of the image's position during expansion.
+      await expand(first, 'Space');
+      assert.equal(await first.evaluate(image => {
+        image.blur();
+        return image.ownerDocument.activeElement === image.ownerDocument.body;
+      }), true);
+      await page.evaluate(() => {
+        window.addEventListener('keydown', event => {
+          window.offImageSpace = { key: event.key, defaultPrevented: event.defaultPrevented };
+        }, { once: true });
+      });
+      await page.keyboard.press('Space');
+      const offImageSpace = await page.evaluate(() => window.offImageSpace);
+      assert.deepEqual(offImageSpace, { key: ' ', defaultPrevented: false });
+      assert.equal((await layout(first)).expanded, true, 'Space outside the image leaves it expanded');
+      result.expandedSpace = { event: spaceEvent, offImageSpace, before: beforeSpace, after: afterSpace, tabs };
       result.expansionRequests = await page.evaluate(() => window.imageReads.length) - countBefore;
       assert.equal(result.expansionRequests, 0, 'all image actions reuse the existing verified bytes');
       await withFreshDevice(browser, createContext, route, surface.selector);
