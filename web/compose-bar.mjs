@@ -13,7 +13,7 @@ const TYPING = 'textarea, input:not([type]), input[type=text], input[type=search
 // The keyboard is taken as up when the visible height falls by more than this
 // while a text field has focus: smaller changes are the browser's own bars.
 const KEYBOARD_MIN = 120;
-const NOTEBOOK_CHILD = '[data-notebook-child-editor]';
+const isNotebookChild = field => field?.hasAttribute?.('data-notebook-child-editor') === true;
 
 // A reply docked in the page needs the page to move, not the full Reader's
 // internal scroll box. Only an opening/focus or a shrinking keyboard viewport
@@ -32,7 +32,7 @@ export function revealCardReply(field, win = globalThis.window) {
 // ancestor stops the search so revealing a dialog never moves its background.
 function revealWriting(field, win, onlyUp = false) {
   if (!field?.isConnected || field.readOnly || field.disabled) return;
-  if (field.matches?.(NOTEBOOK_CHILD)) {
+  if (isNotebookChild(field)) {
     revealSelection(field, { viewport: win.visualViewport });
     return;
   }
@@ -74,7 +74,7 @@ function trackKeyboard(win, doc) {
   const personScroll = () => {
     const field = doc.activeElement;
     if (win.matchMedia(PHONE).matches && field?.matches?.(TYPING) && !field.readOnly &&
-        (field.closest?.('#reader[data-card-reply], .card-reply-composer') || field.matches?.(NOTEBOOK_CHILD))) scrollingField = field;
+        (field.closest?.('#reader[data-card-reply], .card-reply-composer') || isNotebookChild(field))) scrollingField = field;
   };
   const settle = typing => {
     onlyUp = onlyUp && typing;
@@ -105,7 +105,7 @@ function trackKeyboard(win, doc) {
     if (typing && event?.type === 'focusin') revealCardReply(field, win);
     const pencilSheet = field?.closest?.('dialog')?.matches?.('.composer-home:not(.notebook-mode)');
     const cardReply = field?.closest?.('.card-reply-composer');
-    const notebookChild = field?.matches?.(NOTEBOOK_CHILD);
+    const notebookChild = isNotebookChild(field);
     if (typing && reduced && scrollingField !== field && win.matchMedia(PHONE).matches) {
       // A writing scroll can pan the visual viewport. Settle on focus or
       // keyboard resize without following that pan. The Notebook's caret
