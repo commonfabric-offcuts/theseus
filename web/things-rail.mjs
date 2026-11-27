@@ -486,7 +486,18 @@ export class ThingsRail {
     const handles = this.handles;
     if (!handles) return true;
     const serial = ++this.serial, workspace = handles.workspaceId, topicId = this.topicId;
-    const view = (name, args) => handles.view(name, args);
+    // Give the visible rail a foreground turn, one read at a time per page.
+    // Keep room for the feed and other clients, and skip reads overtaken by a move.
+    let tail = Promise.resolve();
+    const view = (name, args) => {
+      const next = tail.then(() => {
+        if (serial !== this.serial || handles !== this.handles) throw Error('The rail read was superseded.');
+        const readClass = this.shows() && this.doc.visibilityState === 'visible' ? 'foreground' : 'background';
+        return handles.view(name, args, readClass);
+      });
+      tail = next.catch(() => {});
+      return next;
+    };
     this.stale = false;
     // A topic the page can no longer read (its updates refused) is not read here either.
     const readable = id => id !== handles.topic?.id || handles.readable?.() !== false;
@@ -494,7 +505,7 @@ export class ThingsRail {
     const tools = !readable(topicId) ? settle(Promise.resolve(null))
       : settle(view('topic_tools', { topic_id: topicId }).then(answer => answer.linked.map(tool => ({ ...tool, home: tool.home_workspace_id }))));
     const notebook = !readable(topicId) ? settle(Promise.resolve(null)) : settle(this.readNotebook(view, { kind: 'topic', id: topicId }));
-    const links = this.links ? settle(readable(topicId) ? this.links.read(handles) : Promise.resolve(null)) : settle(Promise.resolve(undefined));
+    const links = this.links ? settle(readable(topicId) ? this.links.read(handles, view) : Promise.resolve(null)) : settle(Promise.resolve(undefined));
     const places = [this.topicPlace(handles)].filter(place => readable(place.id));
     if (serial !== this.serial || handles !== this.handles) return true;
     const reads = places.map(place => settle(this.readPlace(view, place, 24)));
