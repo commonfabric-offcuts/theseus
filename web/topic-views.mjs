@@ -262,7 +262,7 @@ export class TopicViews {
         !integer(answer.relevant_versions?.[versionKey])) throw invalid('The list page is malformed.');
     return answer;
   }
-  messagesPage(answer, { initial = false, cursor, live = false, anchored = false, contiguous = false, draw = true,
+  messagesPage(answer, { initial = false, cursor, live = false, anchored = false, contiguous = false, draw = true, sparse = false,
     windowEpoch = this.windowEpoch, windowReadStart = this.windowKnowledge } = {}) {
     if (windowEpoch !== this.windowEpoch || windowReadStart < this.windowReadFloor) return false;
     // An explicit return to an old message adds one bounded run without moving the ordinary paging frontier.
@@ -296,16 +296,30 @@ export class TopicViews {
     // newest message for a live page, the oldest for an older page) and joins
     // every run it overlaps; a page that does neither, such as the newest page
     // a commit reload reads after a gap, starts a run of its own.
-    const joined = new Set(answer.items.map(item => this.runs.get(item.id)));
-    if (!initial && (!anchored || contiguous)) for (const item of this.messages.values()) if (item.seq === cursor) joined.add(this.runs.get(item.id));
+    const joined = sparse ? new Set() : new Set(answer.items.map(item => this.runs.get(item.id)));
+    if (!sparse && !initial && (!anchored || contiguous)) for (const item of this.messages.values()) if (item.seq === cursor) joined.add(this.runs.get(item.id));
     // Consecutive global sequences leave no possible topic message between
     // them. This closes a reconstructed interval without an extra empty read;
     // larger global sequence gaps still require an actual paging overlap.
-    if (this.windowOptions && answer.items.length) for (const item of this.messages.values()) {
+    if (!sparse && this.windowOptions && answer.items.length) for (const item of this.messages.values()) {
       if (item.seq === answer.items[0].seq - 1 || item.seq === answer.items.at(-1).seq + 1) joined.add(this.runs.get(item.id));
     }
     joined.delete(undefined);
-    const run = joined.size ? joined.values().next().value : ++this.runCount;
+    const run = sparse ? null : joined.size ? joined.values().next().value : ++this.runCount;
+    // A dossier page can skip unrelated messages between any two members.
+    // Keep known runs and join adjacent sequences without claiming gaps.
+    const runs = sparse ? new Map() : null;
+    if (runs) {
+      let prior;
+      for (const item of answer.items) {
+        const adjacent = prior?.seq === item.seq - 1 ? runs.get(prior.id) : undefined;
+        runs.set(item.id, this.runs.get(item.id) ?? adjacent ?? ++this.runCount);
+        prior = item;
+      }
+    }
+    // Reserve the pinned dossier root and give the latest replies priority
+    // when the page spans more history runs than the window can retain.
+    const preferred = sparse ? [...answer.items].reverse() : answer.items;
     const windowOptions = this.windowOptions?.(answer.items) ?? null;
     if (windowOptions) {
       const candidate = new Map(this.messages), candidateRuns = new Map(this.runs);
@@ -313,9 +327,9 @@ export class TopicViews {
       for (const item of answer.items) {
         const known = candidate.get(item.id);
         candidate.set(item.id, { ...item, stack_position: laterPosition(known?.stack_position, item.stack_position) });
-        candidateRuns.set(item.id, run);
+        candidateRuns.set(item.id, runs?.get(item.id) ?? run);
       }
-      const admission = planTopicWindow(candidate, candidateRuns, { prefer: answer.items.map(item => item.id), ...windowOptions });
+      const admission = planTopicWindow(candidate, candidateRuns, { prefer: preferred.map(item => item.id), ...windowOptions });
       const required = answer.items.at(-1)?.id;
       if (admission.blocked || required && !admission.keep.has(required) && this.removals.get(required)?.kind !== 'unsent') {
         this.windowPressure = [...admission.rejectedPins, ...(required && !admission.keep.has(required) ? [required] : [])];
@@ -344,12 +358,12 @@ export class TopicViews {
           known.removal ??= item.removal;
           known.yours = this.laterYours(known, item);
         }
-        this.runs.set(item.id, run); continue;
+        this.runs.set(item.id, runs?.get(item.id) ?? run); continue;
       }
       if (known?.acts) item.acts = laterActs(known.acts, item.acts);
       item.yours = this.laterYours(known, item);
       item.stack_position = laterPosition(known?.stack_position, item.stack_position);
-      this.messages.set(item.id, item); this.runs.set(item.id, run);
+      this.messages.set(item.id, item); this.runs.set(item.id, runs?.get(item.id) ?? run);
     }
     this.learnPositions(answer.items.map(item => ({ message_id: item.id, stack_position: item.stack_position })));
     // Each position Core answers carries the act it had reached when it read the page (at.acts). The Reader's
@@ -362,14 +376,14 @@ export class TopicViews {
     // A message of the reader's own arriving is a reply, from this page or
     // another: an act, as below. The repaint of the messages places the line.
     if (live && this.reader !== null && answer.items.some(item => item.author_id === this.reader)) { this.sight.clear(); this.sightHeld = false; }
-    this.newest = Math.max(this.newest, ...answer.items.map(item => item.seq));
+    if (!sparse) this.newest = Math.max(this.newest, ...answer.items.map(item => item.seq));
     if (integer(answer.commit_seq)) this.windowAt = Math.max(this.windowAt, answer.commit_seq);
     if (!live && !anchored) this.olderCursor = answer.next_cursor;
     if (!this.windowOptions && this.starsLoaded && this.starRoots.size && this.olderCursor !== null) {
       this.starredPending = true; this.invalidate('starred', 0); this.paint('starred');
     }
     if (live) this.arrived(answer.items);
-    this.trimWindow(answer.items, windowOptions);
+    this.trimWindow(preferred, windowOptions);
     if (draw) this.paintMessages();
     return true;
   }

@@ -70,20 +70,29 @@ test('875 full first-message landing keeps the earlier row closed and shows the 
 const app = await readFile(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const landingSource = app.slice(app.indexOf('function landOn(id,'), app.indexOf('// The header New act'));
 test('875 actual starred rail handler and app landing draw newest seven and the earlier-replies row', async () => {
-  const f = fixture(); let result, requested;
+  const f = fixture(); let result, requested, scope;
   const stackFeed = Object.assign(Object.create(StackFeed.prototype), { list: f.list });
   const context = vm.createContext({ entries, reveal, opened, stackFeed, $: () => f.list, releaseTopArrivals() {},
-    windowReadSerial: 0, anchorHold: null, rememberListAnchor() {}, listAccessEpoch: 1, registry: { generation: 1, disposed: false },
-    retired: false, topicUnavailable: false, views: { messages: f.messages }, shell: { drawer: { isOpen: () => false } } });
+    windowReadSerial: 0, anchorHold: null, rememberListAnchor() {}, listAccessEpoch: 1,
+    registry: { generation: 1, disposed: false, cleanup: { foreground: () => ({ read: work => work({}), release() {} }) } },
+    retired: false, topicUnavailable: false, topic: { id: 'isolated-topic' }, windowTargets: new Set(),
+    bootstrap: { instance_id: 'fixture' }, checkedView: value => value,
+    api: { view: async (name, args) => {
+      scope = { name, args: { ...args } };
+      return { items: [...f.messages.values()].map(item => ({ ...item, stack_position: { root_id: 'm1' } })) };
+    } },
+    views: { messages: f.messages, messagesPage: (_answer, options) => options.sparse && options.anchored },
+    shell: { drawer: { isOpen: () => false } } });
   vm.runInContext(landingSource, context);
   const rail = { pageStars: false, outline: { doc: f.doc, open(target) {
-    requested = target; result = context.landOnMessage(target.message);
+    requested = target; result = context.landOnMessage(target.message, undefined, undefined, target.land === 'dossier');
   } } };
   const state = { id: 'isolated-topic', stars: [{ dossier: { id: 'm1', name: 'Named dossier' } }],
     box: f.doc.createElement('div'), links: new Map(), next: null, loaded: true };
   OutlineDossiers.prototype.paint.call(rail, state);
   state.links.get('m1').onclick({ button: 0, preventDefault() {} }); await result;
-  assert.deepEqual(requested, { kind: 'topic', id: 'isolated-topic', message: 'm1', land: true });
+  assert.deepEqual(requested, { kind: 'topic', id: 'isolated-topic', message: 'm1', land: 'dossier' });
+  assert.deepEqual(scope, { name: 'topic_messages', args: { topic_id: 'isolated-topic', dossier_id: 'm1', limit: 30 } });
   assert.deepEqual(f.visible(), newest, 'the actual rail-to-landing path must retain the seven-message window');
   assert.equal(f.section().dataset.headOpen, 'true');
   assert.equal(f.earlier().querySelector('.stack-earlier-words').textContent, '6 earlier replies');

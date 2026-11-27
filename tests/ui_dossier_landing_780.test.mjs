@@ -85,8 +85,55 @@ test('780 outline emits landing intent for pointer/Return/tap path and native hr
   subject.paint(state);
   const link=state.links.get('root');let prevented=false;
   link.onclick({button:0,preventDefault(){prevented=true;}});
-  assert.equal(prevented,true);assert.deepEqual(calls,[target()]);
-  assert.deepEqual(parseRoute(new URL(link.href,'https://fixture/')),target());
+  const dossier = { ...target(), land: 'dossier' };
+  assert.equal(prevented,true);assert.deepEqual(calls,[dossier]);
+  assert.deepEqual(parseRoute(new URL(link.href,'https://fixture/')),dossier);
+});
+
+test('a starred dossier has a scoped landing and keeps the separate topic paging runs', async () => {
+  const f = app(), read = f.scope.api.view;
+  f.views.messagesPage({ instance_id: 'i', items: [{ id: 'latest', topic_id: 't', seq: 80, body: 'Other dossier', author_id: 'agent' }],
+    next_cursor: 80, relevant_versions: { topic: 1 } }, { initial: true });
+  f.scope.api.view = async (name, args, options) => {
+    if (!args.dossier_id) return read(name, args, options);
+    f.calls.push(['read', name, copy(args), options]);
+    const item = (id, seq) => ({ id, topic_id: 't', seq, body: id, author_id: 'agent',
+      stack_position: { root_id: 'root', at: { messages: 48, acts: 1 } } });
+    return { instance_id: 'i', items: [item('root', 10), item('reply', 48)], next_cursor: null, relevant_versions: { topic: 1 } };
+  };
+  await f.open({ ...target(), land: 'dossier' });
+  assert.deepEqual(f.calls.filter(call => call[0] === 'read').map(call => call.slice(1, 3)),
+    [['topic_messages', { topic_id: 't', dossier_id: 'root', limit: 30 }]]);
+  assert.equal(f.views.olderCursor, 80);
+  assert.equal(f.views.newest, 80);
+  assert.notEqual(f.views.runOf('root'), f.views.runOf('reply'));
+  assert.equal(f.doc.activeElement, f.card);
+});
+
+test('a starred dossier retains its root and newest replies at the history run limit', async () => {
+  const f = app();
+  f.views.windowOptions = () => ({ pins: [...f.scope.windowTargets, 'latest'], maxRuns: 8 });
+  f.views.messagesPage({ instance_id: 'i', items: [{ id: 'latest', topic_id: 't', seq: 120, body: 'Other dossier', author_id: 'agent' }],
+    next_cursor: 120, relevant_versions: { topic: 1 } }, { initial: true });
+  const item = (id, seq) => ({ id, topic_id: 't', seq, body: id, author_id: 'agent',
+    ...(id === 'root' ? {} : { reply_to: 'root' }),
+    stack_position: { root_id: 'root', at: { messages: 91, acts: 1 } } });
+  const replies = Array.from({ length: 8 }, (_, index) => item('reply-' + (index + 1), (index + 2) * 10));
+  f.scope.api.view = async () => ({
+    instance_id: 'i', items: [item('root', 10), ...replies, item('newest-reply', 91)],
+    next_cursor: null, relevant_versions: { topic: 1 }
+  });
+
+  await f.open({ ...target(), land: 'dossier' });
+
+  assert.deepEqual([...f.views.messages.keys()],
+    ['latest', 'root', 'reply-3', 'reply-4', 'reply-5', 'reply-6', 'reply-7', 'reply-8', 'newest-reply']);
+  assert.equal(f.views.runOf('reply-8'), f.views.runOf('newest-reply'));
+  assert.notEqual(f.views.runOf('reply-7'), f.views.runOf('reply-8'));
+  assert.equal(new Set(f.views.runs.values()).size, 8);
+  assert.equal(f.views.olderCursor, 120);
+  assert.equal(f.views.newest, 120);
+  assert.equal(f.doc.activeElement, f.card);
 });
 
 test('780 landing route survives serialization, exact guard preservation and late guard refusal',async()=>{

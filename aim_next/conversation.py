@@ -14,7 +14,7 @@ from .standing_conversation import open_items_clause
 from .topic_state import derived_conversation
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
 from .topic_reading import reading_fields, unread_groups, writing_fields
-from .stacks import current_acts, act_fields, awaiting_fields, record_wait_start, source_dossier
+from .stacks import MEMBERS, StackRoots, current_acts, act_fields, awaiting_fields, record_wait_start, source_dossier
 from .message_edit import (current_words, edited, is_held, mark, plain, quoted_revision, reading, record_agent_exposure_start, revision,
                            struck, words, withheld)
 
@@ -679,7 +679,18 @@ class Conversation:
         # Every form reads only what the reader may see (whispers.VISIBLE), so a
         # page never stalls on, counts or folds a whisper between others.
         values = {"topic": topic["id"], "actor": actor, "cursor": cursor, "limit": limit + 1}
-        if args.get("message_ids") is not None:
+        dossier = args.get("dossier_id")
+        if dossier is not None:
+            root = self._message_access(db, actor, dossier)
+            if root["topic_id"] != topic["id"] or StackRoots(db, actor).root(dossier) != dossier:
+                raise Refusal("INVALID_ARGUMENT", "Name the canonical root of a dossier in this topic")
+            # Admit the root even when the newest members fill the rest of
+            # the page. Unrelated topic messages never enter the walk.
+            rows = db.execute(MEMBERS + " SELECT " + columns + " FROM members"
+                              " JOIN messages m ON m.id=members.id" + parent +
+                              " ORDER BY (m.id<>:root), m.seq DESC LIMIT :limit",
+                              {"root": dossier, "actor": actor, "limit": limit + 1}).fetchall()
+        elif args.get("message_ids") is not None:
             # Named messages of this topic, in page shape (a page refreshing one it holds, docs/message-edit.md).
             ids = self._named_messages(db, actor, topic, args["message_ids"])
             values.update(("id%d" % n, mid) for n, mid in enumerate(ids))
@@ -739,7 +750,9 @@ class Conversation:
             items.append(item)
             size += encoded
             last = row["seq"]
-        if backwards:
+        if dossier is not None:
+            items.sort(key=lambda item: item["seq"])
+        elif backwards:
             items.reverse()
         self._item_fields(db, actor, topic, items)
         self._reaction_fields(db, actor, items)
@@ -768,8 +781,13 @@ class Conversation:
                 raise Refusal("VIEW_TOO_LARGE", "The named messages cannot fit in one bounded response")
             if len(items) <= 1:
                 raise Refusal("VIEW_TOO_LARGE", "A preview cannot fit in the bounded response")
-            items.pop(0 if backwards else -1)
-            answer["next_cursor"] = items[0 if backwards else -1]["seq"]
+            if dossier is not None:
+                oldest = next(index for index, item in enumerate(items) if item["id"] != dossier)
+                items.pop(oldest)
+                answer["next_cursor"] = next((item["seq"] for item in items if item["id"] != dossier), items[0]["seq"])
+            else:
+                items.pop(0 if backwards else -1)
+                answer["next_cursor"] = items[0 if backwards else -1]["seq"]
         from .dossier_positions import pack_positions
         return pack_positions(answer, args, byte_limit=LIMITS["summary_utf8_bytes"])
 

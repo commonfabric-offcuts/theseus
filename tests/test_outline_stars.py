@@ -70,6 +70,25 @@ class OutlineStars(StackCase):
         self.assertEqual(denied["error"]["code"], "FORBIDDEN")
         self.assertEqual(self.scoped(limit=0)["error"]["code"], "INVALID_ARGUMENT")
 
+    def test_dossier_landing_keeps_root_and_scopes_members_before_limiting(self):
+        root = self.post("Old dossier root")
+        first = self.post("First reply", reply_to=root)
+        self.post("An unrelated dossier")
+        joined = self.post("A joined dossier")
+        self.committed(self.join(joined, root))
+        self.post("Private reply", actor="owner", addressees=["agent-a"], whisper=True, reply_to=root)
+        newest = self.post("Newest public reply", reply_to=root)
+        args = {"topic_id": "t1", "dossier_id": root}
+        full = self.store.view("agent-b", "topic_messages", args)
+        self.assertNotIn("error", full, full)
+        self.assertEqual([row["id"] for row in full["items"]], [root, first, joined, newest])
+        limited = self.store.view("agent-b", "topic_messages", dict(args, limit=2))
+        self.assertEqual([row["id"] for row in limited["items"]], [root, newest])
+        self.assertIsNotNone(limited["next_cursor"])
+        self.assertEqual(self.store.view("outsider", "topic_messages", args)["error"]["code"], "FORBIDDEN")
+        for wrong in (dict(args, dossier_id=first), dict(args, cursor=5)):
+            self.assertEqual(self.store.view("agent-b", "topic_messages", wrong)["error"]["code"], "INVALID_ARGUMENT")
+
 
 if __name__ == "__main__":
     unittest.main()
