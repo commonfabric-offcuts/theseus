@@ -32,6 +32,7 @@
 .shelf-line:nth-child(2){width:92%}
 .shelf-line:nth-child(3){width:70%}
 .shelf-title{display:-webkit-box;white-space:normal;max-width:100%;margin-top:.38rem;overflow:hidden;font-size:.7rem;line-height:1.2;text-align:center;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:2}
+.shelf-dossier[data-archive-starred=true] .shelf-title::before{content:"★︎ " / "";color:var(--stack-star)}
 .shelf-ghost{box-shadow:0 12px 32px rgb(0 0 0 / .4)}
 /* The feed's own "Archived (N)" gives way to the shelf while the shelf is drawn; where the rail is not beside the
    page (the middle widths' panel, a phone, the Notebook docked, an outcome's Conversation) the feed keeps it, and the

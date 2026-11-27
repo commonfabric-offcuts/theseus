@@ -748,6 +748,13 @@ function paintHead(card, stack, { open, state, unread, nameOf, doc, separate = f
     event.preventDefault(); event.stopPropagation(); state.on?.star?.(stack);
   };
   const firstStarred = state.on?.firstStarred?.(stack) ?? (original ? Boolean(stack.head.acts?.starred) : Boolean(positionOf(stack)?.starred?.includes(dossierOf(stack))));
+  const archiveStarred = state.below?.has(stack.id) === true && archivedStarred(state, stack);
+  const archiveMark = archiveStarred && !firstStarred ? piece('archive-star', () => {
+    const mark = element(doc, 'span', 'archive-title-star', '★\uFE0E');
+    mark.setAttribute('role', 'img'); mark.setAttribute('aria-label', 'Starred dossier');
+    return mark;
+  }) : null;
+  star.classList.toggle('archive-title-star', archiveStarred && firstStarred);
   const starWords = firstStarred ? 'Unstar' : 'Star for me';
   detailText(star, firstStarred ? '★\uFE0E' : '☆\uFE0E');
   star.setAttribute('aria-label', starWords); star.title = starWords;
@@ -756,7 +763,8 @@ function paintHead(card, stack, { open, state, unread, nameOf, doc, separate = f
   const hide = open ? piece('hide', () => act('hide', 'stack-hide', 'Show latest and unread replies')) : null;
   paintRemoval(row, original ? stack.head : null, doc);
   const removal = row.querySelector('.message-retracted');
-  detailChildren(row, [name, pen, who, ...(carried ? [carried] : []), ...(minted ? [minted] : []), ...(newHead ? [newHead] : []), star, meta, ...(hide ? [hide] : []), ...(removal ? [removal] : [])]);
+  detailChildren(row, [...(archiveMark ? [archiveMark] : []), name, pen, who, ...(carried ? [carried] : []), ...(minted ? [minted] : []),
+    ...(newHead ? [newHead] : []), star, meta, ...(hide ? [hide] : []), ...(removal ? [removal] : [])]);
   row.dataset.renaming = String(state.renaming === stack.id);
   return head;
 }
