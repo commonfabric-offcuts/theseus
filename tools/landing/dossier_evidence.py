@@ -99,6 +99,7 @@ def judged_evidence(attempt, folder, spec, land, schema):
         row = result['versions']['rehearse']
         valid = (
             type(rehearsal['exit']) is int and rehearsal['exit'] == 0 and answer['ok'] is True and result['backup'] == bundle
+            and result['backup_identity']['manifest_sha256'] == verified['bundle_digest']
             and row['passed'] is True and row['head'] == spec['source'] and row['tree'] == spec['tree']
             and (row['before']['schema_version'], row['after']['schema_version']) == schema
         )

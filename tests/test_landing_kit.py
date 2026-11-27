@@ -470,7 +470,7 @@ class DossierEvidence(Seat):
         self.save('PRE-MERGE-BACKUP.json', bundle)
         self.save('BACKUP-VERIFIED.json', dict(bundle, verified=True))
         self.save('REHEARSAL.json', {'exit': 0, 'stdout': json.dumps({'ok': True, 'result': str(result)})})
-        self.save(result, {'backup': bundle['bundle_path'], 'versions': {'rehearse': {
+        self.save(result, {'backup': bundle['bundle_path'], 'backup_identity': {'manifest_sha256': bundle['bundle_digest']}, 'versions': {'rehearse': {
             'passed': True, 'head': A, 'tree': CARRY, 'before': {'schema_version': '69'}, 'after': {'schema_version': '70'}}}})
         self.save('SPEC.json', self.spec)
         self.save('TRAIN.json', self.train)
@@ -532,6 +532,7 @@ class DossierEvidence(Seat):
             ('deploy/06-migrate.json', ('stdout',), json.dumps({'ok': True, 'migrated': True,
                                                                 'from_version': '68', 'schema_version': '70'}), 'match the attempt schema'),
             ('BACKUP-VERIFIED.json', ('bundle_digest',), '3' * 64, 'verify the pre-merge backup'),
+            ('realdata/rehearse/RESULT.json', ('backup_identity', 'manifest_sha256'), '3' * 64, 'carry and schema'),
             ('realdata/rehearse/RESULT.json', ('versions', 'rehearse', 'after', 'schema_version'), '71', 'carry and schema'),
         )
         for name, fields, changed, reason in changes:
