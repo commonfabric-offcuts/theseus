@@ -124,7 +124,7 @@ export class ArchiveShelf {
     const list = archiveOrder(ordered, each => each.starred);
     const live = new Set();
     // Every look read before any is written, so the page lays out once.
-    const looks = list.map(({ stack, section }) => this.look(stack, section));
+    const looks = list.map(({ stack, section, starred }) => this.look(stack, section, starred));
     list.forEach(({ stack }, index) => {
       live.add(stack.id); this.stacks.set(stack.id, stack);
       let replica = this.replicas.get(stack.id);
@@ -195,20 +195,22 @@ export class ArchiveShelf {
   }
   // A replica takes the look of its original: its folder's colour, its first
   // card's colour and edge, one sheet behind for each further message (to three).
-  look(stack, section) {
+  look(stack, section, starred) {
     const title = section?.querySelector('.stack-name')?.textContent?.trim() || (stack.head.body ?? '').split('\n')[0].slice(0, 80) || 'Dossier';
     const card = section?.querySelector('.message-card'), view = this.doc.defaultView;
     const style = (node, name) => node && view ? view.getComputedStyle(node).getPropertyValue(name).trim() : '';
-    return { title, count: 1 + stack.replies.length, fresh: [stack.head, ...stack.replies].filter(this.unread).length,
-      colours: [['--replica-card', style(card, 'background-color')], ['--replica-edge', style(card, 'border-top-color')], ['--replica-folder', style(section, '--stack-folder')]] };
+    return { title, starred, count: 1 + stack.replies.length, fresh: [stack.head, ...stack.replies].filter(this.unread).length,
+      colours: [['--replica-card', style(card, 'background-color')], ['--replica-edge', style(card, 'border-top-color')],
+        ['--replica-folder', style(section, '--stack-folder')], ['--stack-star', style(section, '--stack-star')]] };
   }
-  dress(replica, { title, count, fresh, colours }) {
+  dress(replica, { title, starred, count, fresh, colours }) {
     replica.querySelector('.shelf-title').textContent = title;
     const size = replica.querySelector('.shelf-size'); if (size) size.textContent = count > 1 ? String(count) : '';
     const mark = replica.querySelector('.shelf-new'); mark.hidden = !fresh; mark.textContent = fresh ? `${fresh} new` : '';
     const words = `${count === 1 ? 'one message' : `${count} messages`}${fresh ? `, ${fresh} new` : ''}`;
     replica.title = `${title}: ${words}. Click to bring it back.`;
-    replica.setAttribute('aria-label', `${title}, ${words}`);
+    replica.setAttribute('aria-label', `${title}${starred ? ', starred' : ''}, ${words}`);
+    replica.dataset.archiveStarred = String(Boolean(starred));
     replica.dataset.sheets = String(Math.min(count, SHEETS));
     replica.dataset.folder = String(count > 1);
     for (const [property, value] of colours) if (value && replica.style.getPropertyValue(property) !== value) replica.style.setProperty(property, value);
