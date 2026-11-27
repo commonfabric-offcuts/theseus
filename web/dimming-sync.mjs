@@ -17,10 +17,10 @@ export class DimmingSync {
     Object.assign(this, { choices, storage, journalFactory, visible, timers, changed, id }); this.epoch = 0; this.key = null; this.retryTimer=null; this.failures=0;
   }
   get pending() { return this.prepared?.[0] ?? null; }
-  connect({ api, bootstrap, live = null }) {
+  connect({ api, bootstrap, live = null, railReadOrder = null }) {
     const { instance_id, actor, authority } = bootstrap;
     const key = JSON.stringify([instance_id, actor, authority?.authority_id, authority?.authority_epoch]);
-    this.api = api; this.liveOff?.();
+    this.api = api; this.railReadOrder = railReadOrder; this.liveOff?.();
     if (this.key !== key) {
       if(this.retryTimer!==null)this.timers.clearTimeout(this.retryTimer);this.retryTimer=null;this.failures=0;
       this.journal?.close(); this.journal = null; this.journalReady = null; this.journalError = null;
@@ -151,9 +151,14 @@ export class DimmingSync {
     this.legacy = null;
     try { this.storage?.removeItem(this.legacyKey); } catch { /* Core already wins; a later read can retry retirement. */ }
   }
+  readBehindRail(epoch, name, args) {
+    const read = () => epoch === this.epoch ? this.api.view(name, args, { readClass: 'background' }) : null;
+    return this.railReadOrder ? this.railReadOrder.defer(read) : read();
+  }
   async readCurrent(epoch, {candidate = null, notify = true} = {}) {
-    const answer = checkedView(await this.api.view('rail_dimming',candidate ? {candidate} : {}, {readClass:'background'}),this.bootstrap.instance_id);
+    const transport = await this.readBehindRail(epoch, 'rail_dimming', candidate ? { candidate } : {});
     if (epoch !== this.epoch) return;
+    const answer = checkedView(transport, this.bootstrap.instance_id);
     this.accept(answer);
     if (answer.dim_revision > 0) {
       this.retireLegacy();
@@ -164,7 +169,7 @@ export class DimmingSync {
   }
   async changes(input, epoch) {
     const scope = {kind:'actor',id:this.bootstrap.actor};
-    const answer = await this.api.view('changes',{scope,limit:50,...(input?{cursor:input}:{})},{readClass:'background'});
+    const answer = await this.readBehindRail(epoch, 'changes', { scope, limit: 50, ...(input ? { cursor: input } : {}) });
     if (epoch !== this.epoch) return null;
     return scopedChangesPage(answer,this.bootstrap,scope,input);
   }

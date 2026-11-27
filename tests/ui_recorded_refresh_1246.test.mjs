@@ -8,10 +8,11 @@ import { reloader } from '../web/live.mjs';
 import { checkedView } from '../web/freshness.mjs';
 import { Marks } from '../web/marks.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
+import { RailReadOrder } from '../web/rail-read-order.mjs';
 
 const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
 const start = app.indexOf('function followCommits('), end = app.indexOf('// Retain the server', start);
-const setupStart = app.indexOf('  commitReload = ', app.indexOf('// The open topic\'s marks'));
+const setupStart = app.indexOf('  const recordedReadCurrent = ', app.indexOf('// The open topic\'s marks'));
 const setupEnd = app.indexOf("  $('review-versions')", setupStart);
 assert.ok(start >= 0 && end > start && setupStart >= 0 && setupEnd > setupStart);
 const marksStart = app.indexOf('  marks = new Marks('), marksEnd = app.indexOf('  marks.listen(', marksStart);
@@ -39,6 +40,7 @@ function fixture(bootstrap = offered) {
     registry: { disposed: false, current: null, runtime: { current: { ...offered.authority } } },
     attention: { refresh() {} }, Marks,
     authorityReviewPending: () => context.denied, reloader, recordedActionRefresh, checkedView, outcomeScope: scope,
+    railReadOrder: new RailReadOrder(), DOMException,
     loadConversation: load('conversation'), loadMarks: load('marks'), loadUnread: load('unread'), loadReadState: load('read'),
     loadShownPage: load('shown'), wakeLights: { load: load('wakes') }, participantsPanel: { paint: () => loads.push('participants') },
     document: { visibilityState: 'visible', addEventListener: (name, fn) => { events[name] = fn; } },
