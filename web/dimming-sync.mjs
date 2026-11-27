@@ -17,10 +17,10 @@ export class DimmingSync {
     Object.assign(this, { choices, storage, journalFactory, visible, timers, changed, id }); this.epoch = 0; this.key = null; this.retryTimer=null; this.failures=0;
   }
   get pending() { return this.prepared?.[0] ?? null; }
-  connect({ api, bootstrap, live = null }) {
+  connect({ api, bootstrap, live = null, railReadOrder = null }) {
     const { instance_id, actor, authority } = bootstrap;
     const key = JSON.stringify([instance_id, actor, authority?.authority_id, authority?.authority_epoch]);
-    this.api = api; this.liveOff?.();
+    this.api = api; this.railReadOrder = railReadOrder; this.liveOff?.();
     if (this.key !== key) {
       if(this.retryTimer!==null)this.timers.clearTimeout(this.retryTimer);this.retryTimer=null;this.failures=0;
       this.journal?.close(); this.journal = null; this.journalReady = null; this.journalError = null;
@@ -30,7 +30,7 @@ export class DimmingSync {
       this.cacheKey = dimCacheKey(instance_id, actor, authority); this.confirmed = null; this.intents = []; this.prepared = [];
       this.legacyKey = dimmingKey(instance_id, actor); this.legacy = null; this.cursor = null; this.initialized = false; this.error = null; this.cacheKept = true; this.presented = null;
       try { const raw = this.storage?.getItem(this.legacyKey); if (raw) this.legacy = decodeDimming(raw); } catch { /* No valid legacy import. */ }
-      this.restore(); this.task = null;
+      this.restore(); this.task = null; this.queuedWake = null;
       this.choices.syncEdit = action => {
         this.intents.push({ id: this.id(), action: copy(action) }); this.error = null; this.transientError=false;
         if(this.retryTimer!==null)this.timers.clearTimeout(this.retryTimer);this.retryTimer=null;this.failures=0;
@@ -39,11 +39,11 @@ export class DimmingSync {
       this.paint();
     }
     this.liveOff = live?.listen(event => {
-      if (this.visible() && (event.kind === 'commit' || event.kind === 'state' && event.state === 'live')) this.wake();
+      if (this.visible() && (event.kind === 'commit' || event.kind === 'state' && event.state === 'live')) this.wakeBehindRail();
     }) ?? null;
     return this.wake();
   }
-  disconnect() { this.epoch++;if(this.retryTimer!==null)this.timers.clearTimeout(this.retryTimer);this.retryTimer=null; this.journal?.close(); this.journal = null; this.liveOff?.(); this.liveOff = null; this.choices.syncEdit = null; this.key = null; }
+  disconnect() { this.epoch++;if(this.retryTimer!==null)this.timers.clearTimeout(this.retryTimer);this.retryTimer=null; this.journal?.close(); this.journal = null; this.liveOff?.(); this.liveOff = null; this.choices.syncEdit = null; this.key = null; this.queuedWake = null; }
   restore() {
     try {
       const raw = this.storage?.getItem(this.cacheKey);
@@ -150,6 +150,17 @@ export class DimmingSync {
   retireLegacy() {
     this.legacy = null;
     try { this.storage?.removeItem(this.legacyKey); } catch { /* Core already wins; a later read can retry retirement. */ }
+  }
+  wakeBehindRail() {
+    if (!this.railReadOrder) return this.wake();
+    if (this.queuedWake) return this.queuedWake;
+    const epoch = this.epoch;
+    const queued = this.railReadOrder.defer(() => {
+      if (this.queuedWake === queued) this.queuedWake = null;
+      if (epoch === this.epoch && this.visible()) return this.wake();
+    });
+    this.queuedWake = queued;
+    return queued;
   }
   async readCurrent(epoch, {candidate = null, notify = true} = {}) {
     const answer = checkedView(await this.api.view('rail_dimming',candidate ? {candidate} : {}, {readClass:'background'}),this.bootstrap.instance_id);

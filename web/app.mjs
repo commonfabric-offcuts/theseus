@@ -60,6 +60,7 @@ import { OutcomeCreation } from './creation.mjs';
 import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
 import { ReadThrough } from './read-through.mjs';
 import { Live, liveOffered, reloader } from './live.mjs';
+import { railReadOrder } from './rail-read-order.mjs';
 import { Attention } from './attention.mjs';
 import { TopicStatePanel, paintWaiting, managesTopic, organises, topicUpdateEnvelope } from './topic-state.mjs';
 import { paintTopicHeader } from './topic-header.mjs';
@@ -4428,7 +4429,7 @@ function runTopicMenuAction(current, key) {
   return false;
 }
 function readyRails(workspaceId, handles = {}) {
-  shell.ready({ api, bootstrap, live, workspaceId, workspaceTitle: $('workspace-name').textContent, topic: null, pageMax: pageMax(),
+  shell.ready({ api, bootstrap, live, railReadOrder, workspaceId, workspaceTitle: $('workspace-name').textContent, topic: null, pageMax: pageMax(),
     navigationCurrent: () => { const serial = landingSerial; return () => !retired && landingSerial === serial; },
     view: async (name, args, readClass = 'background') => checkedView(await api.view(name, args, { readClass }), bootstrap.instance_id),
     open: (target, title, from) => openDestination(target, title, from), notebookCreate: notebookCreator, dossierMenu: railDossierMenu, dossierMenuChoice: runDossierMenuChoice, topicMenuAction: runTopicMenuAction,
