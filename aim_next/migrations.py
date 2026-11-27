@@ -1,4 +1,5 @@
 from __future__ import annotations
+# 1368 rehearsal marker: inert; never shipped
 
 """Explicit operator schema upgrades. Reads, commands and the server never migrate."""
 
