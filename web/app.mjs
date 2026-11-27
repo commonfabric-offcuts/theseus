@@ -2086,7 +2086,7 @@ async function landOnMessage(id, serial = ++landingSerial, current = () => true,
   if (!mine()) return false;
   const openExact = () => openSource({ kind: 'message', id }, document.activeElement);
   const local = exact ? feedMessages().get(id) : null;
-  if (ownWithdrawnQuestion(local, bootstrap.actor)) return Boolean(await openExact());
+  if (local && ownWithdrawnQuestion(local, bootstrap.actor)) return Boolean(await openExact());
   if (dossier || !(views.messages.has(id) || local && stackFeed.entryFor(id))) {
     const foreground = registry.cleanup.foreground();
     try {
