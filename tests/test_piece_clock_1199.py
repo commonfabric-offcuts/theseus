@@ -342,7 +342,7 @@ class ClockCase(steering.PipelineCase):
         self.assertTrue(all("WHERE key" in q for q in metadata), metadata)
         self.assertFalse(any("FROM releases" in q and "WHERE number=" not in q for q in trace), trace)
         self.assertEqual(self.sql("SELECT name,sql FROM sqlite_master ORDER BY name"), before)
-        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='schema_version'"), [("69",)])
+        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='schema_version'"), [(storage.SCHEMA_VERSION,)])
 
     def cli(self, *args, actor="agent-b"):
         from aim_next.cli import main

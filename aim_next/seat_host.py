@@ -146,8 +146,8 @@ class SeatHost:
         return {'profile': str(folder / (seat['agent_id'] + '.profile.json')),
                 'config': str(folder / 'route.json'), 'cwd': str(folder / 'work'),
                 'cli': selected.cli, 'codex_home': selected.destination['codex_home'],
-                'codex_executable': selected.codex_executable, 'model': selected.model,
-                'reasoning_effort': selected.reasoning_effort, 'permission_mode': 'full'}
+                'codex_executable': selected.codex_executable, 'model': seat.get('model', selected.model),
+                'reasoning_effort': seat.get('reasoning_effort', selected.reasoning_effort), 'permission_mode': 'full'}
 
     def _profile(self, seat):
         plan = seat['plan']
