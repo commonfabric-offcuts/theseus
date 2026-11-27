@@ -273,3 +273,23 @@ These rows are read from actual source, item, stage and release relationships
 and filtered by Core for destination access. They write no cover acts and never
 change manual fields, authorship or acceptance. See [the contract](source-item-covers.md)
 for ordering, state precedence, indexes, read snapshots and preview limits.
+
+## Quoting a cover in a reply
+
+The inline reply targets the dossier's opening message. Its quote reference has
+`kind: cover`, the opening message ID, the cover act revision, and the authored
+field. The fields are `stands`, `payload`, `wait.N` and `default.N`, with `N`
+the zero-based position in the stored revision's waiting list. Start and end count Unicode
+code points in that field. End is exclusive. A selection stays inside one authored
+field, including selections across its Markdown formatting. The draft labels
+the quote “From the cover · Section” above the editable field. The posted
+reply uses “Replying to the cover · Section” on its context line. The section
+name is saved with the quote, so it stays with the original selection if the
+cover is renamed later.
+
+Core checks the dossier and topic reach, reads the exact cover act revision,
+and compares the field slice with the quoted excerpt. A remaining wait's position
+stays stable when another wait closes. Labels, link controls, and
+generated item rows have no quote coordinates. The stored revision and
+coordinates remain on the reply. This uses existing cover history and needs no
+schema change.

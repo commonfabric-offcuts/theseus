@@ -17,6 +17,7 @@ fenced on.
 """
 
 import json
+import re
 
 from .contract import Refusal
 from .cover_values import DONE_REFUSED, done_of, owners_word, shown, stored_value, written
@@ -38,6 +39,46 @@ COVER_WAIT_DOWN = ["DROP TABLE cover_waiting"]
 
 
 class Covers:
+    def _validate_cover_quote(self, db, actor, topic_id, reply_to, quote, private_to):
+        from .whispers import quote_allowed
+
+        ref = quote["source"]
+        revision, part = ref.get("revision"), ref.get("part")
+        if (set(ref) != {"kind", "id", "revision", "part"} or not reply_to or ref["id"] != reply_to
+                or type(revision) is not int or not 1 <= revision <= 2**63 - 1
+                or not isinstance(part, str)):
+            raise Refusal("INVALID_QUOTE", "Name this reply's dossier cover, revision and field")
+        message, _ = self._acted_message(db, actor, {"message_id": reply_to})
+        if message["topic_id"] != topic_id or StackRoots(db, actor).root(reply_to) != reply_to:
+            raise Refusal("INVALID_QUOTE", "The cover must belong to this reply's dossier")
+        row = db.execute("SELECT value FROM message_acts "
+                         "WHERE message_id=? AND kind='cover' AND owner='' AND revision=?",
+                         (reply_to, revision)).fetchone()
+        if row is None:
+            raise Refusal("INVALID_QUOTE", "No such cover revision")
+        value = stored_value(row["value"])
+        if part == "stands":
+            body = value["stands"]
+        elif part == "payload":
+            body = (value["payload"] or {}).get("text")
+        else:
+            wait = re.fullmatch(r"(wait|default)\.(0|[1-9][0-9]{0,5})", part)
+            if not wait:
+                raise Refusal("INVALID_QUOTE", "Name an authored cover field")
+            index = int(wait[2])
+            waiting = value["waiting"]
+            body = waiting[index].get("text" if wait[1] == "wait" else "default") if index < len(waiting) else None
+        start, end = quote.get("start"), quote.get("end")
+        section = quote.get("section")
+        if (not isinstance(section, str) or not 1 <= len(section) <= 160 or section != " ".join(section.split())):
+            raise Refusal("INVALID_QUOTE", "Name the quoted cover section in one short line")
+        if (not isinstance(body, str) or type(start) is not int or type(end) is not int
+                or not 0 <= start < end <= len(body) or body[start:end] != quote.get("excerpt")
+                or not body[start:end].strip()):
+            raise Refusal("INVALID_QUOTE", "The excerpt must match the selected words of the cover revision")
+        quote_allowed(db, actor, {"author": message["author_id"], "private_to": message["private_to"],
+                                 "whisper": message["private_to"] is not None}, private_to)
+
     def _index_cover_wait(self, db, message, value):
         """One current candidate per cover, changed with its immutable act, never from a read."""
         db.execute("DELETE FROM cover_waiting WHERE message_id=?", (message["id"],))

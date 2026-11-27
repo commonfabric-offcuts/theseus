@@ -160,10 +160,12 @@ def redact_quotes(db, actor, quotes):
     result = []
     for quote in quotes:
         source = quote.get("source") if isinstance(quote, dict) else None
-        if isinstance(source, dict) and source.get("kind") == "message":
+        if isinstance(source, dict) and source.get("kind") in ("message", "cover"):
             row = db.execute("SELECT author_id,private_to FROM messages WHERE id=?", (source.get("id"),)).fetchone()
             if row is not None and not visible(row, actor):
                 quote = dict(quote, source=None)
+                if source["kind"] == "cover":
+                    quote.pop("section", None)
         result.append(quote)
     return result
 

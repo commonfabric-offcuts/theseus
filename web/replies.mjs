@@ -15,6 +15,7 @@ function excerpt(item, { parent = null, viewer = null } = {}) {
 
 export function replyLine(item, context) {
   if (!item?.reply_to) return '';
+  if (item.reply_cover_section) return `Replying to the cover · ${item.reply_cover_section}`;
   const prefix = `Replying to ${item.reply_to_author ?? 'an earlier message'}`, words = excerpt(item, context);
   return words ? `${prefix}: ${words}` : prefix;
 }
@@ -22,12 +23,14 @@ export function replyLine(item, context) {
 // Both initial card drawing and repaint use the same original-word boundary.
 export function paintReplyLine(line, item, context) {
   const words = item?.reply_to ? excerpt(item, context) : '';
-  const key = JSON.stringify([item?.reply_to ?? null, item?.reply_to_author ?? null, words,
+  const section = item?.reply_cover_section;
+  const key = JSON.stringify([item?.reply_to ?? null, item?.reply_to_author ?? null, words, section,
     item?.reply_to_removal?.kind ?? null, item?.reply_to_removal?.at_ms ?? null]);
   if (paintedReplies.get(line) === key) return line;
   paintedReplies.set(line, key);
   line.replaceChildren();
   if (!item?.reply_to) return line;
+  if (section) { line.textContent = replyLine(item, context); return line; }
   const doc = line.ownerDocument;
   line.append(`Replying to ${item.reply_to_author ?? 'an earlier message'}`);
   if (words) {
