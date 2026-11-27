@@ -113,7 +113,7 @@ import { NotebookStarts } from './notebook-start.mjs';
 import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
 import { NotebookPassages } from './notebook-passages.mjs';
 import { NotebookQuoteTransfer } from './notebook-quote-transfer.mjs';
-import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions, paintReactions, mayAnswer } from './reactions.mjs';
+import { Reactions, learnReactions, paintReaderThumb, paintReaderReactions, paintReactions, mayAnswer, thumbed } from './reactions.mjs';
 import { CardScroll } from './card-scroll.mjs';
 import { InteractionGuide, asksForGuide } from './interaction-guide.mjs';
 // How a topic reads (docs/topic-reading.md): read cards, quiet agent talk, replies and stacks, formatted words.
@@ -2576,18 +2576,46 @@ function asideFromReader() {
   const offer = readerAside();
   if (offer) stackFeed.setAside(offer.stack, !offer.below, { focus: false, at: $('reader-aside') });
 }
-// The Reader's 👍 beside Send: the loaded card's item when there is one, which
-// the page keeps current, else what the message's source said.
+// The loaded card can learn reactions before the Reader does. The revision
+// and edit time still belong to the words the Reader shows.
 function readerItem() {
   const p = registry?.current, source = p?.source, ref = source?.source_ref;
   if (!p || p.sourceUnavailable || ref?.kind !== 'message') return null;
-  return views?.messages.get(ref.id) ?? { id: ref.id, author_id: source.author, addressees: source.addressees, reactions: source.reactions, go_ahead: source.go_ahead, withdrawal: source.withdrawal, removal: source.removal, removal_action: source.removal_action };
+  const loaded = views?.messages.get(ref.id);
+  const item = loaded ?? { id: ref.id, author_id: source.author, addressees: source.addressees, go_ahead: source.go_ahead,
+    withdrawal: source.withdrawal, removal: source.removal, removal_action: source.removal_action };
+  const known = (loaded?.reactions?.version ?? 0) >= (source.reactions?.version ?? 0)
+    ? loaded?.reactions ?? source.reactions : source.reactions;
+  return { ...item, reactions: known, revision: revisionOf(source), edited_ms: source.edited_ms };
+}
+// A thumbs-up that read its message places New at the oldest unread again.
+async function thumbMessage(item, on, said = null) {
+  const timing = beginTiming('thumb');
+  clearVisitNew(item.id);
+  const receipt = await reactions.thumb(item, on, said, timing);
+  if (receipt?.result?.settled === true && receipt.result.topic_id === views?.topicId) {
+    views.placeAfresh();
+    if (commitReload) run(commitReload);
+  }
+  return receipt;
 }
 function paintReaderThumb$() {
   const item = readerItem();
   paintReaderThumb($('thumb-source'), reactions && item, bootstrap.actor, Boolean(item && reactions?.busy.has(item.id)), item ? reactions?.pending.get(item.id) ?? null : null);
   paintReaderReactions($('reader-reactions'), reactions && item, bootstrap.actor, bootstrap.actor_kind, {
-    busy: Boolean(item && reactions?.busy.has(item.id)), answer: (id, choice) => run(() => answerFromReader(id, choice)) });
+    busy: Boolean(item && reactions?.busy.has(item.id)), answer: (id, choice) => run(() => answerFromReader(id, choice)),
+    repeat: () => thumbFromReader(false, item) });
+}
+function thumbFromReader(closeOnGive = true, expected = null) {
+  const item = readerItem(), presentation = registry.current;
+  if (!item || (expected && (item.id !== expected.id || item.revision !== expected.revision))) return;
+  const on = closeOnGive ? !thumbed(item, bootstrap.actor) : true;
+  run(async () => {
+    try {
+      const receipt = await thumbMessage(item, on);
+      if (on && closeOnGive && receipt && registry.isCurrent(presentation)) await registry.close(presentation);
+    } catch (error) { reader.notice(error); } finally { paintReaderThumb$(); }
+  });
 }
 // Reader answers (including linked Waiting-on cover choices) use the normal
 // close/save owner after Core records success. A late answer owns only the
@@ -3231,7 +3259,10 @@ async function messageEdited(key, version, read, current) {
   catch (error) { if (['FORBIDDEN', 'INVALID_ARGUMENT'].includes(error?.details?.error?.code)) return done; throw error; }
   if (!current() || !registry.isSourceCurrent(p) || p.sourceUnavailable || p.availabilityUnconfirmed || messageEdit?.id === id || revisionOf(latest) <= revisionOf(p.source)) return done;
   const apply = () => {
-    if (!current() || !registry.isSourceCurrent(p) || p.sourceUnavailable || p.availabilityUnconfirmed || !reader.dialog.open || reader.source !== p.source) return;
+    if (!current() || !registry.isSourceCurrent(p) || p.sourceUnavailable || p.availabilityUnconfirmed ||
+        !reader.dialog.open || reader.source !== p.source || messageEdit?.id === id || revisionOf(latest) <= revisionOf(p.source)) return;
+    // Hold the source revision and its reactions with the words under Copy.
+    if (deferFencePaint(reader.sourceBody, apply)) return;
     Object.assign(p.source, { body: latest.body, revision: revisionOf(latest), edited_ms: latest.edited_ms ?? null,
       struck: latest.struck ?? null, acts: latest.acts ?? p.source.acts, release_card: latest.release_card });
     reader.redrawSource();
@@ -4110,6 +4141,7 @@ async function initialize() {
   reader = new Reader({
     images: topicImages, imageBytes, pageImage, displayRules,
     messageChanges: () => messageChanges, toggleMessageChanges,
+    sourceRedrawn: paintReaderThumb$,
     cardSelection: card => menu?.passages.chosen(messageEntries.get(card.dataset.id)) ?? null,
     actorName: displayActor,
     actorLabel,
@@ -4206,7 +4238,7 @@ async function initialize() {
     recorded: receipt => { attention?.refresh(); if (commitReload) run(() => commitReload(receipt?.status !== 'committed')); } });
   marks.listen(paintMarks);
   const reactionPage = shell.page, reactionRegistry = registry;
-  reactions = new Reactions({ api, instanceId: bootstrap.instance_id, authority: () => reactionRegistry.runtime.current,
+  reactions = new Reactions({ api, instanceId: bootstrap.instance_id, viewer: bootstrap.actor, authority: () => reactionRegistry.runtime.current,
     current: () => !retired && shell.page === reactionPage && !reactionRegistry.disposed,
     changed: (id, timing, endpoint) => paintThumbMessage(id, true, timing, endpoint),
     learned: (answer, kind, timing) => {
@@ -4266,17 +4298,6 @@ async function initialize() {
   watchListAnchor();
   cardScroll = new CardScroll({ read: async (id, readClass) => checkedView(await api.view('source', { source_ref: { kind: 'message', id } }, { readClass }), bootstrap.instance_id), press: pressHold, displayRules, changes: messageChanges, changed: (card, item) => paintCardAuthor(card.querySelector(':scope > .message-author'), item) });
   const act = work => run(async () => { try { await work; } finally { paintViews('reactions'); } });
-  // A thumbs-up reads its message in Core (docs/thumbs.md). One that read it
-  // (Core settled the person's delivery of it, or cleared their mark on it)
-  // places the New line afresh, as Mark read does, wherever the oldest unread
-  // message now is; one on a message already read moves nothing.
-  const thumbMessage = async (item, on, said = null) => {
-    const timing = beginTiming('thumb');
-    clearVisitNew(item.id);
-    const receipt = await reactions.thumb(item, on, said, timing);
-    if (receipt?.result?.settled === true && receipt.result.topic_id === views?.topicId) { views.placeAfresh(); if (commitReload) run(commitReload); }
-    return receipt;
-  };
   // ⌘C on a lit message: its words as written, the words the Reader's ⇧⌘C
   // copies; a cut-off card's whole message, read from its source (lighting it
   // reads it, so it is usually here already; when that read has not come, the
@@ -4335,17 +4356,7 @@ async function initialize() {
   // The Reader's 👍 is a reply of one thumb, whether the reply is its quiet
   // line or being written: once Core holds it the Reader closes, as after
   // Send, keeping what the reply holds. Refused, or taken back, it stays.
-  $('thumb-source').onclick = () => {
-    const item = readerItem(), presentation = registry.current;
-    if (!item) return;
-    const on = !item.reactions?.thumbs?.some(thumb => thumb.actor_id === bootstrap.actor);
-    run(async () => {
-      try {
-        const receipt = await thumbMessage(item, on);
-        if (on && receipt && registry.isCurrent(presentation)) await registry.close(presentation);
-      } catch (error) { reader.notice(error); } finally { paintReaderThumb$(); }
-    });
-  };
+  $('thumb-source').onclick = () => thumbFromReader();
   pageReads = new PageReads({ recorded: () => { if (commitReload) run(commitReload); }, send: (id, revision) => {
     const { authority_id, authority_epoch } = registry.runtime.current;
     return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'memory.read',

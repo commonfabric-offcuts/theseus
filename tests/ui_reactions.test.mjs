@@ -4,7 +4,12 @@
 // Chrome and WebKit.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import { Reactions, reactionsOf, paintReactions, mayThumb, mayAnswer, learnReactions } from '../web/reactions.mjs';
+import { revisionOf } from '../web/message-edit-writing.mjs';
+import { MessageMenu } from '../web/message-menu.mjs';
+import { adoptWordsRevision } from '../web/message-format.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 import { AttemptError } from '../web/api.mjs';
 
@@ -82,6 +87,83 @@ test('a card with nothing to say carries no line, and a line already showing wha
   assert.equal(line(c), null, 'the last thumbs-up taken back takes the line away');
   paintReactions(c, { id: 'm', author_id: 'aim-core' }, 'tony', 'human', doc);
   assert.equal(c.children.length, 0, 'none to begin with');
+});
+
+test('an edit splits the thumbs using loaded timestamps and marks the reader’s earlier chip unpressed', () => {
+  const { doc, card: c } = card();
+  const item = { id: 'm', author_id: 'aim-core', reactions: reactions({
+    thumbs: [{ actor_id: 'tony', at_ms: 100 }, { actor_id: 'dan', at_ms: 300 }]
+  }) };
+  paintReactions(c, item, 'tony', 'human', doc);
+  assert.deepEqual(parts(c), [['reaction-count mine', '👍 2you, dan', 'thumb']]);
+  paintReactions(c, { ...item, revision: 2, edited_ms: 200 }, 'tony', 'human', doc);
+  assert.deepEqual(parts(c), [['reaction-count', '👍 1dan', 'thumb'], ['reaction-count reaction-stale', '👍 1', 'thumb-again']]);
+  assert.equal(line(c).children[1].title, 'Thumbed before the latest edit: you');
+  assert.equal(line(c).children[1].getAttribute('aria-label'), 'Thumbed before the latest edit: you');
+  assert.equal(line(c).children[1].getAttribute('aria-pressed'), 'false');
+  assert.equal(line(c).children[1].querySelector('.reaction-stale-emoji').textContent, '👍');
+  paintReactions(c, { ...item, revision: 3, edited_ms: 400 }, 'tony', 'human', doc);
+  assert.deepEqual(parts(c), [['reaction-count reaction-stale', '👍 2', 'thumb-again']]);
+});
+
+test('the Reader renews for the visible revision even when its feed card is ahead', () => {
+  const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
+  const itemStart = app.indexOf('function readerItem()'), itemEnd = app.indexOf('\n}', itemStart) + 2;
+  const actionStart = app.indexOf('function thumbFromReader('), actionEnd = app.indexOf('\n}', actionStart) + 2;
+  const source = { source_ref: { kind: 'message', id: 'm' }, revision: 2, edited_ms: 200 };
+  const latestReactions = reactions({ thumbs: [{ actor_id: 'tony', at_ms: 100 }] });
+  const loaded = { id: 'm', revision: 3, edited_ms: 300, reactions: latestReactions };
+  const registry = { current: { source } }, renewed = [];
+  const { readerItem, thumbFromReader } = runInNewContext(
+    app.slice(itemStart, itemEnd) + '\n' + app.slice(actionStart, actionEnd) + '\n({ readerItem, thumbFromReader })', {
+    registry, views: { messages: new Map([['m', loaded]]) }, revisionOf, run: task => task(),
+    thumbMessage: item => renewed.push(item), paintReaderThumb$: () => {}, reader: { notice: assert.fail }
+  });
+
+  const displayed = readerItem();
+  assert.equal(displayed.revision, 2);
+  assert.equal(displayed.edited_ms, 200);
+  assert.equal(displayed.reactions, latestReactions);
+  thumbFromReader(false, displayed);
+  assert.deepEqual(renewed.map(item => item.revision), [2]);
+  Object.assign(source, { revision: 3, edited_ms: 300 });
+  thumbFromReader(false, displayed);
+  assert.deepEqual(renewed.map(item => item.revision), [2], 'a stale click cannot renew for a newly painted source');
+});
+
+test('a card whose new words are held cannot renew a thumb for the unseen revision', () => {
+  const { doc, card: c } = card();
+  const preview = doc.createElement('span');
+  preview.className = 'message-preview';
+  c.append(preview);
+  const item = { id: 'm', author_id: 'aim-core', revision: 3, edited_ms: 300,
+    reactions: reactions({ thumbs: [{ actor_id: 'tony', at_ms: 100 }] }) };
+  const renewed = [];
+  const menu = { lit: c, viewer: 'tony', item: () => item, acted() {},
+    thumb: (message, on) => renewed.push([message.revision, on]) };
+  adoptWordsRevision(preview, 2);
+  MessageMenu.prototype.act.call(menu, 'thumb-again');
+  assert.deepEqual(renewed, []);
+  adoptWordsRevision(preview, 3);
+  MessageMenu.prototype.act.call(menu, 'thumb-again');
+  assert.deepEqual(renewed, [[3, true]]);
+});
+
+test('giving a thumb to the current words uses the existing reaction read and fences the message revision', async () => {
+  const calls = [], item = { id: 'm', revision: 2, edited_ms: 200,
+    reactions: reactions({ thumbs: [{ actor_id: 'tony', at_ms: 100 }] }) };
+  const acts = new Reactions({ instanceId: 'i', viewer: 'tony', authority: () => ({ authority_id: 'a', authority_epoch: 'e' }),
+    api: {
+      command: async request => { calls.push(request); return { status: 'committed', result: { message_id: 'm' } }; },
+      view: async (name, args) => {
+        calls.push([name, args]); return { instance_id: 'i', message_id: 'm', reactions: reactions({ thumb_revision: 3 }) };
+      }
+    }
+  });
+  await acts.thumb(item, true);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].expected, { thumb_revision: 1, message_revision: 2, authority: { authority_id: 'a', authority_epoch: 'e' } });
+  assert.deepEqual(calls[1], ['reactions', { message_id: 'm' }]);
 });
 
 test('the page keeps the newest reactions Core answered for a loaded message, and none for another', () => {

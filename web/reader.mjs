@@ -1286,6 +1286,7 @@ export class Reader {
     this.drawSource(this.source.body ?? '');
     this.paintOrigin(this.source);
     this.restoreVisiblePlace(place);
+    this.callbacks.sourceRedrawn?.();
   }
 
   // The edit mode (docs/message-edit.md, message-edit.mjs): the message's

@@ -6,6 +6,7 @@ import { runInNewContext } from 'node:vm';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 import { Reader } from '../web/reader.mjs';
 import { drawnRevision, drawnText, formatWords } from '../web/message-format.mjs';
+import { deferFencePaint } from '../web/fence-copy.mjs';
 import { paintReleaseCard, deferReleaseCard, releaseCardObservation, releaseReadingProtected } from '../web/release-card.mjs';
 
 const id = 'm-' + '1'.repeat(32), other = 'm-' + '2'.repeat(32), commit = 'a'.repeat(40);
@@ -180,10 +181,36 @@ test('1248 actual App messageEdited retains open Reader words until its offered 
     const edited = runInNewContext(app.slice(start, end) + '\nmessageEdited', {
       refreshDossierHeads() {}, shell: { messageEdited() {} }, views: { refresh: async () => true, messages: new Map([[id, next]]) },
       attention: null, registry: { current: p, isSourceCurrent: value => value === p }, reader, messageEdit: null,
-      revisionOf: value => value.revision, deferReleaseCard });
+      revisionOf: value => value.revision, deferReleaseCard, deferFencePaint });
     await edited('edit:' + id, 2, async () => next, () => true);
     assert.equal(first.revision, 1, 'open Reader retains the displayed source revision'); assert.equal(drawnText(f.host), item().body);
     const button = parent.querySelector('button'); assert.equal(button.hidden, false); button.listeners.click(event());
     assert.equal(first.revision, 2); assert.equal(drawnText(f.host), next.body); assert.equal(field.value, 'Later private writing');
   } finally { globalThis.document = previous; }
+});
+
+test('a held Reader Copy keeps reaction controls and source words on the same revision', () => {
+  const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
+  const begin = app.indexOf('  const apply = () => {', app.indexOf('async function messageEdited('));
+  const end = app.indexOf('  if (deferReleaseCard(reader.sourceBody', begin);
+  const first = item(), next = { ...item(2), edited_ms: 200 }, p = { source: first };
+  let held = true, deferred;
+  const redrawn = [], reader = { source: first, sourceBody: {}, dialog: { open: true },
+    redrawSource: () => redrawn.push([first.revision, first.body, first.edited_ms]) };
+  const apply = runInNewContext(app.slice(begin, end) + '\napply', {
+    id, p, latest: next, reader, current: () => true, registry: { isSourceCurrent: () => true },
+    messageEdit: null, revisionOf: value => value.revision,
+    deferFencePaint: (host, paint) => {
+      assert.equal(host, reader.sourceBody);
+      if (held) deferred = paint;
+      return held;
+    }
+  });
+
+  apply();
+  assert.equal(first.revision, 1);
+  assert.deepEqual(redrawn, []);
+  held = false;
+  deferred();
+  assert.deepEqual(redrawn, [[2, next.body, 200]]);
 });

@@ -64,6 +64,30 @@ class AnswerDelivery625(ReaderCase):
         self.ack(item)
         self.committed(self.post(parent=ask))
 
+    def test_renewing_yes_for_an_edit_keeps_the_same_unread_answer_until_taken_back(self):
+        ask = self.ask()
+        with mock.patch("aim_next.reactions._now_ms", return_value=1000):
+            self.committed(self.thumb(ask))
+        standing = next(item for item in self.inbox() if item.get("answer"))
+        with mock.patch("aim_next.delivery._now_ms", return_value=2000):
+            self.committed(self.command("message.edit", {"body": "A question with revised words."},
+                                        target={"message_id": ask}, expected={"message_revision": 1}, actor="agent-a"))
+        self.rejected(self.post(parent=ask), "ANSWER_UNREAD")
+        with mock.patch("aim_next.reactions._now_ms", return_value=3000):
+            self.committed(self.command("message.thumb", {"thumbed": True}, target={"message_id": ask},
+                                        expected={"thumb_revision": 1, "message_revision": 2}))
+        answered = [item for item in self.inbox() if item.get("answer")]
+        self.assertEqual([(item["id"], item["answer"]["stands"]) for item in answered], [(standing["id"], True)])
+        result = self.post(parent=ask)
+        self.rejected(result, "ANSWER_UNREAD")
+        self.assertIn(standing["id"], str(result["error"]))
+        self.committed(self.thumb(ask, on=False, revision=3))
+        self.assertFalse(next(item for item in self.inbox() if item["id"] == standing["id"])["answer"]["stands"])
+        self.committed(self.thumb(ask, revision=4))
+        standing_after = [item for item in self.inbox() if item.get("answer", {}).get("stands")]
+        self.assertEqual(len(standing_after), 1)
+        self.assertNotEqual(standing_after[0]["id"], standing["id"])
+
     def test_existing_explicit_answer_and_actual_reply_block_without_duplicate_delivery(self):
         for mode in ["decision", "reply"]:
             ask = self.ask(go_ahead=mode == "decision")
@@ -175,7 +199,9 @@ class AnswerDelivery625(ReaderCase):
 
     def test_migration_preserves_normal_and_request_delivery_identity_and_refuses_answer_loss(self):
         from aim_next import Store
-        from aim_next.migrations import migrate, MigrationError
+        from aim_next.answer_delivery import ANSWER_UP
+        from aim_next.migrations import migrate, MigrationError, STEPS
+        before_answer = next(step[0] for step in STEPS if step[2] is ANSWER_UP)
         ask = self.ask()
         cover = self.store.view("owner", "dossier_cover", {"message_id": ask})
         self.committed(self.command("stack.cover_refresh", target={"message_id": ask}, expected={"cover_revision": cover["cover_revision"]}))
@@ -187,8 +213,8 @@ class AnswerDelivery625(ReaderCase):
         reasons = self.sql("SELECT * FROM delivery_reasons ORDER BY delivery_id,reason")
         counts = self.sql("SELECT * FROM recipient_schedule")
         sequence = self.sql("SELECT seq FROM sqlite_sequence WHERE name='deliveries'")
-        migrate(self.path, "test-instance", self.binding, "57")
-        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], "59")
+        migrate(self.path, "test-instance", self.binding, before_answer)
+        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], STEPS[-1][1])
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.sql("SELECT seq,id,message_id,recipient_id,group_id,state,topic_id,revision,request_id FROM deliveries ORDER BY seq"), before)
         self.assertEqual(self.sql("SELECT * FROM delivery_reasons ORDER BY delivery_id,reason"), reasons)
@@ -197,7 +223,7 @@ class AnswerDelivery625(ReaderCase):
         self.committed(self.thumb(ask))
         self.assertGreater(next(x for x in self.inbox() if x.get("answer"))["seq"], sequence[0][0])
         with self.assertRaises(MigrationError):
-            migrate(self.path, "test-instance", self.binding, "57")
+            migrate(self.path, "test-instance", self.binding, before_answer)
 
     def test_taking_back_the_only_answer_permits_an_ask_with_its_delivery_still_pending(self):
         ask = self.ask()
