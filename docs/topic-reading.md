@@ -331,9 +331,10 @@ earlier-messages row) or further away reads nothing, so a long topic's load
 reads only the pictures near where the reader is. Scrolling a card near,
 unfolding it, or showing an earlier message whole reads its pictures then. When
 the topic becomes one the reader can no longer read, the thumbnails go at once
-with the right rail's pictures, and the page holds none of their bytes. A press
-or Return on a displayed thumbnail expands the image in the card. The expanded
-image and **Open in new tab** open those bytes in a new tab. **Fold** or Escape
+with the right rail's pictures, and the page holds none of their bytes. A click,
+tap, Return or Space on a displayed thumbnail expands the image in the card.
+Click, tap or press Return on the expanded image or use **Open in new tab** to
+open those bytes in a new tab. Space on the expanded image, **Fold**, or Escape
 on an image control brings back the thumbnail and its focus. A press elsewhere
 on the card opens the Reader, where each attachment keeps its Open. A message with no image, a file that is not an image
 and a message shown as one row (folded, between others, or an earlier message's row) draw no

@@ -67,9 +67,10 @@ nothing. Access checks, queued reads and disposal of the page's image bytes
 stay with the existing thumbnail loader.
 
 Message cards (including dossiers and the Conversation) and Notebook cards
-expand their thumbnails in place on the first press. Press the expanded image
-to open it in a new tab. **Fold** or Escape on an expanded image control brings
-back the thumbnail. The rest of the thumbnails open directly in a new tab,
+expand their thumbnails in place on the first click, tap, Return or Space.
+Click, tap or press Return on the expanded image to open it in a new tab.
+Space on that image, **Fold**, or Escape on an image control brings back the
+thumbnail and returns focus to it. The rest of the thumbnails open directly in a new tab,
 including in the right rail, the Reader, the composer's chosen images and
 `#img`. In `#img`, the image opens; pressing the
 row's words or choosing with the writing's arrows and Return still adds it.
