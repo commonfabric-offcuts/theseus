@@ -86,7 +86,13 @@ export function watchNotebookCaret(field, host) {
       frame = null;
       const places = before; before = null;
       if (!field.isConnected || field.ownerDocument.activeElement !== field) return;
-      for (const [at, top] of places ?? []) if (at.scrollTop !== top) at.scrollTop = top;
+      const phone = view.matchMedia?.('(max-width: 760px)').matches;
+      for (const [at, top] of places ?? []) {
+        // WebKit can round its native caret scroll by a pixel. Reversing that
+        // pixel on every input makes the sheet alternate between positions.
+        const tolerance = phone && at === host ? 1 : 0;
+        if (Math.abs(at.scrollTop - top) > tolerance) at.scrollTop = top;
+      }
       reveal(field, host);
     });
   }, options);
