@@ -1184,10 +1184,11 @@ export class DeckPage {
       focused.focus({ preventScroll: true });
       if (focused === asking.field) asking.field.setSelectionRange(...asked);
       this.fit(asking.field);
-    } else if (!asking) this.show(this.list.contains(this.doc.activeElement) || this.doc.activeElement === this.doc.body);
+    }
+    // An editor opened during this paint owns focus. Otherwise a replacement
+    // disclosure takes focus directly, without a stop on the picked card.
+    const restored=this.disclosure?.mount(editing?null:disclosureFocus);
+    if(!editing&&!asking)this.show(!restored&&(this.list.contains(this.doc.activeElement)||this.doc.activeElement===this.doc.body));
     putBack();
-    // An editor opened during this paint owns focus; a delayed disclosure
-    // measurement must not return it to the card that Return just left.
-    this.disclosure?.mount(editing ? null : disclosureFocus);
   }
 }

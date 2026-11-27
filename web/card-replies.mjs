@@ -35,6 +35,7 @@ export class CardReplies {
   constructor({ template, registry, topic, callbacks, offer, discover, say, changed = () => {} }) {
     Object.assign(this, { template: template.cloneNode(true), registry, topic, callbacks, offer, discover, say, changed });
     this.rows = new Map(); this.closed = new Set(); this.loads = new Map(); this.queue = new Map(); this.loading = 0;
+    this.readerHandoffs = new WeakMap();
   }
   surface(p) { return this.rows.get(p?.source?.source_ref?.id)?.ui; }
   retire(id) {
@@ -146,14 +147,18 @@ export class CardReplies {
     this.changed(); return row.p;
   }
   async close(id, { focus = true } = {}) {
-    const row = this.rows.get(id); if (!row || !await this.registry.hideCard(row.p)) return false;
+    const row = this.rows.get(id);
+    if (!row) return false;
+    const opening = row.ui.opening;
+    const current = () => this.rows.get(id) === row && row.ui.opening === opening && !this.disposed;
+    if (!await this.registry.hideCard(row.p, { current }) || !current()) return false;
     return this.hide(id, row, { focus });
   }
   hide(id, row, { focus = true } = {}) {
     row.p.hidden = true;
     this.closed.add(id); row.ui.bar.close(); row.ui.root.hidden = true; row.card.removeAttribute('data-card-reply');
     row.ui.root.removeAttribute('data-tall'); row.ui.$('taller-field').setAttribute('aria-pressed', 'false'); row.paintHeight?.();
-    if (focus) row.card.focus({ preventScroll: true }); this.changed(); return true;
+    if (focus) row.card.focus({ preventScroll: true }); this.changed(id); return true;
   }
   // Capture only the visible empty reply on which the action began. A later
   // receipt cannot close writing, a different card, or a new opening.
@@ -181,8 +186,29 @@ export class CardReplies {
     const id = p?.source?.source_ref?.id, row = this.rows.get(id);
     if (p?.fromCardReply && row?.clickOpened && row.p.editors.reply === p.editors.reply && !keepsReply(p.editors.reply)) this.hide(id, row, { focus: false });
   }
+  trackReaderHandoff(p, editor, item) {
+    const id = p?.source?.source_ref?.id, row = this.rows.get(id);
+    if (!p?.fromCardReply || !row?.clickOpened || row.p.hidden || row.p.editors.reply !== editor) return;
+    const { opening } = row.ui, { localVersion, clientCycleId } = editor;
+    let closed = false, published = false;
+    // Either acknowledgement may arrive first. Only this opening and the
+    // publication already kept by its editor can retire the empty card reply.
+    const finish = () => {
+      if (!closed || !published) return;
+      this.readerHandoffs.delete(item);
+      if (this.rows.get(id) !== row || row.ui.opening !== opening ||
+          editor.localVersion !== localVersion || editor.clientCycleId !== clientCycleId) return;
+      this.captureEmpty(id)?.();
+    };
+    this.readerHandoffs.set(item, () => { published = true; finish(); });
+    return handed => {
+      if (!handed) { this.readerHandoffs.delete(item); return; }
+      closed = true; finish();
+    };
+  }
   published(editor, item) {
     for (const row of this.rows.values()) if (row.p.editors.reply === editor) row.ui.published(item);
+    if (item.status === 'confirmed' && !item.detached) this.readerHandoffs.get(item)?.();
   }
   async readerSent(p, result, current) {
     const id = p?.source?.source_ref?.id, row = this.rows.get(id);

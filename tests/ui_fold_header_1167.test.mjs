@@ -83,6 +83,31 @@ test('1167 foldable headers draw a noninteractive chevron without moving author 
   assert.deepEqual(f.commands, [], 'drawing adds no fold record');
 });
 
+test('a saved fold closes a visible reply without sending another fold', async () => {
+  const f=fixture({records:new Map([['m2',{folded:true,fold_revision:7,starred:false}]])});
+  const item=f.messages.get('m2'),card=f.card(item.id);
+  card.setAttribute('data-card-reply','');f.draw();
+  assert.equal(card.dataset.folded,'false');
+  assert.equal(f.feed.foldState(item),'fold');
+  f.feed.closeReplyToFold=async id=>{
+    assert.equal(id,item.id);card.removeAttribute('data-card-reply');return true;
+  };
+  assert.equal(await f.feed.setFold(item,true),true);
+  assert.equal(card.dataset.folded,'true');
+  assert.deepEqual(f.commands,[]);assert.deepEqual(f.feed.undos,[]);assert.deepEqual(f.notices,[]);
+  assert.equal(f.records.get(item.id).fold_revision,7);
+});
+
+test('the Reader menu can unfold a saved fold even when the message is open alone', () => {
+  const f=fixture({records:new Map([['m2',{folded:true,fold_revision:7,starred:false}]])});
+  const item=f.messages.get('m2');
+  f.entries.get(item.id).remove();f.entries.delete(item.id);f.draw();
+  const choice=f.feed.menuItems(item,{reader:true}).first.find(entry=>entry.key==='fold');
+  assert.equal(choice.label,'Unfold');
+  choice.act();
+  assert.deepEqual(f.commands.map(({id,args})=>({id,args})),[{id:item.id,args:{folded:false}}]);
+});
+
 test('1167 singleton and Only new headers keep their prior presentation across redraws', () => {
   for (const options of [{ count: 1 }, { only: true }]) {
     const f = fixture(options);
