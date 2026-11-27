@@ -165,8 +165,9 @@ def shown(db, actor, value, by, at_ms, owner, archived=False):
         seen = db.execute("SELECT 1 FROM messages m WHERE m.id=:id AND " + VISIBLE, {"id": done["message_id"], "actor": actor}).fetchone()
         if seen is None:
             payload = dict(payload, done={key: item for key, item in done.items() if key not in ("message_id", "seq")})
-    waiting = []
-    for each in () if archived else value["waiting"]:
+    waiting, quote_wait_indices = [], []
+    indexed = any(each.get("ask_id") or each.get("message_id") for each in value["waiting"])
+    for index, each in enumerate(() if archived else value["waiting"]):
         if each.get("ask_id"):
             linked = db.execute("SELECT active FROM ask_cover_links WHERE ask_id=? AND actor_id=?", (each["ask_id"], each.get("actor_id"))).fetchone()
             if linked is not None and not linked["active"]:
@@ -175,6 +176,8 @@ def shown(db, actor, value, by, at_ms, owner, archived=False):
         if source and db.execute("SELECT 1 FROM question_closures WHERE message_id=? UNION ALL SELECT 1 FROM message_withdrawals WHERE message_id=? LIMIT 1", (source, source)).fetchone():
             continue
         waiting.append(dict(each))
+        if indexed:
+            quote_wait_indices.append(index)
     # Only the asked person gets the answer fence. Check the recorded recipients
     # and visibility rather than trusting cover text.
     human = db.execute("SELECT kind FROM actors WHERE id=?", (actor,)).fetchone()[0] == "human"
@@ -193,5 +196,8 @@ def shown(db, actor, value, by, at_ms, owner, archived=False):
             answer = db.execute("SELECT revision FROM message_reactions WHERE message_id=? AND actor_id=? AND kind='answer'",
                                 (wait["ask_id"], actor)).fetchone()
             wait.update(go_ahead=True, answer_revision=answer[0] if answer else 0)
-    return {"stands": value["stands"], "waiting": waiting,
-            "payload": dict(payload) if payload is not None else None, "by": by, "at_ms": at_ms, "owner": owner}
+    cover = {"stands": value["stands"], "waiting": waiting,
+             "payload": dict(payload) if payload is not None else None, "by": by, "at_ms": at_ms, "owner": owner}
+    if quote_wait_indices:
+        cover["quote_wait_indices"] = quote_wait_indices
+    return cover

@@ -110,6 +110,8 @@ export class DossierSelectionQuote {
     return { left, top, right: left + (view?.width ?? this.doc.documentElement.clientWidth),
       bottom: top + (view?.height ?? this.win.innerHeight) };
   }
+  idOf(node) { return this.surface?.idOf ? this.surface.idOf(node) : node.dataset.id; }
+  revisionOf(words) { return this.surface?.revisionOf ? this.surface.revisionOf(words) : drawnRevision(words); }
   choice() {
     // Native Tab can collapse selection as the offered button takes focus.
     // Keep that exact validated capture only while this button owns focus.
@@ -130,24 +132,31 @@ export class DossierSelectionQuote {
         !(this.surface ? this.surface.accepts(card) : card.closest('.reply-stack'))) return null;
     // Use the same selection mapping as Return on the card, including whole
     // links and formatting marks, and the revision the card actually shows.
-    const excerpt = this.selected(entry), revision = drawnRevision(words);
+    const excerpt = this.selected(entry), revision = this.revisionOf(words);
     if (!excerpt?.text.trim() || !Number.isInteger(revision) || revision < 1) return null;
-    const chosen = { id: entry.dataset.id, entry, card, words, body: drawnText(words),
+    const chosen = { id: this.idOf(entry), entry, card, words, body: drawnText(words),
       range: range.cloneRange(), excerpt: { ...excerpt, revision } };
     return this.valid(chosen) ? chosen : null;
   }
   valid(chosen) {
     const { id, entry, card, words, body, range, excerpt } = chosen;
-    return this.available() && this.eligible(id, entry) && this.host.contains(entry) &&
-      (this.surface ? this.surface.cardOf(entry) === card && this.surface.wordsOf(card) === words && this.surface.accepts(card) :
-        cardIn(entry) === card && card.querySelector(':scope > .message-preview') === words &&
-        Boolean(card.closest('.reply-stack'))) && entry.dataset.id === id && card.dataset.id === id && !range.collapsed &&
-      words.contains(range.startContainer) && words.contains(range.endContainer) &&
-      typeof body === 'string' && drawnText(words) === body && drawnRevision(words) === excerpt.revision &&
-      body.slice(excerpt.start, excerpt.end) === excerpt.text &&
+    const selected = !range.collapsed &&
+      words.contains(range.startContainer) && words.contains(range.endContainer);
+    const target = this.surface?.idOf
+      ? this.idOf(entry) === id && this.idOf(card) === id && selected
+      : entry.dataset.id === id && card.dataset.id === id && selected;
+    const offsets = () => typeof body === 'string' && body.slice(excerpt.start, excerpt.end) === excerpt.text &&
       sourcePosition(range.startContainer, range.startOffset) === excerpt.start &&
       sourcePosition(range.endContainer, range.endOffset, true) === excerpt.end &&
       this.visibleWords(range, words);
+    const matchesRevision = () => this.surface?.revisionOf
+      ? this.revisionOf(words) === excerpt.revision && offsets()
+      : drawnRevision(words) === excerpt.revision && offsets();
+    return this.available() && this.eligible(id, entry) && this.host.contains(entry) &&
+      (this.surface ? this.surface.cardOf(entry) === card && this.surface.wordsOf(card) === words && this.surface.accepts(card) :
+        cardIn(entry) === card && card.querySelector(':scope > .message-preview') === words &&
+        Boolean(card.closest('.reply-stack'))) && target &&
+      typeof body === 'string' && drawnText(words) === body && matchesRevision();
   }
   // Inspect selected text nodes only, never other messages or loaded history.
   // Range boxes include clipped text, so intersect every clipping ancestor.

@@ -1521,6 +1521,7 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .card-reply-composer>.compose-head{grid-area:head;padding-right:2rem}
 .card-reply-composer>.image-strip{grid-area:images}
 .card-reply-composer>.field-box{grid-area:field}
+.cover-quote-attribution{margin:0 .9rem .2rem;font-size:.75rem;line-height:1.2;color:var(--muted);overflow-wrap:anywhere}
 .card-reply-composer>.compose-send{grid-area:send;margin-left:.35rem}
 .card-reply-composer>.plus-button{grid-area:plus}
 .card-reply-composer>.reply-height{grid-area:height;position:static;display:grid;place-items:center;width:2rem;padding:0}

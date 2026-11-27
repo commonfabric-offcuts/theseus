@@ -15,7 +15,7 @@ import { coverAnswers } from './cover-answers.mjs';
 import { glyph } from './glyphs.mjs';
 import { linkNode, writtenLink } from './links.mjs';
 import { timeNode } from './times.mjs';
-import { inlineNodes, parseBlocks } from './message-format.mjs';
+import { composeFormattedWords, inlineNodes, literalWords, parseBlocks } from './message-format.mjs';
 import { literalHTMLNodes } from './interactive-html.mjs';
 import { coverSectionNodes, coverDisclosure } from './cover-sections.mjs';
 
@@ -101,6 +101,12 @@ function revisionLine(doc, cover, context) {
 
 const sheetRows = new WeakMap();
 export const copyOfCover = sheet => sheetRows.get(sheet)?.copy;
+export function coverQuoteSource(words) {
+  const part = words?.dataset.coverQuotePart;
+  const ref = part && sheetRows.get(words.closest('.dossier-cover'))?.quote;
+  return ref ? { ...ref, part } : null;
+}
+
 
 function coverCopyWords(cover, context) {
   const parts = [cover.stands];
@@ -158,6 +164,15 @@ export function coverSheet(doc, cover, context, previous = null) {
   const ctx = { ...context, rootId: cover.root_id ?? context.rootId, owner: cover.owner };
   const sheet = element(doc, 'div', 'dossier-cover');
   const copy = () => coverCopyWords(cover, ctx);
+  const quote = typeof doc.getSelection === 'function' && ctx.rootId && Number.isSafeInteger(cover.revision) && cover.revision > 0
+    ? { kind: 'cover', id: ctx.rootId, revision: cover.revision } : null;
+  const quotable = (words, part, body) => {
+    if (quote) {
+      words.dataset.coverQuotePart = part;
+      composeFormattedWords(words, body, cover.revision, []);
+    }
+    return words;
+  };
   sheet.setAttribute('role', 'note'); sheet.setAttribute('aria-label', 'Dossier cover');
   const rows = new Map(), scope = JSON.stringify([ctx.viewer, ctx.topicId, ctx.rootId]);
   const kept = sheetRows.get(previous), sameScope = kept?.scope === scope;
@@ -177,19 +192,23 @@ export function coverSheet(doc, cover, context, previous = null) {
       const plain = inline.every(node => node.nodeType === 3) &&
         inline.map(node => node.textContent).join('') === cover.stands &&
         parseBlocks(cover.stands).every(block => block.kind === 'paragraph');
-      if (plain) words.textContent = cover.stands;
-      else {
+      if (plain) {
+        if (quote) literalWords(words, cover.stands, cover.revision);
+        else words.textContent = cover.stands;
+      } else {
         words.classList.add('formatted');
         words.append(...coverSectionNodes(cover.stands, { doc, ...ctx, rootId: cover.root_id ?? ctx.rootId }));
       }
     }
     else words.append(...nodes);
+    quotable(words, 'stands', cover.stands);
     line('cover-heading', cover.stands).append(words);
   }
   const payload = cover.payload;
   if (payload) {
     const row = line('cover-payload', [payload, cover.owner]), words = element(doc, 'span', 'cover-words');
-    words.append(element(doc, 'span', 'cover-label', PAYLOAD_LABELS[payload.kind] ?? 'Payload'), ' ', payload.text);
+    const text = quote ? quotable(literalWords(element(doc, 'span'), payload.text, cover.revision), 'payload', payload.text) : payload.text;
+    words.append(element(doc, 'span', 'cover-label', PAYLOAD_LABELS[payload.kind] ?? 'Payload'), ' ', text);
     const link = payload.link ? writtenLink(payload.link) : null;
     if (link) {
       let shown = payload.link;
@@ -208,11 +227,20 @@ export function coverSheet(doc, cover, context, previous = null) {
     if (sameScope && items === kept.items) preferred.set(placeholder, items.row);
     else { placeholder.append(items.section); items.row = placeholder; }
   }
-  for (const wait of cover.waiting ?? []) {
-    const row = line('cover-wait', [wait, cover.owner]);
+  for (const [visibleIndex, wait] of (cover.waiting ?? []).entries()) {
+    const index = cover.quote_wait_indices?.[visibleIndex] ?? visibleIndex;
+    const row = line('cover-wait', quote ? [wait, cover.owner, index] : [wait, cover.owner]);
     const words = element(doc, 'span', 'cover-words');
     words.append(...inlineNodes(wait.text, { doc }));
-    row.append(waitsLabel(doc, wait.actor_id ?? cover.owner, wait, ctx), ' ', words, element(doc, 'span', 'cover-note', waitWords(wait, ctx)));
+    const detail = waitWords(wait, ctx), note = element(doc, 'span', 'cover-note');
+    if (!quote || wait.default == null) note.textContent = detail;
+    else {
+      const options = 'options' in wait ? (wait.options.length ? `Options: ${wait.options.join(' | ')} · ` : 'No choices · ') : '';
+      const at = options.length + 'Default: '.length;
+      const value = literalWords(element(doc, 'span'), wait.default, cover.revision);
+      note.append(detail.slice(0, at), quotable(value, `default.${index}`, wait.default), detail.slice(at + wait.default.length));
+    }
+    row.append(waitsLabel(doc, wait.actor_id ?? cover.owner, wait, ctx), ' ', quotable(words, `wait.${index}`, wait.text), note);
     const answers = coverAnswers(doc, wait, ctx); if (answers) row.append(answers);
   }
   const refresh = refreshControl(doc, cover, ctx);
@@ -242,10 +270,10 @@ export function coverSheet(doc, cover, context, previous = null) {
       if (node !== next) previous.insertBefore(node, next);
     }
     previous.dataset.done = sheet.dataset.done;
-    sheetRows.set(previous, { scope, rows: desired, items, copy });
+    sheetRows.set(previous, { scope, rows: desired, items, copy, quote });
     return previous;
   }
-  sheetRows.set(sheet, { scope, rows, items, copy });
+  sheetRows.set(sheet, { scope, rows, items, copy, quote });
   return sheet;
 }
 
@@ -287,7 +315,7 @@ export function coverPills(doc, cover, context) {
 }
 
 // A key for what a cover shows a reader, so a sheet is drawn again only when it changes.
-export const coverKey = (cover, context) => ((cover = currentQuestionCover(cover)) ? JSON.stringify([cover.stands, cover.waiting, cover.payload, cover.items, cover.by, cover.at_ms, cover.owner, cover.root_id, cover.revision, cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId, context.rootId]) : '');
+export const coverKey = (cover, context) => ((cover = currentQuestionCover(cover)) ? JSON.stringify([cover.stands, cover.waiting, cover.quote_wait_indices, cover.payload, cover.items, cover.by, cover.at_ms, cover.owner, cover.root_id, cover.revision, cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId, context.rootId]) : '');
 
 const pillRows = new WeakMap();
 // The pills of a message on its own that carries a cover, set under its

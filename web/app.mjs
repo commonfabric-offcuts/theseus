@@ -131,6 +131,7 @@ import { revealSelection } from './reveal.mjs';
 import { deferFencePaint } from './fence-copy.mjs';
 import { clipboardSelection, clipboardWords, copyWordsChoice, hasClipboardWords, notebookClipboard } from './copy-words.mjs';
 import { copyOfCover } from './dossier-cover.mjs';
+import { installCoverQuote } from './cover-quote-selection.mjs';
 import { formatWords, redrawMessageWords } from './message-format.mjs';
 import { TextDisplayPreferences } from './text-display-rules.mjs';
 import {ParagraphSwitch} from './paragraph-switch.mjs';
@@ -4282,6 +4283,16 @@ async function initialize() {
     const copied = known !== undefined ? copyText(known) : cardScroll.whole(item.id, 'foreground').then(body => copyText(body), () => false);
     copied.then(done => { if (!done) status(COPY_REFUSED); });
   };
+  installCoverQuote({ host: $('messages'), template: $('quote-selection'),
+    available: source => !retired && !topicUnavailable && !outcomeReached && !authorityReviewPending() && !registry.disposed &&
+      !freshness?.stopped && !registry.current && Boolean(topic) && (!source || messageEntries.has(source.id)),
+    quote: quote => run(async () => {
+      const id = quote.source.id, entry = messageEntries.get(id), shownTopic = topic;
+      const p = await replyInCard(id, entry && cardIn(entry));
+      if (!p || retired || topic !== shownTopic || !registry.isCurrent(p) || p.sourceUnavailable ||
+          p.source?.source_ref?.id !== id || p.source.topic_id !== shownTopic.id) return;
+      cardReplies.surface(p)?.appendQuote(quote, p);
+    }) });
   new DossierSelectionQuote({ host: $('messages'), template: $('quote-selection'),
     entryOf: target => menu?.entryOf(target), selected: entry => menu?.passages.selected(entry),
     eligible: (id, entry) => !retired && !topicUnavailable && !authorityReviewPending() && !registry.disposed &&
