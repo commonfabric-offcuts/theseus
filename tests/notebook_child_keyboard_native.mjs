@@ -13,7 +13,7 @@ try {
   await control({ method: 'agent_page', operation_id: 'create-' + item, item_id: item,
     topic_id: 't1', title: 'Add child with keyboard', body });
   browser = await webkit.launch();
-  for (const index of [8, 27]) {
+  for (const mode of ['layout','visual']) for (const index of [14, 29]) {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     try {
       const page = await context.newPage();
@@ -39,18 +39,27 @@ try {
       await field.waitFor();
       const settle = () => page.evaluate(() => new Promise(done =>
         requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(done))))));
+      const resize = async height => {
+        if (mode === 'layout') await page.setViewportSize({ width: 390, height });
+        else await page.evaluate(height => {
+          Object.defineProperty(visualViewport, 'height', { configurable: true, get: () => height });
+          visualViewport.dispatchEvent(new Event('resize'));
+        }, height);
+        await page.waitForFunction(height => visualViewport.height === height, height);
+        await settle();
+      };
       const sample = () => field.evaluate(field => {
         const host = field.closest('.notebook-sheet-page');
         const bounds = field.getBoundingClientRect();
         const scrollBounds = host.getBoundingClientRect();
         const view = visualViewport;
         return { top: bounds.top, bottom: bounds.bottom, sheet: host.scrollTop, document: document.scrollingElement.scrollTop,
-          viewTop: view.offsetTop, height: view.height, areaBottom: Math.min(view.offsetTop + view.height, scrollBounds.bottom) };
+          viewTop: view.offsetTop, height: view.height, layoutHeight: innerHeight,
+          padding: parseFloat(getComputedStyle(host).paddingBottom), limit: host.scrollHeight - host.clientHeight,
+          areaBottom: Math.min(view.offsetTop + view.height, scrollBounds.bottom) };
       });
       const before = await sample();
-      await page.setViewportSize({ width: 390, height: 430 });
-      await page.waitForFunction(() => visualViewport.height === 430);
-      await settle();
+      await resize(430);
       const shrunk = await sample();
       await field.evaluate(field => { field.closest('.notebook-sheet-page').scrollTop -= 90; });
       const beforePan = await sample();
@@ -68,21 +77,33 @@ try {
         host.scrollTop -= 90;
       });
       const away = await sample();
-      await page.setViewportSize({ width: 390, height: 390 });
-      await page.waitForFunction(() => visualViewport.height === 390);
-      await settle();
+      await resize(390);
       const afterWheel = await sample();
       await field.evaluate(field => { field.blur(); field.focus({ preventScroll: true }); });
       await settle();
       const refocused = await sample();
-      console.log(JSON.stringify({ index, before, shrunk, beforePan, pan, away, afterWheel, refocused }));
+      await field.evaluate(field => field.blur());
+      await settle();
+      const blurred = await host.evaluate(host => ({
+        padding: parseFloat(getComputedStyle(host).paddingBottom), limit: host.scrollHeight - host.clientHeight,
+        freshEditor: Boolean(host.querySelector('[data-notebook-child-editor]')),
+      }));
+      console.log(JSON.stringify({ mode, index, before, shrunk, beforePan, pan, away, afterWheel, refocused, blurred }));
       if (process.env.AIM_CHILD_BASELINE !== '1') {
         assert.ok(shrunk.top >= shrunk.viewTop && shrunk.bottom <= shrunk.areaBottom, JSON.stringify(shrunk));
         assert.equal(shrunk.document, before.document);
         assert.equal(pan.sheet, beforePan.sheet, 'offset-only visual pan leaves the sheet scroll position in place');
+        assert.equal(pan.padding, beforePan.padding, 'offset alone adds no room');
         assert.equal(afterWheel.sheet, away.sheet, 'a person’s scroll takes precedence over keyboard resizing');
         assert.ok(refocused.top >= refocused.viewTop && refocused.bottom <= refocused.areaBottom, JSON.stringify(refocused));
         assert.equal(refocused.document, before.document);
+        assert.equal(shrunk.layoutHeight, mode === 'visual' ? 844 : 430);
+        assert.ok(Math.abs(shrunk.padding - before.padding - (shrunk.layoutHeight - shrunk.height)) < 1);
+        assert.equal(blurred.padding, before.padding, 'blur removes the temporary padding');
+        if (mode === 'visual') {
+          assert.ok(blurred.freshEditor, 'blur checks the same editor and content');
+          assert.equal(blurred.limit, before.limit, 'blur leaves no extra room in the sheet');
+        }
       }
     } finally { await context.close(); }
   }
