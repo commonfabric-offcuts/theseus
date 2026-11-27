@@ -126,6 +126,6 @@
 :root:not([data-look=paper])[data-agent-colors=vivid][data-light-colour=darker]{--light-field:#00321f}
 :root[data-look=paper]:not([data-agent-colors=vivid])[data-light-colour=darker]{--light-field:#100d0a;--light-own-field:#2b2723}
 :root[data-look=paper][data-agent-colors=vivid][data-light-colour=darker]{--light-field:#123908}
-:root[data-light-colour] .message-card,:root[data-light-colour] .notebook-reading-words{--pointer-lit-field:var(--light-field)}
-:root[data-light-colour] .message-card.own-message{--pointer-lit-field:var(--light-own-field,var(--light-field))}
-:root[data-agent-colors=vivid][data-light-colour=darker] .message-card.agent-card{--pointer-lit-field:var(--agent-deep,var(--light-field))}
+:root[data-light-colour] :is(.message-card,.message-pane,.notebook-reading-words){--pointer-lit-field:var(--light-field)}
+:root[data-light-colour] :is(.message-card.own-message,.message-pane.own-message-pane){--pointer-lit-field:var(--light-own-field,var(--light-field))}
+:root[data-agent-colors=vivid][data-light-colour=darker] :is(.message-card.agent-card,.message-pane.agent-pane){--pointer-lit-field:var(--agent-deep,var(--light-field))}
