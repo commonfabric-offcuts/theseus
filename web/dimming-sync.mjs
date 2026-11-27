@@ -9,6 +9,8 @@ const equal = (a,b) => a === b || Boolean(a && b && typeof a === 'object' && typ
   Object.keys(a).every(key=>Object.hasOwn(b,key) && equal(a[key],b[key])));
 const revision = n => Number.isSafeInteger(n) && n >= 0;
 const diagnostic = words => Object.assign(Error(words), { code: 'DIM_CONFIRMATION_UNKNOWN' });
+const RETRY_BACKOFF = [100, 200, 400];
+const TRAILING_READ_RETRY = 3000;
 export const dimCacheKey = (instance, actor, authority) => `aim-next.rail-dimming.core.v1:${JSON.stringify([instance, actor, authority?.authority_id, authority?.authority_epoch])}`;
 
 export class DimmingSync {
@@ -152,12 +154,13 @@ export class DimmingSync {
     try { this.storage?.removeItem(this.legacyKey); } catch { /* Core already wins; a later read can retry retirement. */ }
   }
   wakeBehindRail() {
+    if (this.awaitingActivity) return Promise.resolve();
     if (!this.railReadOrder) return this.wake();
     if (this.queuedWake) return this.queuedWake;
     const epoch = this.epoch;
     const queued = this.railReadOrder.defer(() => {
       if (this.queuedWake === queued) this.queuedWake = null;
-      if (epoch === this.epoch && this.visible()) return this.wake();
+      if (epoch === this.epoch && this.visible() && !this.awaitingActivity) return this.wake();
     });
     this.queuedWake = queued;
     return queued;
@@ -179,6 +182,24 @@ export class DimmingSync {
     if (epoch !== this.epoch) return null;
     return scopedChangesPage(answer,this.bootstrap,scope,input);
   }
+  get awaitingActivity() { return this.failures > RETRY_BACKOFF.length; }
+  activate() { return this.awaitingActivity ? this.wake() : this.retry(); }
+  readSettled() {
+    if (this.transientError) { this.error = null; this.transientError = false; }
+    this.failures = 0;
+  }
+  scheduleRetry(epoch) {
+    const trailing = this.failures === RETRY_BACKOFF.length && !this.pending && !this.intents.length;
+    const delay = trailing ? TRAILING_READ_RETRY : RETRY_BACKOFF[this.failures];
+    if (delay === undefined) return;
+    ++this.failures;
+    const timer = this.timers.setTimeout(() => {
+      if (epoch !== this.epoch || this.retryTimer !== timer) return;
+      this.retryTimer = null;
+      if (this.visible()) this.wake();
+    }, delay);
+    this.retryTimer = timer;
+  }
   wake() {
     this.again = true;
     if(this.retryTimer!==null)return Promise.resolve();
@@ -188,10 +209,9 @@ export class DimmingSync {
       if (epoch === this.epoch) {
         this.again = false; this.error = error.message || 'Dim save is unconfirmed; retry when connected.';
         this.transientError=readFailure(error).kind==='retry';this.persist();this.paint();
-        // Failure-driven bounded backoff, not an idle polling loop. Uncertain
-        // writes keep their original operation ID through these attempts.
-        if(this.transientError&&this.failures<3){const delay=100*2**this.failures++;
-          this.retryTimer=this.timers.setTimeout(()=>{this.retryTimer=null;if(epoch===this.epoch&&this.visible())this.wake();},delay);}
+        // The short backoff also covers uncertain writes with their original
+        // operation ID. Only reads get a trailing attempt before activity.
+        if(this.transientError)this.scheduleRetry(epoch);
       }
     }).finally(()=>{ if (this.task === task) { this.task = null; if (this.again && epoch === this.epoch) this.wake(); } });
     this.task = task; return task;
@@ -215,6 +235,7 @@ export class DimmingSync {
           this.intents.unshift({id:this.id(),action:{kind:'import',value:copy(filtered)}}); this.legacy = null; this.persist();
         }
         this.initialized = true;
+        this.readSettled();
       } else if(!this.pending&&!this.intents.length) {
         let input = this.cursor, changed = false, page;
         do {
@@ -225,7 +246,7 @@ export class DimmingSync {
         if (changed) await this.readCurrent(epoch);
         if (epoch !== this.epoch) return;
         this.cursor = copy(page.checkpoint);
-        if(this.transientError){this.error=null;this.transientError=false;}this.failures=0;
+        this.readSettled();
       }
       if (!this.pending && this.intents.length) {
         this.prepared.push({ ids:this.intents.map(x=>x.id), envelope:{v:1,instance_id:this.bootstrap.instance_id,operation_id:this.id(),

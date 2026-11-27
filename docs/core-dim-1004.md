@@ -77,9 +77,12 @@ version. An equal/older Dim version causes no preference reread or repaint; a
 newer version or relevant permission change triggers the targeted preference view.
 Unrelated resource changes cause no preference/list/history refresh. Unchanged
 presentation suppresses painter callbacks. Foreground edits skip initialized
-background reads. There is no idle polling timer. Typed transient failures get
-at most three failure-driven100/200/400ms retries; explicit Retry/focus/online can
-resume later. A gesture paints immediately; a late receipt cannot erase newer work.
+background reads. Typed transient failures get three retries at 100, 200 and
+400 ms. If a background read is still refused, it gets one trailing retry after
+3 seconds. If that retry is skipped while hidden or is also refused, the next
+focus or visible event retries the read. Successful reads leave no idle timer.
+Explicit Retry and coming online can resume the short backoff. A gesture paints
+immediately, and a late receipt cannot erase newer work.
 
 ## Composition and verification
 

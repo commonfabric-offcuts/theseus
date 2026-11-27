@@ -73,15 +73,62 @@ test('1004 Core choice limits drive editing and malformed capabilities prevent p
 });
 
 test('1004 retryable admission failures back off finitely, coalesce wakes and never create idle polling',async()=>{
+  const core=server(),api=core.api('reader'),queue=new Map(),delays=[],cursors=[];let serial=0,fail=false,reads=0;
+  const timers={setTimeout(fn,ms){const id=++serial;queue.set(id,fn);delays.push(ms);return id;},clearTimeout(id){queue.delete(id);}};
+  const denied={command:api.command,async view(name,args){reads++;if(fail){cursors.push(clone(args.cursor));throw Object.assign(Error('bounded lane full'),{code:'SERVER_BUSY'});}return api.view(name,args);}};
+  const a=device(core,'reader',storage(),denied,{timers});await a.ready;assert.equal(queue.size,0);
+  const before=clone(a.sync.cursor),confirmed=clone(a.sync.confirmed);
+  const runTimer=async()=>{assert.equal(queue.size,1);const [id,fn]=[...queue][0];queue.delete(id);fn();await a.sync.idle();};
+  const next=freshDimming();next.selected=2;await core.other('reader',next);
+  fail=true;await a.sync.retry();await a.sync.wake();assert.equal(queue.size,1);
+  for(let n=0;n<3;n++)await runTimer();
+  assert.deepEqual(delays,[100,200,400,3000]);
+  assert.deepEqual(cursors,[before,before,before,before]);
+  assert.deepEqual(a.sync.cursor,before);assert.deepEqual(a.sync.confirmed,confirmed);
+  fail=false;await runTimer();
+  assert.equal(a.choices.selected,2);assert.equal(a.sync.error,null);assert.equal(queue.size,0);
+  const count=reads;await turn();assert.equal(reads,count);
+  fail=true;await a.sync.retry();fail=false;await runTimer();
+  assert.deepEqual(delays,[100,200,400,3000,100]);assert.equal(queue.size,0);
+});
+
+test('39 a refused trailing Dim read waits for activation, and another refusal adds no timer',async()=>{
   const core=server(),api=core.api('reader'),queue=new Map(),delays=[];let serial=0,fail=false,reads=0;
   const timers={setTimeout(fn,ms){const id=++serial;queue.set(id,fn);delays.push(ms);return id;},clearTimeout(id){queue.delete(id);}};
-  const denied={command:api.command,async view(name,args){reads++;if(fail)throw Object.assign(Error('bounded lane full'),{code:'SERVER_BUSY'});return api.view(name,args);}};
-  const a=device(core,'reader',storage(),denied,{timers});await a.ready;assert.equal(queue.size,0);
-  fail=true;await a.sync.retry();await a.sync.wake();assert.equal(queue.size,1);
-  for(let n=0;n<3;n++){const [id,fn]=[...queue][0];queue.delete(id);fn();await a.sync.idle();}
-  assert.deepEqual(delays,[100,200,400]);assert.equal(queue.size,0);
-  const count=reads;await turn();assert.equal(reads,count);
-  fail=false;await a.sync.retry();assert.equal(a.sync.error,null);assert.equal(queue.size,0);
+  const read={command:api.command,async view(name,args){reads++;if(fail)throw Object.assign(Error('busy'),{code:'SERVER_BUSY'});return api.view(name,args);}};
+  const a=device(core,'reader',storage(),read,{timers});await a.ready;
+  fail=true;await a.sync.wake();
+  for(let n=0;n<4;n++){assert.equal(queue.size,1);const [key,fn]=[...queue][0];queue.delete(key);fn();await a.sync.idle();}
+  assert.deepEqual(delays,[100,200,400,3000]);assert.equal(queue.size,0);
+  const quiet=reads;await a.sync.wakeBehindRail();await turn();assert.equal(reads,quiet);
+  await a.sync.activate();assert.equal(reads,quiet+1);assert.equal(queue.size,0);
+  fail=false;await a.sync.activate();assert.equal(reads,quiet+2);assert.equal(a.sync.error,null);assert.equal(queue.size,0);
+});
+
+test('39 authority change and disposal cancel the old trailing Dim read',async()=>{
+  let bound=bootstrap('reader'),fail=false,epochReads=0,reads=0,sequence=0;
+  const core=server(()=>bound),api=core.api('reader'),queue=new Map();
+  const timers={setTimeout(fn,ms){const id=++sequence;queue.set(id,{fn,ms});return id;},clearTimeout(id){queue.delete(id);}};
+  const read={command:api.command,async view(name,args){
+    reads++;if(fail)throw Object.assign(Error('busy'),{code:'SERVER_BUSY'});
+    if(bound.authority.authority_epoch==='changed')epochReads++;
+    return api.view(name,args);
+  }};
+  const a=device(core,'reader',storage(),read,{timers});await a.ready;
+  const waitForTrailing=async()=>{
+    fail=true;await a.sync.wake();
+    for(let n=0;n<3;n++){const [key,{fn}]=[...queue][0];queue.delete(key);fn();await a.sync.idle();}
+    assert.equal(queue.size,1);
+    const entry=[...queue.values()][0];assert.equal(entry.ms,3000);return entry.fn;
+  };
+  const old=await waitForTrailing();
+  bound={...bound,authority:{...bound.authority,authority_epoch:'changed'}};
+  fail=false;await a.sync.connect({api:read,bootstrap:bound});
+  assert.equal(epochReads,2);assert.equal(queue.size,0);
+  old();await turn();assert.equal(epochReads,2);
+  const disposed=await waitForTrailing();
+  a.sync.disconnect();assert.equal(queue.size,0);
+  const before=reads;disposed();await turn();assert.equal(reads,before);
 });
 test('1004 an explicit saved Dim0 prevents a later stale device import',async()=>{
   const core=server(),a=device(core);await a.ready;a.choices.select(0);await a.sync.idle();
