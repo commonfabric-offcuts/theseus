@@ -67,22 +67,24 @@ def main():
             before = facts(case)
             assert 'failing:researcher' in before['red'], before
             assert any(wake['actor_id'] == 'researcher' for wake in before['wakes']), before
-            ending = case.ended_intent(researcher)
-            assert 'failing:researcher' in facts(case)['red']
-            retired = case.store.hosted_seat_retire(guard, token, ending['id'], ending['version'])
-            assert retired['retired'], retired
-            tell = case.command('message.post', {'body': 'A Tell retained for the ended researcher.',
-                'intent': 'tell', 'addressees': ['researcher']}, {'topic_id': 'seat-check'})
-            assert tell['status'] == 'committed', tell
-
             server = server_for_profile(profile, 0, ROOT / 'web')
             thread = threading.Thread(target=server.serve_forever)
             thread.start()
             try:
                 for line in sys.stdin:
                     request = json.loads(line)
-                    answer = {'origin': server.origin, 'before': before, 'after': facts(case),
-                              'tell': tell['result']['message_id']}
+                    if request['method'] == 'ready':
+                        answer = {'origin': server.origin, 'before': before}
+                    else:
+                        assert request['method'] == 'end', request
+                        ending = case.ended_intent(researcher)
+                        assert 'failing:researcher' in facts(case)['red']
+                        retired = case.store.hosted_seat_retire(guard, token, ending['id'], ending['version'])
+                        assert retired['retired'], retired
+                        tell = case.command('message.post', {'body': 'A Tell retained for the ended researcher.',
+                            'intent': 'tell', 'addressees': ['researcher']}, {'topic_id': 'seat-check'})
+                        assert tell['status'] == 'committed', tell
+                        answer = {'after': facts(case), 'tell': tell['result']['message_id']}
                     print(json.dumps({'id': request['id'], 'answer': answer}), flush=True)
             finally:
                 server.shutdown()

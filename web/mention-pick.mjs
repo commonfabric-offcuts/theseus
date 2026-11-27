@@ -60,6 +60,7 @@ export class MentionPick {
     this.active = Math.max(0, Math.min(this.active, choices.length - 1));
     const rows = choices.map((person, index) => {
       const row = this.doc.createElement('button'); row.type = 'button'; row.tabIndex = -1;
+      row.dataset.actorId = person.id;
       row.id = `${this.list.id}-${index}`; row.setAttribute('role', 'option');
       row.setAttribute('aria-selected', String(index === this.active));
       row.textContent = `@${person.id}${person.name && person.name !== person.id ? ' · ' + person.name : ''}`;

@@ -66,7 +66,7 @@ import { TopicStatePanel, paintWaiting, managesTopic, organises, topicUpdateEnve
 import { paintTopicHeader } from './topic-header.mjs';
 import { TopicSettings } from './topic-settings.mjs';
 import { repaintTimes, watchDays } from './times.mjs';
-import { PeoplePanel, CoordinatorChoice, fillNames, readDirectory, readMembers } from './people.mjs';
+import { PeoplePanel, CoordinatorChoice, fillNames, markSeatEnded, readDirectory, readMembers } from './people.mjs';
 import { NotebookCreate } from './notebook-create.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
 import { PurposeLine } from './outcome-purpose.mjs';
@@ -2314,7 +2314,7 @@ function whisperPeople() {
   // moved to the outcome's conversation goes to its team.
   const members = topicId => [...outcomeMembers ?? [], ...topicId === topic?.id ? views?.participants ?? [] : []]
     .filter(person => person.enabled !== false && person.actor_id !== bootstrap.actor)
-    .map(person => ({ id: person.actor_id, name: person.name ?? null, ...(person.seat_ended ? { seat_ended: true } : {}) }));
+    .map(person => ({ id: person.actor_id, name: person.name ?? null, ...(actorSeatEnded(person.actor_id) ? { seat_ended: true } : {}) }));
   return { kindOf: name => kinds.get(name), everyone, members };
 }
 // What the page knows of the person's marks: the topic's line, each loaded
@@ -4352,7 +4352,10 @@ async function initialize() {
     shown: () => registry.current?.source?.source_ref?.kind === 'memory',
     owners: { sections: dirty => outcomeScope.load(dirty), conversation: loadConversation, marks: loadMarks,
       unread: loadUnread, read: loadReadState, shown: loadShownPage, wakes: () => wakeLights.load(),
-      participants: () => { participantsPanel?.paint(); return true; } },
+      participants: seatChanged => {
+        if (seatChanged) return refreshSeatPeople();
+        participantsPanel?.paint(); return true;
+      } },
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('updates-retry').onclick = () => run(async () => {
@@ -4447,7 +4450,8 @@ function openSent(item) {
 // The topic's participants, which whoever organises its outcome and its creator
 // may change, and the names the composer offers.
 function paintParticipants(current, participants) {
-  participantsPanel?.paint(participants, current.kind !== 'conversation' && managesTopic(current, bootstrap.actor));
+  const people = participants.map(person => !person.seat_ended && actorSeatEnded(person.actor_id) ? { ...person, seat_ended: true } : person);
+  participantsPanel?.paint(people, current.kind !== 'conversation' && managesTopic(current, bootstrap.actor));
   // The team's entries come first: they carry names, which participants do not.
   // A disabled person cannot be sent to, so they are not offered.
   fillNames($('addressable-names'), [...outcomeMembers ?? [], ...participants].filter(person => person.enabled !== false)
@@ -4507,6 +4511,25 @@ function refreshMembers() {
     .then(members => { outcomeMembers = members; if (views?.participants) paintParticipants(topic, views.participants); })
     .finally(() => { membersRead = null; });
   return membersRead;
+}
+// Seat events can change both team and participant badges without changing the topic version.
+async function refreshSeatPeople() {
+  const current = views, id = topic.id;
+  const team = async () => {
+    try { return await readMembers(api, bootstrap.instance_id, topic.workspace_id); }
+    catch (error) { if (error.details?.error?.code === 'FORBIDDEN') return null; throw error; }
+  };
+  const [answer, members] = await Promise.all([
+    api.view('topic', { topic_id: id }, { readClass: 'background' }).then(reply => checkedView(reply, bootstrap.instance_id)),
+    team(),
+  ]);
+  if (retired || views !== current || topic.id !== id) return false;
+  outcomeMembers = members;
+  const ended = new Set(answer.participants.filter(person => person.seat_ended).map(person => person.actor_id));
+  current.participants = current.participants.map(person => ended.has(person.actor_id) ? { ...person, seat_ended: true } : person);
+  paintParticipants(topic, current.participants);
+  for (const row of document.querySelectorAll('.mention-pick [data-actor-id]')) markSeatEnded(row, actorSeatEnded(row.dataset.actorId));
+  return true;
 }
 // The directory feeds every field that adds someone to a team or topic; it is
 // read at start and again whenever such a field is focused.
