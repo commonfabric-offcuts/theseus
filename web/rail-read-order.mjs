@@ -1,4 +1,4 @@
-// Order the right rail and its two secondary readers inside one document.
+// Order passive reads behind the visible right rail inside one document.
 // Core still owns the bounded server lane across documents.
 export class RailReadOrder {
   constructor() {

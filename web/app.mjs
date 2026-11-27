@@ -4345,14 +4345,10 @@ async function initialize() {
   // pages' read state is read again too, so a page read since, here or
   // elsewhere, loses its light; and an outcome's page in the Reader is read
   // where it stands, so the Reader offers a revision made since.
-  const recordedReadCurrent = () => !retired && shell.page === thisRun && !registry.disposed && !authorityReviewPending();
   commitReload = recordedActionRefresh({ follow: followCommits, bootstrap, workspaceId: topic.workspace_id, topicId: topic.id,
-    read: (name, args) => railReadOrder.defer(async () => {
-      if (!recordedReadCurrent()) throw new DOMException('The topic read is no longer current.', 'AbortError');
-      return checkedView(await registry.cleanup.read(options => api.view(name, args, options)), bootstrap.instance_id);
-    }),
+    read: async (name, args) => checkedView(await registry.cleanup.read(options => api.view(name, args, options)), bootstrap.instance_id),
     binding: () => ({ ...bootstrap, authority: registry.runtime.current }),
-    current: recordedReadCurrent,
+    current: () => !retired && shell.page === thisRun && !registry.disposed && !authorityReviewPending(),
     shown: () => registry.current?.source?.source_ref?.kind === 'memory',
     owners: { sections: dirty => outcomeScope.load(dirty), conversation: loadConversation, marks: loadMarks,
       unread: loadUnread, read: loadReadState, shown: loadShownPage, wakes: () => wakeLights.load(),
