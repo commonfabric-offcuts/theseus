@@ -237,7 +237,7 @@ for scoped paging, updates, access failures and the native checks (item 715).
 
 ## The right rail
 
-The right rail starts with **Notebook**, **Pull requests**, and **Images**, then
+The right rail starts with **Notebook**, **Pull requests**, and **Files**, then
 shows **Waiting for…**, **Previews**, and **Skills and tools** when present.
 **Pipeline** is last (item 788, revised in 12252). The right rail always shows
 this topic's things, the Conversation included. The outcome's Notebook pages
@@ -306,9 +306,11 @@ the same menu on each surface.
   a mockup, and GitHub pull requests. They come from the current topic's
   newest 50 messages. Core records no pull request's state, so the section says
   so and does not guess.
-- **Images** come from `topic_images`. Clicking a displayed thumbnail opens
-  its image in a new tab (item 651, docs/images.md). Return on the containing
-  message link still opens that message in place.
+- **Files** uses the PDF option of `topic_images` for the current topic with
+  the same message window and result limit. A PDF tile names the file. Activating it reads the
+  verified bytes through the message and starts a download. Clicking a
+  displayed thumbnail opens its image in a new tab (item 651, docs/images.md).
+  Return on the containing image link still opens that message in place.
 - **Skills and tools** come from `topic_tools` (the tools linked to this
   topic), each opening its page; one linked to a topic whose record is gone
   is named, with no page ([skills-and-tools.md](skills-and-tools.md)).
