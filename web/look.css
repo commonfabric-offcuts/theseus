@@ -25,12 +25,12 @@
     :is(body){background:var(--look-black)}
     /* The ends: one black material, in both themes. */
     .rail,#things,dialog.notebook-sheet-dialog{
-      --paper:#000;--panel:#0b0f10;--ink:#e3eae7;--muted:#97a6a3;--line:#252c2e;--soft:#18241f;--accent:#5fae96;--focus:#5fae96;
+      --paper:#000;--panel:#0b0f10;--ink:#e3eae7;--muted:#97a6a3;--line:#252c2e;--soft:#18241f;--accent:#5fae96;--focus:#b1b7b4;
+      --row-hover:#1a1d1e;--row-current:#262a2a;--select-fill:#202324;--select-edge:#6e7372;--text-select:#3e4242;
       --rail-ink-2:#c3ccc9;--rail-hair:#1e2426;--rail-hover:#111617;
       color:var(--ink);background:#000}
     .rail{border-right-color:transparent}
     #things{border-left-color:transparent}
-    .rail .nav-item[aria-current]{background:#162019}
     /* The bench. */
     main#main{background:linear-gradient(180deg,var(--look-bench-top),var(--look-bench) 22rem);border-radius:1.1rem;
       margin-block:.6rem;min-height:calc(100dvh - 1.2rem);box-shadow:inset 0 1px 0 rgb(255 255 255/.06),0 0 0 1px rgb(255 255 255/.04)}
@@ -38,8 +38,8 @@
     &{--stack-folder:#2a3538;--stack-lift:0 1px 0 rgb(255 255 255/.05) inset,0 14px 26px -16px rgb(0 0 0/.9),0 2px 4px -2px rgb(0 0 0/.5);}
     dialog.notebook-sheet-dialog .notebook-sheet-pages{background:#000}
     dialog.notebook-sheet-dialog .notebook-sheet-head{border-bottom-color:#1a1f20}
-    dialog.notebook-sheet-dialog .deck-card{background:#0f1213;border-color:#1c2224}
-    dialog.notebook-sheet-dialog .deck-card[aria-current=true]{background:#000}
+    dialog.notebook-sheet-dialog{--deck-fill:#0f1213;--deck-edge:#1c2224;--deck-current:#000}
+    .notebook-docked .notebook-sheet-page:has(>.deck-cards:not([hidden])){--deck-fill:#111;--deck-edge:var(--line);--focus:#c1c1c1}
   }
   @media(prefers-color-scheme:light){:root:not([data-look=paper]){
     --look-bench:#f6f7f4;--look-bench-top:#fbfbf9;
@@ -53,27 +53,28 @@
     --look-deep:#0c1011;--look-floor:#161d20;
     --look-book:"Iowan Old Style","Charter","Palatino Linotype",Georgia,serif;
     body{background:var(--look-deep)}
-    .rail,#things{--paper:var(--look-deep);background:transparent;border-right-color:transparent}
+    .rail,#things{--paper:var(--look-deep);--focus:#b1b8b6;--rail-hover:#171b1c;--row-hover:#171b1c;--row-current:#232828;background:transparent;border-right-color:transparent}
+    .things-sec[data-key=notebook]{--focus:#56534d;--row-hover:#ece9e2;--tile-hover-ring:#7a7468}
     main#main{background:var(--look-floor);border-radius:1.1rem;margin-block:.5rem;min-height:calc(100dvh - 1rem)}
     &{--stack-ring-gap:var(--look-floor);}
     dialog.notebook-sheet-dialog{--paper:#f2eee5;--panel:#f2eee5;--ink:#27241f;--muted:#7a7468;--line:#e0dacd;--soft:#e8e2d4;
-      --accent:#3d7a62;--focus:#3d7a62;color:var(--ink);background:#f2eee5;border-radius:.45rem;overflow:hidden;
+      --accent:#3d7a62;--focus:#54504b;--row-hover:#ebe7de;--row-current:#e9e3d5;--select-fill:#e2ded5;--select-edge:#827f78;--text-select:#c5c2b9;
+      --deck-fill:transparent;--deck-edge:transparent;--deck-bottom:#e2dccf;--deck-current:#e9e3d5;--deck-radius:0;--deck-active-radius:.4rem;color:var(--ink);background:#f2eee5;border-radius:.45rem;overflow:hidden;
       box-shadow:0 34px 70px -24px rgb(0 0 0/.85),0 2px 0 #d6cfc0}
     dialog.notebook-sheet-dialog .notebook-sheet-head{border-bottom-color:#e2dccf}
     dialog.notebook-sheet-dialog .notebook-sheet-title{font-family:var(--look-book);font-weight:700;font-size:1.25rem;letter-spacing:0}
     dialog.notebook-sheet-dialog :is(.deck-opening,.deck-words){font-family:var(--look-book);font-size:1.04rem;line-height:1.6}
     dialog.notebook-sheet-dialog .deck-opening{font-size:1.12rem}
-    dialog.notebook-sheet-dialog .deck-card{background:transparent;border-color:transparent;border-bottom-color:#e2dccf;border-radius:0}
-    dialog.notebook-sheet-dialog .deck-card[aria-current=true]{background:#e9e3d5;border-color:transparent;box-shadow:none;border-radius:.4rem}
-    dialog.notebook-sheet-dialog .deck-words{color:#4a463e}
+    dialog.notebook-sheet-dialog .deck-card:not(.deck-tinted) .deck-words{color:#4a463e}
   }
   @media(prefers-color-scheme:light){:root[data-look=paper]{
     --look-deep:#e7e6e1;--look-floor:#f4f4f1;
+    .rail,#things{--focus:#4d5357;--rail-hover:#ddddd8;--row-hover:#ddddd8;--row-current:#d1d1ce}
     main#main{box-shadow:0 0 0 1px rgb(0 0 0/.05)}
-    dialog.notebook-sheet-dialog{--paper:#fbf8f1;--panel:#fbf8f1;background:#fbf8f1;box-shadow:0 30px 60px -24px rgb(60 50 30/.35),0 2px 0 #e4ddcd}
+    dialog.notebook-sheet-dialog{--paper:#fbf8f1;--panel:#fbf8f1;--focus:#56534d;--row-hover:#f4f1ea;--select-fill:#eae7e0;--select-edge:#86837d;--text-select:#ccc9c3;background:#fbf8f1;box-shadow:0 30px 60px -24px rgb(60 50 30/.35),0 2px 0 #e4ddcd}
   }}
   :root[data-look=paper] dialog.notebook-sheet-dialog .notebook-sheet-page{--paper:#f2eee5;--panel:#f2eee5;--ink:#27241f;--muted:#7a7468;
-    --line:#e0dacd;--soft:#e8e2d4;--accent:#3d7a62;--focus:#3d7a62;background:var(--paper);color:var(--ink)}
+    --line:#e0dacd;--soft:#e8e2d4;--accent:#3d7a62;background:var(--paper);color:var(--ink)}
   @media(prefers-color-scheme:light){:root[data-look=paper] dialog.notebook-sheet-dialog .notebook-sheet-page{--paper:#fbf8f1;--panel:#fbf8f1}}
   /* The middle column's colour (1001): Slate is each look's own; Graphite is a plain neutral grey; the third is
      Midnight, a deep blue, in Bookends (1011) and Umber, a warm brown-grey, in Paper; each drawn for each theme. Only the middle column's ground changes, with what is drawn from it:
@@ -111,12 +112,37 @@
     :root[data-look=paper] .look-swatch[data-value=graphite]{--swatch:#f2f3f4}
     :root[data-look=paper] .look-swatch[data-value=umber]{--swatch:#f7f2e8}
   }
-  /* Both materials keep the card selection visible, including its current card. */
-  :root dialog.notebook-sheet-dialog .deck-card.deck-selected,
-  :root dialog.notebook-sheet-dialog .deck-card.deck-selected[aria-current=true]{
-    background:color-mix(in srgb,var(--accent) 12%,var(--panel));
-    border-color:color-mix(in srgb,var(--accent) 55%,var(--line))}
 }
+/* Notebook card hues from item 1028. The sheet follows its look and the full page follows its theme. */
+:is(.deck-card.deck-tinted,.notebook-palette[aria-label="This card"] .notebook-swatch).agent-green{--notebook-dark-fill:#0d2319;--notebook-dark-edge:#1b3a2b;--notebook-dark-hover:#12281e;--notebook-light-fill:#ecf3e2;--notebook-light-edge:#cedfc7;--notebook-light-hover:#e7eedd}
+:is(.deck-card.deck-tinted,.notebook-palette[aria-label="This card"] .notebook-swatch).agent-blue{--notebook-dark-fill:#0d202e;--notebook-dark-edge:#1a364a;--notebook-dark-hover:#122533;--notebook-light-fill:#ecf1f1;--notebook-light-edge:#cddce3;--notebook-light-hover:#e7ecec}
+:is(.deck-card.deck-tinted,.notebook-palette[aria-label="This card"] .notebook-swatch).agent-indigo{--notebook-dark-fill:#181d2f;--notebook-dark-edge:#2b314b;--notebook-dark-hover:#1c2234;--notebook-light-fill:#f1eff2;--notebook-light-edge:#d8d8e5;--notebook-light-hover:#eceaed}
+:is(.deck-card.deck-tinted,.notebook-palette[aria-label="This card"] .notebook-swatch).agent-violet{--notebook-dark-fill:#211a2b;--notebook-dark-edge:#382d46;--notebook-dark-hover:#251f30;--notebook-light-fill:#f7edef;--notebook-light-edge:#e3d4e0;--notebook-light-hover:#f2e8ea}
+:is(.deck-card.deck-tinted,.notebook-palette[aria-label="This card"] .notebook-swatch).agent-rose{--notebook-dark-fill:#29181f;--notebook-dark-edge:#442a34;--notebook-dark-hover:#2e1d24;--notebook-light-fill:#feece6;--notebook-light-edge:#efd1cf;--notebook-light-hover:#f9e7e1}
+:is(.deck-card.deck-tinted,.notebook-palette[aria-label="This card"] .notebook-swatch).agent-peach{--notebook-dark-fill:#281b11;--notebook-dark-edge:#432e1e;--notebook-dark-hover:#2d2016;--notebook-light-fill:#fdeddd;--notebook-light-edge:#edd4bd;--notebook-light-hover:#f8e8d8}
+:is(.deck-card.deck-tinted,.notebook-palette[aria-label="This card"] .notebook-swatch).agent-cyan{--notebook-dark-fill:#032327;--notebook-dark-edge:#093a40;--notebook-dark-hover:#08282c;--notebook-light-fill:#e8f3ec;--notebook-light-edge:#c7dfda;--notebook-light-hover:#e4eee7}
+:is(.deck-card.deck-tinted,.notebook-palette[aria-label="This card"] .notebook-swatch).agent-olive{--notebook-dark-fill:#1c200f;--notebook-dark-edge:#31361c;--notebook-dark-hover:#202514;--notebook-light-fill:#f4f1dc;--notebook-light-edge:#dddbbc;--notebook-light-hover:#efecd7}
+
+:is(.deck-card.deck-tinted,.notebook-palette[aria-label="This card"] .notebook-swatch){
+  --card-tint:var(--notebook-light-fill);--card-edge:var(--notebook-light-edge);--card-tint-hover:var(--notebook-light-hover);
+  --ink:#27241f;--muted:#7a7468;--accent:#3d7a62
+}
+@media(prefers-color-scheme:dark){
+  :is(.deck-card.deck-tinted,.notebook-palette[aria-label="This card"] .notebook-swatch){
+    --card-tint:var(--notebook-dark-fill);--card-edge:var(--notebook-dark-edge);--card-tint-hover:var(--notebook-dark-hover);
+    --ink:#e3eae7;--muted:#97a6a3;--accent:#5fae96
+  }
+}
+:root:not([data-look=paper]) dialog.notebook-sheet-dialog :is(.deck-card.deck-tinted,.notebook-palette[aria-label="This card"] .notebook-swatch){
+  --card-tint:var(--notebook-dark-fill);--card-edge:var(--notebook-dark-edge);--card-tint-hover:var(--notebook-dark-hover);
+  --ink:#e3eae7;--muted:#97a6a3;--accent:#5fae96
+}
+:root[data-look=paper] dialog.notebook-sheet-dialog :is(.deck-card.deck-tinted,.notebook-palette[aria-label="This card"] .notebook-swatch){
+  --card-tint:var(--notebook-light-fill);--card-edge:var(--notebook-light-edge);--card-tint-hover:var(--notebook-light-hover);
+  --ink:#27241f;--muted:#7a7468;--accent:#3d7a62
+}
+.notebook-palette[aria-label="This card"] .notebook-swatch:not(.no-colour) .notebook-swatch-dot{background:var(--card-tint);border-color:var(--card-edge)}
+
 /* Pointer-only colours (1024). Middle leaves all existing palette values alone. */
 :root:not([data-look=paper]):not([data-agent-colors=vivid])[data-light-colour=lighter]{--light-field:#d5dbd9;--light-words:#3b4442}
 :root:not([data-look=paper])[data-agent-colors=vivid][data-light-colour=lighter]{--light-field:#c9e3d8;--light-words:#2e4c42}
