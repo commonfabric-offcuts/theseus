@@ -58,6 +58,12 @@ test('1074 coalesced inputs retain the position before the first native jump', (
   field.dispatchEvent(new Event('beforeinput'));field.dispatchEvent(new Event('input'));
   host.scrollTop=13;
   assert.equal(queued.size,1);[...queued.values()][0]();
+  assert.equal(host.scrollTop,12,'the standalone phone Notebook restores its previous position');
+  queued.clear();
+  host.classList={contains:name=>name==='notebook-sheet-page'};
+  field.dispatchEvent(new Event('beforeinput'));field.dispatchEvent(new Event('input'));
+  host.scrollTop=13;
+  assert.equal(queued.size,1);[...queued.values()][0]();
   assert.equal(host.scrollTop,13,'the phone sheet retains a native one-pixel adjustment for a visible caret');
   stop();
 });
