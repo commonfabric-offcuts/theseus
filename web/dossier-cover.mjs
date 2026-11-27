@@ -100,6 +100,20 @@ function revisionLine(doc, cover, context) {
 }
 
 const sheetRows = new WeakMap();
+export const copyOfCover = sheet => sheetRows.get(sheet)?.copy;
+
+function coverCopyWords(cover, context) {
+  const parts = [cover.stands];
+  for (const wait of cover.waiting ?? []) {
+    const name = context.nameOf(wait.actor_id ?? cover.owner);
+    parts.push(`Waits on ${name}: ${wait.text}${wait.default == null ? '' : ` (default: ${wait.default})`}`);
+  }
+  if (cover.payload) {
+    const { text, link } = cover.payload;
+    parts.push(`Payload: ${text}${link ? ` <${link}>` : ''}`);
+  }
+  return parts.filter(Boolean).join('\n\n');
+}
 function linkedItems(doc, items, context, previous) {
   if (!items?.length) return null;
   const group = previous ?? (() => {
@@ -143,6 +157,7 @@ export function coverSheet(doc, cover, context, previous = null) {
   cover = currentQuestionCover(cover);
   const ctx = { ...context, rootId: cover.root_id ?? context.rootId, owner: cover.owner };
   const sheet = element(doc, 'div', 'dossier-cover');
+  const copy = () => coverCopyWords(cover, ctx);
   sheet.setAttribute('role', 'note'); sheet.setAttribute('aria-label', 'Dossier cover');
   const rows = new Map(), scope = JSON.stringify([ctx.viewer, ctx.topicId, ctx.rootId]);
   const kept = sheetRows.get(previous), sameScope = kept?.scope === scope;
@@ -227,10 +242,10 @@ export function coverSheet(doc, cover, context, previous = null) {
       if (node !== next) previous.insertBefore(node, next);
     }
     previous.dataset.done = sheet.dataset.done;
-    sheetRows.set(previous, { scope, rows: desired, items });
+    sheetRows.set(previous, { scope, rows: desired, items, copy });
     return previous;
   }
-  sheetRows.set(sheet, { scope, rows, items });
+  sheetRows.set(sheet, { scope, rows, items, copy });
   return sheet;
 }
 

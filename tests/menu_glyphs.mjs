@@ -13,7 +13,7 @@
 import { shippedUnwatched } from './fixtures/shipped_unwatched_865.mjs';
 
 export const GLYPH_OF = Object.freeze({
-  'Copy text':'copy', 'Copy link':'link', 'Set color':'palette',
+  'Copy text':'copy', 'Copy selected text':'copy', 'Copy selected cards':'copy', 'Copy to…':'moveto', 'Copy link':'link', 'Set color':'palette',
   'Open as a full page':'openpage', Done:'pencil', 'Show as text':'text', 'Show as cards':'stack', 'Private Draft':'draft', 'Choose dossier…':'dossier', 'Add image…':'image', 'Side by side':'layout', Star:'star', Delete:'drop', 'Undo delete':'undo',
   'Star for me': 'star', Unstar: 'starred', Rename: 'pencil', 'Show all messages': 'all', 'Show latest and unread replies': 'latest',
   Fold: 'fold', Unfold: 'unfold', 'Fold message': 'fold', 'Unfold message': 'unfold', 'Split back out': 'split',

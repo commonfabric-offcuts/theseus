@@ -637,6 +637,7 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   const makeButton = (item, index) => {
     const button = element(doc, 'button', { type: 'button', textContent: item.label });
     button.disabled = Boolean(item.disabled);
+    if (item.tooltip) button.title = item.tooltip;
     button.setAttribute('role', item.checked === undefined ? 'menuitem' : 'menuitemcheckbox');
     if (item.checked !== undefined) button.setAttribute('aria-checked', String(item.checked));
     if (item.description) {
@@ -647,7 +648,7 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
     // The glyph follows the words in the document and is drawn before them (aim.css), so the row reads as its words.
     button.append(glyphs[index]);
     if (item.keys) { button.append(element(doc, 'span', { className: 'menu-keys', textContent: item.keys })); }
-    button.onclick = event => { event.stopPropagation(); if (button.disabled) return; menu.close(true); item.act(); };
+    button.onclick = event => { event.stopPropagation(); if (button.disabled) return; menu.close(true); return item.act(); };
     return button;
   };
   const palette=label==='This message'?renderMessagePalette({doc,root,items,makeButton,glyphFor:item=>glyphs[items.indexOf(item)]}):null;
