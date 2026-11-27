@@ -17,9 +17,13 @@ export class QuestionStates {
     return this.learn(id, item?.withdrawal ? { state: 'withdrawn', waiting_on: [], may_resolve: false, ...item.withdrawal } : item?.question);
   }
   cover(cover) {
-    if (this.archived && cover?.waiting?.length) return { ...cover, waiting: [] };
-    if (!cover?.waiting?.some(wait => (this.closed.has(wait.ask_id ?? wait.message_id) || this.removed.has(wait.ask_id ?? wait.message_id)))) return cover;
-    return { ...cover, waiting: cover.waiting.filter(wait => !(this.closed.has(wait.ask_id ?? wait.message_id) || this.removed.has(wait.ask_id ?? wait.message_id))) };
+    const waits = cover?.waiting;
+    if (!waits?.length) return cover;
+    const hidden = wait => this.archived || this.closed.has(wait.ask_id ?? wait.message_id) || this.removed.has(wait.ask_id ?? wait.message_id);
+    if (!waits.some(hidden)) return cover;
+    const kept = { ...cover, waiting: waits.filter(wait => !hidden(wait)) };
+    if (cover.quote_wait_indices) kept.quote_wait_indices = cover.quote_wait_indices.filter((_, index) => !hidden(waits[index]));
+    return kept;
   }
 }
 let states = null;
