@@ -1091,6 +1091,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .deck-card.deck-selected{background:var(--select-fill);border-color:var(--select-edge);border-radius:var(--deck-active-radius,var(--deck-radius,.6rem))}
 .deck-card:focus{outline:none}.deck-card:focus-visible{outline:2px solid var(--focus);outline-offset:3px}.deck-card[aria-current=true]:focus-visible{outline:none}
 .deck-title{margin:0;font-size:1rem;font-weight:700;line-height:1.35}.deck-words{margin-top:.3rem;font-size:.92rem;line-height:1.55;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden}.deck-words:empty{display:none}
+.deck-card:not(.deck-asking)>.deck-words:not(.deck-expanded){-webkit-line-clamp:8}
 .deck-words.deck-expanded{display:block;-webkit-line-clamp:unset;overflow:visible}
 .deck-disclosure{display:inline-flex;align-items:center;min-height:2rem;margin-top:.4rem;padding:.15rem .65rem;border-radius:999px;font-size:.78rem;font-weight:500}.deck-disclosure[hidden]{display:none}
 @media(pointer:coarse){.deck-disclosure{min-height:44px}}
