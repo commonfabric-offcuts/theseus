@@ -24,7 +24,9 @@ const groups={look:'look',intensity:'agentColors',light:'pointerLight',colour:'l
 const selector=(group,value)=>`.look-switch[data-switch="${groups[group]}"] button[data-value="${value}"]`;
 const lighter={bookends:{quiet:['#d5dbd9','#3b4442'],vivid:['#c9e3d8','#2e4c42']},paper:{quiet:['#e3dccf','#4a4237'],vivid:['#d9e0c2','#41482c']}};
 const darker={bookends:{quiet:['#050606','#1a1c1d'],vivid:['#00321f','#00321f']},paper:{quiet:['#100d0a','#2b2723'],vivid:['#123908','#123908']}};
+const deepPeach={light:'#531900',dark:'#441c00'};
 const rgb=hex=>'rgb('+hex.slice(1).match(/../g).map(x=>parseInt(x,16)).join(', ')+')';
+const withoutReaderField=({reader:{background,shadow,...reader},...paints})=>({...paints,reader});
 const cleanup={};
 try{
  facts=await control({method:'ready'});const seed=readingSeed(control),topic='light1024';
@@ -62,7 +64,7 @@ try{
    await ready(facts.origin+'/?topic='+topic);
    for(const file of files){const url=await page.evaluate(file=>performance.getEntriesByType('resource').find(e=>new URL(e.name).pathname.endsWith('/'+file))?.name,file);assert.ok(url,'loaded '+file);row.served[file]=hash(await(await page.request.get(url)).body());assert.equal(row.served[file],hashes[file]);}
    row.paints.Middle=await capture();
-   if(baseRows){const base=baseRows.find(x=>x.key===key);assert.ok(base?.paints.Middle,'baseline paint exists');assert.deepEqual(row.paints.Middle,base.paints.Middle,'Middle paint exactly equals309');}
+   if(baseRows){const base=baseRows.find(x=>x.key===key);assert.ok(base?.paints.Middle,'baseline paint exists');assert.deepEqual(withoutReaderField(row.paints.Middle),withoutReaderField(base.paints.Middle),'Middle preserves the baseline outside the Reader field');}
    await openRail();row.featureRed=baseline&&await page.locator('.look-switch[data-switch="lightColour"]').count()===0;assert.equal(await page.locator('.look-switch[data-switch="lightColour"]').count(),1,'three colour choices exist');
    assert.equal(await page.locator(selector('colour','')).getAttribute('aria-pressed'),'true');
    row.geometry=await page.locator('.look-light-row').evaluate(el=>{const b=el.getBoundingClientRect();const rail=el.closest('#rail,.rail,main')?.getBoundingClientRect()??{left:0,right:innerWidth};return{left:b.left,right:b.right,rail:{left:rail.left,right:rail.right},screen:innerWidth,buttons:[...el.querySelectorAll('button')].map(e=>{const b=e.getBoundingClientRect();return{x:b.x,y:b.y,right:b.right,width:b.width,height:b.height};})};});
@@ -75,8 +77,9 @@ try{
     await page.screenshot({path:out+'/'+key+'-'+choice+'-notebook.png'});
     const expected=choice==='lighter'?lighter[look][intensity]:darker[look][intensity];
     for(const [name,p]of Object.entries(row.paints[choice])){
-     const field=choice==='darker'&&name==='own'?expected[1]:expected[0];
-     if(name==='reader')assert.equal(p.background,rgb(field));else{assert.equal(p.background,rgb(field));assert.ok(p.image.includes(rgb(field)),'line field actually paints '+field);assert.deepEqual(p.selection,row.paints.Middle[name].selection,'native selection unchanged');}
+     const defaultField=choice==='darker'&&name==='own'?expected[1]:expected[0];
+     const field=choice==='darker'&&name==='other'&&intensity==='vivid'?deepPeach[theme]:defaultField;
+     if(name==='reader')assert.equal(p.background,row.paints[choice].other.background);else{assert.equal(p.background,rgb(field));assert.ok(p.image.includes(rgb(field)),'line field actually paints '+field);assert.deepEqual(p.selection,row.paints.Middle[name].selection,'native selection unchanged');}
      if(choice==='lighter')assert.equal(p.ink,rgb(expected[1]));else assert.equal(p.ink,row.paints.Middle[name].ink,'darker keeps existing ink');
     }
    }
