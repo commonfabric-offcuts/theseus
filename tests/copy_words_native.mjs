@@ -33,7 +33,9 @@ try {
   const message = '> Earlier words\n\nAlpha **marked words** and [sample link](https://example.org/sample).\n\nFirst memory line\nSecond memory line\n\n- One\n- Two\n\n```js\nconst value = 1;\n```';
   await put('message', message, { attachments: [{ name: 'omitted.txt', text: 'Omitted file contents.' }] });
   const code = '    let first = 1;\n      let next = 2;\n';
-  await put('fragments', '3. Before **select these words** after\n9. Next row ends here\n\n```js\n' + code + '```', { topic_id: fragmentTopic });
+  const fragments = '3. Before **select these words** after\n9. Next row ends here\n\n```js\n' + code +
+    '```\n\n3. [x] Checked row\n9. [ ] Open row';
+  await put('fragments', fragments, { topic_id: fragmentTopic });
   const long = 'First line of a long source.\n\n' + 'An additional line to read. '.repeat(51) + '\n\nLast words of the complete source.';
   await put('long', long);
   const folded = 'Filed for another reader.\n\n**Exact folded message ending.**';
@@ -168,7 +170,8 @@ try {
     return expectSelection(selected, html);
   };
   const fragmentCases = async (place, host, more) => {
-    const first = host + ' .md-item strong', second = host + ' .md-item-words >> nth=1';
+    const rows = host + ' .md-item-words';
+    const first = host + ' .md-item strong', second = rows + ' >> nth=1';
     await check(`${place}: selected words within one ordered row`, async () => {
       await locator(first).scrollIntoViewIfNeeded();
       const selected = await select(first);
@@ -183,6 +186,21 @@ try {
       assert.equal((html.match(/<ol\b/g) ?? []).length, 1);
       assert.doesNotMatch(html, /Before/);
     });
+    await check(`${place}: starting at the end of row 3 pastes only row 9`, async () => {
+      const ends = await Promise.all([locator(rows).nth(0).elementHandle(), locator(second).elementHandle()]);
+      const selected = await page.evaluate(([first, second]) => {
+        const from = first.lastChild, to = second.lastChild;
+        const range = document.createRange();
+        range.setStart(from, from.length);
+        range.setEnd(to, to.length);
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        return getSelection().toString();
+      }, ends);
+      assert.match(selected, /^\s*9\.\s*Next row ends here$/);
+      const html = await copyFragment(more, selected, /<ol start="9"><li>Next row ends here<\/li><\/ol>/);
+      assert.equal((html.match(/<li\b/g) ?? []).length, 1);
+    });
     await check(`${place}: selection inside code retains the fence's indentation in HTML`, async () => {
       const pre = host + ' .md-pre';
       await locator(pre).scrollIntoViewIfNeeded();
@@ -192,6 +210,13 @@ try {
       const richCode = await page.evaluate(html => new DOMParser().parseFromString(html, 'text/html')
         .querySelector('pre code').textContent, html);
       assert.equal(richCode, selected);
+    });
+    await check(`${place}: numbered task rows preserve numbers and task marks`, async () => {
+      const tasks = host + ' .md-task .md-item-words';
+      await locator(tasks).first().scrollIntoViewIfNeeded();
+      const selected = await select(tasks + ' >> nth=0', tasks + ' >> nth=1');
+      assert.match(selected, /Checked row[\s\S]*Open row/);
+      await copyFragment(more, selected, /<ol start="3"><li>☑ Checked row<\/li><li value="9">☐ Open row<\/li><\/ol>/);
     });
   };
   const openTopic = async () => {

@@ -56,7 +56,7 @@ const listMarker = row => row?.querySelector(':scope > .md-marker')?.textContent
 
 function selectionHTML(range, host, doc, plain) {
   const startRow = elementOf(range.startContainer)?.closest('.md-item');
-  const startMarker = listMarker(startRow);
+  const endRow = elementOf(range.endContainer)?.closest('.md-item');
   let fragment = range.cloneContents();
   // cloneContents omits ancestors shared by both endpoints. They can carry
   // the only formatting, such as the code block or a single list row.
@@ -67,7 +67,9 @@ function selectionHTML(range, host, doc, plain) {
   }
   const root = doc.createElement('div');
   root.append(fragment);
-  const firstRow = startRow && root.querySelector('.md-item');
+  const clippedRows = root.querySelectorAll('.md-item');
+  const firstRow = startRow && clippedRows[0];
+  const lastRow = endRow && clippedRows[clippedRows.length - 1];
   for (const control of root.querySelectorAll('button, input, iframe, img, .message-attachments, .fence-copy-unavailable, .source-end-line')) control.remove();
   for (const wrapper of root.querySelectorAll('.md-fence, .md-table-wrap')) wrapper.replaceWith(...wrapper.childNodes);
 
@@ -85,10 +87,13 @@ function selectionHTML(range, host, doc, plain) {
     if (block.matches('.md-list')) {
       const rows = [...block.querySelectorAll(':scope > .md-item')].flatMap(row => {
         const words = row.querySelector(':scope > .md-item-words');
-        if (!words?.hasChildNodes()) return [];
-        const marker = row === firstRow ? startMarker : listMarker(row);
+        const original = row === firstRow ? startRow : row === lastRow ? endRow : row;
+        const glyph = listMarker(original), selectedGlyph = listMarker(row);
+        // A clipped edge can contain an empty text node at a caret boundary.
+        if (!words?.textContent && !(selectedGlyph && selectedGlyph === glyph)) return [];
+        const marker = original.dataset.mdNumber ?? glyph;
         return [{ marker, depth: Number(row.style.getPropertyValue('--md-depth')) || 0,
-          task: /^[☐☑]$/.test(marker) ? marker : null, contents: [...words.childNodes] }];
+          task: /^[☐☑]$/.test(glyph) ? glyph : null, contents: [...(words?.childNodes ?? [])] }];
       });
       block.replaceWith(clipboardList(rows, doc));
       continue;

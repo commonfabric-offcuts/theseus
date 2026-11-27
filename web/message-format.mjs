@@ -829,6 +829,8 @@ function blockNode(block, doc, cut, meter, copyFences = false, html = false) {
         : inline(item.words, last);
       const words = el(doc, 'span', 'md-item-words', content, { start: item.words.left, end: item.words.end() });
       const row = el(doc, 'span', `md-item${item.task ? ' md-task' : ''}${item.task === 'done' ? ' md-done' : ''}`, [marker, words], { start: item.start, end: item.end });
+      // A task mark hides its number in the page, but rich copy still uses it.
+      if (item.task && /\d/.test(item.marker)) row.dataset.mdNumber = item.marker;
       row.style.setProperty('--md-depth', String(Math.min(item.depth, 6)));
       return row;
     }), span);
