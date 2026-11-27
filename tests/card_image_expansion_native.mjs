@@ -141,12 +141,14 @@ try {
         await page.bringToFront();
         assert.equal(page.url(), destination);
       };
-      const expand = async (image, target = 'press') => {
+      const expand = async (image, key = null) => {
         await reveal(image);
+        if (key) await image.focus();
         const before = await layout(image), tabs = context.pages().length;
-        if (target === 'key') {
-          await image.focus();
-          await page.keyboard.press('Enter');
+        assert.equal(before.expanded, false);
+        if (key) {
+          assert.equal(before.focused, true);
+          await page.keyboard.press(key);
         } else await press(image);
         const after = await layout(image);
         assert.equal(after.expanded, true);
@@ -164,7 +166,7 @@ try {
         assert.equal(context.pages().length, tabs);
         assert.ok(after.documentWidth <= width + 2);
         assert.equal(await page.locator('#reader[open], .card-reply-composer:not([hidden]), .deck-writing').count(), 0);
-        result.steps.push({ action: 'expand', target, before, after });
+        result.steps.push({ action: 'expand', target: key ?? 'press', before, after });
       };
       const row = host => host.locator('.card-image-actions');
       const actions = row(firstHost);
@@ -231,7 +233,7 @@ try {
       await page.keyboard.press('Escape');
       assert.equal((await layout(tall)).expanded, false);
       assert.equal((await layout(tall)).focused, true);
-      await expand(first, 'key');
+      await expand(first, 'Enter');
       await tabFrom(() => page.keyboard.press('Enter'), first);
       await first.focus();
       await page.keyboard.press('Tab');
@@ -242,14 +244,34 @@ try {
       await page.keyboard.press('Escape');
       assert.equal((await layout(first)).expanded, false);
       assert.equal((await layout(first)).focused, true);
-      await expand(first, 'key');
+      await expand(first, 'Enter');
       await page.keyboard.press('Tab');
       assert.equal(await fold.evaluate(focusedRing), true);
       await page.keyboard.press('Enter');
       assert.equal((await layout(first)).expanded, false);
       assert.equal((await layout(first)).focused, true);
 
-      await expand(first);
+      await expand(first, 'Space');
+      const beforeSpace = await layout(first), tabs = context.pages().length, destination = page.url();
+      // Space has no image action. The Notebook sheet suppresses its default
+      // scroll to keep the page behind the sheet still.
+      await page.evaluate(() => {
+        window.expandedImageSpace = null;
+        window.addEventListener('keydown', event => {
+          window.expandedImageSpace = { key: event.key, defaultPrevented: event.defaultPrevented };
+        }, { once: true });
+      });
+      await page.keyboard.press('Space');
+      const afterSpace = await layout(first);
+      assert.equal(afterSpace.expanded, true, 'Space keeps the expanded image open');
+      assert.equal(afterSpace.focused, true, 'Space keeps focus on the expanded image');
+      assert.equal(afterSpace.src, beforeSpace.src);
+      assert.equal(context.pages().length, tabs, 'Space on the expanded image opens no tab');
+      assert.equal(page.url(), destination);
+      assert.equal(await page.locator('#reader[open], .card-reply-composer:not([hidden]), .deck-writing').count(), 0);
+      const spaceEvent = await page.evaluate(() => window.expandedImageSpace);
+      assert.deepEqual(spaceEvent, { key: ' ', defaultPrevented: surface.label === 'notebook' });
+      result.expandedSpace = { event: spaceEvent, before: beforeSpace, after: afterSpace, tabs };
       result.expansionRequests = await page.evaluate(() => window.imageReads.length) - countBefore;
       assert.equal(result.expansionRequests, 0, 'all image actions reuse the existing verified bytes');
       await withFreshDevice(browser, createContext, route, surface.selector);
