@@ -568,7 +568,8 @@ export class NotebookPage extends DeckPage {
     const last=groupEnd(this.deck.cards,at)-1;
     if(this.folded.delete(card.title))this.keepFolds();
     this.picked=at;
-    this.open({text:'',after:cardText(this.deck.cards[last]),depth:card.depth+1,near:last,fresh:true,at:0});
+    this.open({text:'',after:cardText(this.deck.cards[last]),depth:card.depth+1,near:last,fresh:true,at:0,
+      revealAboveKeyboard:this.inNotebookSheet});
     const opened=Boolean(this.editing?.fresh);
     // open() has restored pointer scrolling; now show the newly created editor.
     if(opened)revealSelection(this.editing.field?.closest('li'));

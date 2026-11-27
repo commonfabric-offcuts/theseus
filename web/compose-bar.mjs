@@ -6,12 +6,14 @@
 // sessions and its sending stay with the surface that owns them; this only
 // shows them.
 import { showLine } from './lines.mjs';
+import { revealSelection } from './reveal.mjs';
 
 const PHONE = '(max-width: 760px)';
 const TYPING = 'textarea, input:not([type]), input[type=text], input[type=search]';
 // The keyboard is taken as up when the visible height falls by more than this
 // while a text field has focus: smaller changes are the browser's own bars.
 const KEYBOARD_MIN = 120;
+const NOTEBOOK_CHILD = '[data-notebook-child-editor]';
 
 // A reply docked in the page needs the page to move, not the full Reader's
 // internal scroll box. Only an opening/focus or a shrinking keyboard viewport
@@ -30,6 +32,10 @@ export function revealCardReply(field, win = globalThis.window) {
 // ancestor stops the search so revealing a dialog never moves its background.
 function revealWriting(field, win, onlyUp = false) {
   if (!field?.isConnected || field.readOnly || field.disabled) return;
+  if (field.matches?.(NOTEBOOK_CHILD)) {
+    revealSelection(field, { viewport: win.visualViewport });
+    return;
+  }
   const box = field.closest('.field-box'), composer = box?.closest('.composer');
   if (!composer || !box.getClientRects().length) return;
   const doc = field.ownerDocument, vv = win.visualViewport;
@@ -68,7 +74,7 @@ function trackKeyboard(win, doc) {
   const personScroll = () => {
     const field = doc.activeElement;
     if (win.matchMedia(PHONE).matches && field?.matches?.(TYPING) && !field.readOnly &&
-        field.closest?.('#reader[data-card-reply], .card-reply-composer')) scrollingField = field;
+        (field.closest?.('#reader[data-card-reply], .card-reply-composer') || field.matches?.(NOTEBOOK_CHILD))) scrollingField = field;
   };
   const settle = typing => {
     onlyUp = onlyUp && typing;
@@ -99,13 +105,14 @@ function trackKeyboard(win, doc) {
     if (typing && event?.type === 'focusin') revealCardReply(field, win);
     const pencilSheet = field?.closest?.('dialog')?.matches?.('.composer-home:not(.notebook-mode)');
     const cardReply = field?.closest?.('.card-reply-composer');
+    const notebookChild = field?.matches?.(NOTEBOOK_CHILD);
     if (typing && reduced && scrollingField !== field && win.matchMedia(PHONE).matches) {
-      // A composer scroll can pan the visual viewport. For the pencil and
-      // feed reply, settle on focus or keyboard resize and lift a growing
-      // field while typing without chasing that pan back down the page.
-      if (pencilSheet || cardReply) {
+      // A writing scroll can pan the visual viewport. Settle on focus or
+      // keyboard resize without following that pan. The Notebook's caret
+      // watcher already handles movement during typing.
+      if (pencilSheet || cardReply || notebookChild) {
         if (widthChanged || vv.height !== last || event?.type === 'focusin') settle(false);
-        else if (event?.type === 'input' && event.target === field) settle(true);
+        else if (!notebookChild && event?.type === 'input' && event.target === field) settle(true);
       } else if (changed || event?.type === 'focusin' || event?.type === 'input' && event.target === field) settle(false);
     }
     last = vv.height; lastTop = vv.offsetTop;

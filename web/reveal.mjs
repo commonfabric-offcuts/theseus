@@ -53,12 +53,14 @@ function padding(style, side) {
 
 // Scrolls el's nearest scrolling box, at once, by revealBy. The area is what
 // of that box shows in the window, less its scroll-padding.
-export function revealSelection(el, { margin = MARGIN } = {}) {
+export function revealSelection(el, { margin = MARGIN, viewport = null } = {}) {
   if (!el?.getBoundingClientRect || !el.isConnected) return;
   const doc = el.ownerDocument, view = doc.defaultView, box = scrollerOf(el);
   const shown = box ? box.getBoundingClientRect() : { top: 0, bottom: view.innerHeight };
   const style = view.getComputedStyle(box ?? doc.documentElement);
-  const area = { top: Math.max(shown.top, 0) + padding(style, 'Top'), bottom: Math.min(shown.bottom, view.innerHeight) - padding(style, 'Bottom') };
+  const top = viewport?.offsetTop ?? 0;
+  const bottom = top + (viewport?.height ?? view.innerHeight);
+  const area = { top: Math.max(shown.top, top) + padding(style, 'Top'), bottom: Math.min(shown.bottom, bottom) - padding(style, 'Bottom') };
   const selection = el.getBoundingClientRect();
   // A bottom shelf declares what it covers. Rows behind it use the exposed
   // area; its own rows still reveal inside the shelf's separate scroller.
