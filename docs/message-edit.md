@@ -561,9 +561,10 @@ and “added:”. Their labels and removals have zero source width. Added words
 retain their source positions across Markdown links, bold words and lists;
 selection and quoting still read only the current body.
 
-The byline says `Edited · hide changes` by default for eligible readers.
-Hiding redraws cached words without fetching, reading, or changing writing;
-it says `Edited · show changes` until shown again. The device remembers this
+The byline gives eligible readers a check beside `Edited`. The check starts
+unpressed with the label `Accept changes`. Pressing it shows `Edited ✓` and
+draws the clean cached words. The pressed check's label is `Show changes`,
+and pressing it again shows the diffs. The device remembers this
 choice separately for each instance, actor and message revision. A later edit
 defaults to showing changes again. Denied browser storage keeps the choice for
 this page's life. Without Core's `struck`, only `Edited` appears.

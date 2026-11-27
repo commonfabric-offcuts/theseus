@@ -1209,7 +1209,7 @@ export class Reader {
     const edit = editChangeMark(document, message && wasEdited(source), { struck: source.struck,
       shown: () => this.callbacks.messageChanges?.()?.shown(source.source_ref.id, revisionOf(source)) ?? true,
       toggle: () => this.callbacks.toggleMessageChanges?.(source.source_ref.id, revisionOf(source)) });
-    const edited = edit ? [edit] : [];
+    const edited = edit ? ['\u00a0·', edit] : [];
     const author = this.callbacks?.actorName?.(source.author) ?? source.author;
     const originText = node('span', undefined, 'reader-origin-text');
     originText.append([author, provenance].filter(Boolean).join(' · '), ...sent, ...edited);

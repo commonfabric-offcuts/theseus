@@ -256,7 +256,10 @@ export function paintAuthor(author, name, sent, marked, edited = false, carries 
     content.append(at);
   } else if (held) content.append(held);
   const edit = editChangeMark(document, edited, changes);
-  if (edit) content.append(edit);
+  if (edit) {
+    content.children[content.children.length - 1].append('\u00a0·');
+    content.append(edit);
+  }
   const core = [...content.children], at = core.findIndex(child => child.classList.contains('message-time'));
   const kept = names => names.flatMap(name => details.has(name) ? [details.get(name)] : []);
   const desired = at < 0 ? [...core, ...kept(['message-retracted', 'whisper-label', 'whisper-wait', 'asks-you'])]

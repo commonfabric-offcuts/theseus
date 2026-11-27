@@ -130,6 +130,7 @@ export class MessageMenu {
       if (event.target.closest?.('#reader')) return;
       const entry = this.entryOf(event.target);
       if (!entry) return;
+      if (event.target.closest?.('.message-changes-toggle')) return;
       // A tap on a message is an action for its visit-only arrival mark.
       // Stack controls act on their own target; expanding preserves replies.
       if (this.touch && !event.target.closest?.('.stack-head, .fold-line, .stack-earlier')) this.acted(entry.dataset.id);

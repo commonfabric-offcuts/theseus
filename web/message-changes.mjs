@@ -29,16 +29,22 @@ export class MessageChanges {
 export function editChangeMark(doc, edited, changes = null) {
   if (!edited) return null;
   const mark = doc.createElement('span');
-  mark.className = 'message-edited'; mark.append(' · Edited');
+  mark.className = 'message-edited'; mark.append('Edited');
   if (!changes?.struck) return mark;
   const toggle = doc.createElement('span');
   toggle.className = 'message-changes-toggle';
   toggle.setAttribute('role', 'button'); toggle.tabIndex = 0;
+  const glyph = doc.createElement('span');
+  glyph.className = 'message-changes-glyph';
+  glyph.textContent = '✓';
+  glyph.setAttribute('aria-hidden', 'true');
+  toggle.append(glyph);
   const paint = () => {
-    const shown = changes.shown();
-    toggle.textContent = shown ? 'hide changes' : 'show changes';
-    toggle.setAttribute('aria-label', shown ? 'Hide message changes' : 'Show message changes');
-    toggle.setAttribute('aria-pressed', String(shown));
+    const accepted = !changes.shown();
+    const label = accepted ? 'Show changes' : 'Accept changes';
+    toggle.title = label;
+    toggle.setAttribute('aria-label', label);
+    toggle.setAttribute('aria-pressed', String(accepted));
   };
   const act = event => {
     event.preventDefault(); event.stopPropagation();
@@ -50,6 +56,6 @@ export function editChangeMark(doc, edited, changes = null) {
     event.preventDefault(); event.stopPropagation();
     if (!event.repeat) { changes.toggle(); paint(); }
   };
-  paint(); mark.append(' · ', toggle);
+  paint(); mark.append(' ', toggle);
   return mark;
 }
