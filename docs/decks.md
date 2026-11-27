@@ -526,9 +526,12 @@ images; once Core has it, it is attached to the page. Its name stays with it
 for screen readers; it shows beside the picture while the image uploads or after
 its upload failed, and in the picture's place while the picture does not show:
 before it loads, or when the page holds no such image ("· not on this page").
-Clicking a displayed image opens it in a new tab, leaving the card and its
-writing in place (item 651, docs/images.md). Item 653's source-only preview
-shows these clickable images as 3rem square thumbnails with `object-fit:contain`,
+Clicking or pressing Return on a card's image thumbnail expands it in place.
+The expanded image fits the card's text width and caps at 80vh while keeping
+its proportions. Pressing the expanded image or **Open in new tab** opens its
+image in a new tab. **Fold** or Escape on an image control returns to the
+thumbnail with focus. Each image folds independently and reload starts with
+thumbnails. The thumbnail is a 3rem square with `object-fit:contain`,
 the page attachment list's convention: the whole image fits without cropping
 ([image-buttons-653.md](image-buttons-653.md)). The page's list of
 images under the head leaves an image a card shows to the card, unless it needs

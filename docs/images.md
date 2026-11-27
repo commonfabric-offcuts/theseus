@@ -59,16 +59,19 @@ finger; without one, the row lays out as it did before thumbnails.
 
 ## Opening a thumbnail (651)
 
-Clicking or tapping a displayed image thumbnail opens that image in a new tab.
-Return on a focused thumbnail does the same. The new tab uses the exact bytes
+Clicking, tapping or pressing Return on a rail or Reader thumbnail opens that
+image in a new tab. The new tab uses the exact bytes
 already displayed, with no opener and no new media read; the original page,
 writing and destination stay put. A thumbnail with no image to show opens
 nothing. Access checks, queued reads and disposal of the page's image bytes
 stay with the existing thumbnail loader.
 
-This applies to message cards (including dossiers and the Conversation), the
-right rail, Notebook images where read or written, the composer's chosen
-images and the pictures in `#img`. In `#img`, the image opens; pressing the
+Message cards (including dossiers and the Conversation) and Notebook cards
+expand their thumbnails in place on the first press. Press the expanded image
+to open it in a new tab. **Fold** or Escape on an expanded image control brings
+back the thumbnail. The rest of the thumbnails open directly in a new tab,
+including in the right rail, the Reader, the composer's chosen images and
+`#img`. In `#img`, the image opens; pressing the
 row's words or choosing with the writing's arrows and Return still adds it.
 In a composer's strip, the existing press also opens the image's choices in
 place, so Remove, confirmation and retry remain available on return to the
