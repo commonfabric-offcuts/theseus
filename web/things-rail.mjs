@@ -539,11 +539,15 @@ export class ThingsRail {
   async readPlace(view, place, limit) {
     const kept = this.kept.get(place.id);
     if (kept && place.version !== undefined && kept.version === place.version && kept.limit === limit) return { ...kept.value, place };
-    const [messages, images] = await Promise.all([
+    const [messages, images] = await Promise.allSettled([
       view('topic_messages', { topic_id: place.id, direction: 'before', limit: MESSAGES }),
       view('topic_images', { topic_id: place.id, limit }),
     ]);
-    const value = { place, messages: messages.items ?? [], images: (images.items ?? []).filter(image => image.topic_id === place.id) };
+    // The pass owns both reads even if one fails. A queued reload starts
+    // only after the other has settled, and a partial pair never enters kept.
+    if (messages.status === 'rejected') throw messages.reason;
+    if (images.status === 'rejected') throw images.reason;
+    const value = { place, messages: messages.value.items ?? [], images: (images.value.items ?? []).filter(image => image.topic_id === place.id) };
     this.kept.set(place.id, { version: place.version, limit, value });
     return value;
   }

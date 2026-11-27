@@ -135,7 +135,16 @@ def respond(request, seed, servers):
         before = time.time_ns() // 1_000_000
         url = add_link(seed, request["run"], request["label"])
         return {"url": url, "started_at_ms": before, "committed_at_ms": time.time_ns() // 1_000_000}
-    if method in ("admission_events", "read_delay"):
+    if method == "dim":
+        previous = seed.view("rail_dimming", {})
+        value = previous["value"]
+        value["selected"] = 1 if value["selected"] != 1 else 2
+        value["sets"][value["selected"] - 1]["outcomes"] = [["w", True]]
+        receipt = seed.command("rail.dimming_set", {"value": value}, {},
+                               {"dim_revision": previous["dim_revision"]}, actor="reader")
+        return {"selected": value["selected"], "revision": receipt["dim_revision"],
+                "committed_at_ms": time.time_ns() // 1_000_000}
+    if method in ("admission_events", "read_delay", "read_fault", "read_fault_clear"):
         server, control, _ = servers[request["variant"]]
         return control.control(request, server)
     raise ValueError(method)

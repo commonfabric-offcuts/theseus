@@ -20,6 +20,8 @@ const repeats = Number(process.env.AIM_RAIL_REPEATS ?? '6');
 const slow = Number(process.env.AIM_RAIL_DELAY_MS ?? '0');
 const stimuli = (process.env.AIM_RAIL_STIMULI ?? 'feed,link').split(',');
 const paintWaitMs = Number(process.env.AIM_RAIL_PAINT_WAIT_MS ?? '2500');
+const recoverDim = process.env.AIM_RAIL_RECOVERY === '1';
+const verifyPassive = process.env.AIM_RAIL_PASSIVE_PROOF === '1';
 const {chromium} = await import(process.env.AIM_PLAYWRIGHT_CORE);
 const notice = '#things > .notice';
 await mkdir(output, {recursive: false});
@@ -227,7 +229,7 @@ const webHashes = Object.fromEntries(await Promise.all(Object.entries(variants).
   Object.fromEntries(await Promise.all(owners.map(async owner =>
     [owner, createHash('sha256').update(await readFile(resolve(web, owner))).digest('hex')])))])));
 const browser = await chromium.launch({executablePath: process.env.AIM_CHROME});
-const metadata = {code, variants, sizes, clients, repeats, slow, stimuli, paintWaitMs,
+const metadata = {code, variants, sizes, clients, repeats, slow, stimuli, paintWaitMs, recoverDim, verifyPassive,
   webHashes, loadAtStart: loadavg(), browser: browser.version()};
 await writeFile(resolve(output, 'run.json'), JSON.stringify(metadata, null, 2) + '\n');
 
@@ -297,6 +299,50 @@ async function trial({pages, control, size, count, repeat, variant, stimulus}) {
   console.log(JSON.stringify({run, maximumWaiting, refusalReasons, railRefusals, painted, load: beforeCommitLoad[0]}));
 }
 
+async function dimRecovery({pages, control, size, count, repeat, variant}) {
+  await settle(pages);
+  for (const entry of pages) entry.traffic.clear();
+  await Promise.all(pages.map(({page}) => page.evaluate(() => {
+    const foot = document.querySelector('#rail .rail-foot');
+    const changes = [];
+    let current = foot.querySelector('button[data-dim-set][aria-pressed=true]')?.dataset.dimSet;
+    const observer = new MutationObserver(() => {
+      const next = foot.querySelector('button[data-dim-set][aria-pressed=true]')?.dataset.dimSet;
+      if (!next || next === current) return;
+      current = next;
+      requestAnimationFrame(() => changes.push({value: next, at: performance.timeOrigin + performance.now()}));
+    });
+    observer.observe(foot, {attributes: true, attributeFilter: ['aria-pressed'], childList: true, subtree: true});
+    window.measureDim = {changes, observer};
+  })));
+  await control({method: 'read_fault', variant, name: 'rail_dimming', read_class: 'background', count: 1,
+    status: 503, body: {error: {code: 'SERVER_BUSY', message: 'This read could not enter its bounded lane.', retryable: true}}});
+  const commit = await control({method: 'dim'});
+  await Promise.all(pages.map(({page}) => page.waitForFunction(value =>
+    window.measureDim.changes.some(row => row.value === String(value)) &&
+      !document.querySelector('#rail .rail-dim-retry'), commit.selected, {timeout: 7000})));
+  await settle(pages);
+  assert.deepEqual(await control({method: 'read_fault_clear', variant}), {withdrawn: 0}, 'the planned refusal reached a reader');
+  const recovered = await Promise.all(pages.map(async ({page, traffic}, index) => {
+    const reads = [...traffic.requests.values()].filter(row => row.name === 'rail_dimming');
+    const state = await page.evaluate(value => {
+      window.measureDim.observer.disconnect();
+      const at = window.measureDim.changes.find(row => row.value === String(value)).at;
+      return {at, dimmed: document.querySelector('#outline .ol-outcome[data-workspace-id=w]')?.dataset.dimmed};
+    }, commit.selected);
+    assert.equal(state.dimmed, 'true', 'the confirmed choice dims the actual outline');
+    const refused = reads.filter(row => row.error === 'SERVER_BUSY');
+    if (refused.length) {
+      assert.ok(refused.every(row => row.readClass === 'background'));
+      assert.ok(reads.some(row => row.status === 200 && row.started >= refused[0].finished), 'a refused Dim read retried successfully');
+    }
+    return {client: index + 1, reads, state, catchUpMs: refused.length ? Math.round(state.at - refused[0].finished) : null};
+  }));
+  assert.ok(recovered.some(row => Number.isFinite(row.catchUpMs)), 'observe a refused reader through its rendered recovery');
+  await appendFile(resolve(output, 'dim-recovery.jsonl'), JSON.stringify({variant, size, count, repeat, commit, recovered}) + '\n');
+  console.log(JSON.stringify({variant, size, count, repeat, catchUpMs: recovered.map(row => row.catchUpMs)}));
+}
+
 try {
   for (const size of sizes) {
     const fixture = spawn('/usr/bin/python3', ['-I', '-B', new URL('./fixtures/rail_read_capacity.py', import.meta.url).pathname,
@@ -316,12 +362,25 @@ try {
             try {
               // Only one variant has page clients connected during its commit.
               for (let i = 0; i < count; i++) pages.push(await livePage(browser, servers[variant].origin));
-              for (const stimulus of stimuli) {
+              if (recoverDim) await dimRecovery({pages, control, size, count, repeat, variant});
+              else for (const stimulus of stimuli) {
                 await trial({pages, control, size, count, repeat, variant, stimulus});
               }
             } finally {
               await Promise.all(pages.map(({context}) => context.close()));
             }
+          }
+        }
+      }
+      if (verifyPassive && !recoverDim) {
+        const count = Math.max(...clients);
+        for (const variant of Object.keys(variants)) {
+          const pages = [];
+          try {
+            for (let i = 0; i < count; i++) pages.push(await livePage(browser, servers[variant].origin));
+            for (let repeat = 1; repeat <= 3; repeat++) await dimRecovery({pages, control, size, count, repeat, variant});
+          } finally {
+            await Promise.all(pages.map(({context}) => context.close()));
           }
         }
       }
