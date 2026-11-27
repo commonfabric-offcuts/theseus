@@ -100,18 +100,20 @@ class TemplateCatalogue(unittest.TestCase):
             self.assertEqual(recorded['seat']['plan'], settings)
 
     def test_migration_preserves_legacy_seats_and_guards_recorded_settings(self):
-        from aim_next.migrations import MigrationError, migrate
+        from aim_next.migrations import STEPS, MigrationError, migrate
+        from aim_next.hosted_seats import SETTINGS_SCHEMA
+        before, after = next(step[:2] for step in STEPS if step[2] is SETTINGS_SCHEMA)
         self.workspace()
         self.command('workspace.hosted_seat_add', {'name': 'Legacy', 'role': 'Keep this role.'},
                      {'workspace_id': 'w1'}, {'workspace_revision': self.sql("SELECT version FROM workspaces WHERE id='w1'")[0][0]})
         kept = self.sql('SELECT agent_id,role,template_id FROM hosted_seats')
-        self.assertEqual(migrate(self.path, 'test-instance', self.binding, target='69')['schema_version'], '69')
-        self.assertEqual(migrate(self.path, 'test-instance', self.binding)['schema_version'], '70')
+        self.assertEqual(migrate(self.path, 'test-instance', self.binding, target=before)['schema_version'], before)
+        self.assertEqual(migrate(self.path, 'test-instance', self.binding)['schema_version'], after)
         self.assertEqual(self.sql('SELECT agent_id,role,template_id FROM hosted_seats'), kept)
         self.assertEqual(self.sql('SELECT model,reasoning_effort FROM hosted_seats'), [(None, None)])
         self.sql("UPDATE hosted_seats SET model='gpt-6.1-terra',reasoning_effort='high'")
         with self.assertRaises(MigrationError) as caught:
-            migrate(self.path, 'test-instance', self.binding, target='69')
+            migrate(self.path, 'test-instance', self.binding, target=before)
         self.assertEqual(caught.exception.code, 'RECORDS_WOULD_BE_LOST')
 
     def test_unplanned_refusal_can_choose_for_same_seat_but_a_kept_plan_locks_the_template(self):
