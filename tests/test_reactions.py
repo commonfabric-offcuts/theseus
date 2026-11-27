@@ -11,6 +11,7 @@ the asker as a short reply.
 """
 
 import unittest
+from unittest.mock import patch
 
 import reader_fixture as fixtures
 from tests.historical_fixture import post_fields
@@ -50,6 +51,32 @@ class ReactionCase(fixtures.ReaderCase):
 
 
 class ThumbCase(ReactionCase):
+    def test_rethumb_for_an_edit_keeps_one_row_and_its_existing_answer(self):
+        message = self.post("Can you check the first version?", addressees=["owner"], intent="ask")
+        with patch("aim_next.reactions._now_ms", return_value=1000):
+            first = self.committed(self.thumb(message))
+        self.assertTrue(first["answered"])
+        with patch("aim_next.delivery._now_ms", return_value=2000):
+            self.committed(self.command("message.edit", {"body": "Can you check the revised version?"},
+                                        target={"message_id": message}, expected={"message_revision": 1}, actor="agent-a"))
+        self.assertEqual(self.reactions(message)["thumbs"], [{"actor_id": "owner", "at_ms": 1000, "answered": True}])
+        self.assertFalse(self.committed(self.thumb(message, revision=1))["changed"])
+        def repeat(thumb_revision, message_revision, op=None):
+            return self.command("message.thumb", {"thumbed": True}, target={"message_id": message},
+                                expected={"thumb_revision": thumb_revision, "message_revision": message_revision}, op=op)
+        self.rejected(repeat(1, 1), "REVISION_CONFLICT")
+        with patch("aim_next.reactions._now_ms", return_value=2000):
+            receipt = repeat(1, 2, op="rethumb-edited")
+        refreshed = self.committed(receipt)
+        self.assertEqual((refreshed["thumb_revision"], refreshed["changed"], refreshed["answered"]), (3, True, True))
+        self.assertEqual(repeat(1, 2, op="rethumb-edited"), receipt)
+        self.assertFalse(self.committed(repeat(3, 2))["changed"])
+        self.assertEqual(self.reactions(message)["thumbs"], [{"actor_id": "owner", "at_ms": 2000, "answered": True}])
+        self.assertEqual(self.sql("SELECT count(*) FROM message_reactions WHERE message_id=?", (message,)), [(1,)])
+        self.assertEqual(self.store.view("owner", "attention", {})["waiting_on_me"], 0)
+        self.assertFalse(self.committed(self.thumb(message, on=False, revision=3))["thumbed"])
+        self.assertEqual(self.store.view("owner", "attention", {})["waiting_on_me"], 1)
+
     def test_a_thumb_is_taken_back_and_given_again_and_each_revision_is_new(self):
         message = self.post()
         given = self.committed(self.thumb(message))
