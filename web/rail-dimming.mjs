@@ -27,8 +27,8 @@ export class RailDimming {
       if (this.choices.key && (event.key === this.choices.key || event.key === null)) { this.choices.refresh(); this.paint(); }
     });
     doc.defaultView.addEventListener?.('online',()=>{ if(this.sync.key)this.sync.retry(); });
-    doc.defaultView.addEventListener?.('focus',()=>{ if(this.sync.key)this.sync.retry(); });
-    doc.addEventListener?.('visibilitychange',()=>{ if(this.sync.key&&this.doc.visibilityState!=='hidden')this.sync.retry(); });
+    doc.defaultView.addEventListener?.('focus',()=>{ if(this.sync.key)this.sync.activate(); });
+    doc.addEventListener?.('visibilitychange',()=>{ if(this.sync.key&&this.doc.visibilityState!=='hidden')this.sync.activate(); });
   }
   bind(instance, actor, handles = null) {
     if (handles?.api && handles.bootstrap?.authority) this.sync.connect(handles);
