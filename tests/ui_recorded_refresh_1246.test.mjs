@@ -41,6 +41,7 @@ function fixture(bootstrap = offered) {
     authorityReviewPending: () => context.denied, reloader, recordedActionRefresh, checkedView, outcomeScope: scope,
     loadConversation: load('conversation'), loadMarks: load('marks'), loadUnread: load('unread'), loadReadState: load('read'),
     loadShownPage: load('shown'), wakeLights: { load: load('wakes') }, participantsPanel: { paint: () => loads.push('participants') },
+    refreshSeatPeople: load('participants'),
     document: { visibilityState: 'visible', addEventListener: (name, fn) => { events[name] = fn; } },
     live: { listen: fn => listeners.push(fn) },
     api: { view: async (name, args, options) => {

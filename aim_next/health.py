@@ -53,7 +53,7 @@ import os
 import re
 import uuid
 
-from .contract import Refusal
+from .contract import ACTOR_SEAT_ENDED, Refusal
 from .route_pins import KEY_PREFIX as _PIN_PREFIX, _key as _pin_key
 from .whispers import READ_BY
 from .releases import RECORDS as _RELEASE_RECORDS
@@ -502,7 +502,9 @@ def notice_lines(went_red, went_green, still_red):
     for key, fact in sorted(went_green.items()):
         if key == "runner":
             continue
-        if not fact["enabled"]:
+        if fact.get("seat_ended"):
+            lines.append("%s's seat ended, so it is no longer woken." % fact["actor_id"])
+        elif not fact["enabled"]:
             lines.append("%s was disabled, so it is no longer woken." % fact["actor_id"])
         elif key.startswith("failing:"):
             lines.append("%s can be woken again: a wake got through." % fact["actor_id"])
@@ -620,8 +622,9 @@ class Health:
         return tuple(db.execute(
             "SELECT count(*),min(coalesce(ar.at_ms,m.sent_ms)) FROM delivery_groups g INDEXED BY eligible_groups "
             "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
-            "JOIN messages m ON m.id=d.message_id LEFT JOIN answer_receipts ar ON ar.id=d.answer_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0 AND m.private_to IS NULL",
-            (agent,)).fetchone())
+            "JOIN messages m ON m.id=d.message_id LEFT JOIN answer_receipts ar ON ar.id=d.answer_id WHERE g.recipient_id=:agent AND g.active=1 AND g.pending_count>0 AND m.private_to IS NULL "
+            "AND NOT EXISTS (SELECT 1 FROM hosted_seats WHERE agent_id=:agent AND end_state='ended')",
+            {"agent": agent}).fetchone())
 
     def _health_reds(self, db, now, routes=None):
         """What is red, from Core's facts alone, as {key: fact}: one rule for the page and its link.
@@ -656,7 +659,8 @@ class Health:
                 reds["runner"] = light
         rows = db.execute("SELECT a.id AS recipient_id,COALESCE(f.failed_wakes,0) AS failed_wakes,f.failing_since_ms,f.failed_outcome,f.failed_reason,"
                           "f.unanswered_wakes,f.unanswered_since_ms FROM actors a JOIN wake_facts f ON f.recipient_id=a.id "
-                          "WHERE a.kind='agent' AND a.enabled=1 AND (f.failed_wakes>=? OR f.unanswered_wakes>=?) ORDER BY a.id LIMIT ?",
+                          "WHERE a.kind='agent' AND a.enabled=1 AND NOT " + ACTOR_SEAT_ENDED +
+                          " AND (f.failed_wakes>=? OR f.unanswered_wakes>=?) ORDER BY a.id LIMIT ?",
                           (FAILING_AFTER, PARKED_AFTER, AGENT_LIMIT)).fetchall()
         for row in rows:
             agent = row["recipient_id"]
@@ -696,7 +700,8 @@ class Health:
         from .wake_health import PARKED_AFTER
         told = {key: fact for key, fact in reds.items() if fact["posted"] and not key.startswith("parked:")}
         for row in db.execute("SELECT f.recipient_id,f.unanswered_wakes,f.unanswered_since_ms FROM wake_facts f "
-                              "JOIN actors a ON a.id=f.recipient_id WHERE a.kind='agent' AND a.enabled=1 AND f.unanswered_wakes>=? "
+                              "JOIN actors a ON a.id=f.recipient_id WHERE a.kind='agent' AND a.enabled=1 AND NOT " + ACTOR_SEAT_ENDED +
+                              " AND f.unanswered_wakes>=? "
                               "ORDER BY f.recipient_id LIMIT ?", (PARKED_AFTER, AGENT_LIMIT)).fetchall():
             told["parked:" + row["recipient_id"]] = reds.get("parked:" + row["recipient_id"]) or self._parked_fact(db, row)
         return told
@@ -706,8 +711,8 @@ class Health:
         if key == "runner":
             return dict(self._runner_light(db, now))
         agent = key.split(":", 1)[1]
-        row = db.execute("SELECT enabled FROM actors WHERE id=? AND kind='agent'", (agent,)).fetchone()
-        return {"actor_id": agent, "enabled": bool(row is not None and row[0])}
+        row = db.execute("SELECT enabled, " + ACTOR_SEAT_ENDED + " FROM actors AS a WHERE id=? AND kind='agent'", (agent,)).fetchone()
+        return {"actor_id": agent, "enabled": bool(row and row[0]), "seat_ended": bool(row and row[1])}
 
     def _health_commit(self, db, now, always=True):
         """The last step of every act's transaction: post what the team is told now and was not, then
@@ -884,7 +889,8 @@ class Health:
         agents = []
         rows = db.execute("SELECT a.id,a.name,s.recipient_id IS NOT NULL AS scheduled,s.next_due_ms,f.reached_ms,f.failed_ms,s.claim_until_ms "
                           "FROM actors a LEFT JOIN recipient_schedule s ON s.recipient_id=a.id LEFT JOIN wake_facts f ON f.recipient_id=a.id "
-                          "WHERE a.kind='agent' AND a.enabled=1 ORDER BY a.id LIMIT ?", (AGENT_LIMIT,)).fetchall()
+                          "WHERE a.kind='agent' AND a.enabled=1 AND NOT " + ACTOR_SEAT_ENDED + " ORDER BY a.id LIMIT ?",
+                          (AGENT_LIMIT,)).fetchall()
         for row in rows:
             route = routes.get(row["id"])
             # What waits, as the reader may see it: an agent's whispers count for that agent itself, and each for the

@@ -23,6 +23,8 @@ out at all.
 
 import json
 
+from .contract import ACTOR_SEAT_ENDED
+
 from .whispers import READ_BY, on_record_wake_health
 from .route_pins import KEY_PREFIX as _PIN_PREFIX, _key as _pin_key
 
@@ -122,7 +124,8 @@ class WakeHealth:
         quiet = []
         if live:
             rows = db.execute("SELECT s.recipient_id,s.pending_count,s.unanswered_since_ms FROM recipient_schedule s JOIN actors a ON a.id=s.recipient_id "
-                              "WHERE s.unanswered_wakes>=? AND s.pending_count>0 AND a.kind='agent' AND a.enabled=1 ORDER BY s.recipient_id LIMIT ?",
+                              "WHERE s.unanswered_wakes>=? AND s.pending_count>0 AND a.kind='agent' AND a.enabled=1 AND NOT " +
+                              ACTOR_SEAT_ENDED + " ORDER BY s.recipient_id LIMIT ?",
                               (PARKED_AFTER, QUIET_LIMIT)).fetchall()
             quiet = [{"actor_id": row["recipient_id"], "waiting": row["pending_count"], "since_ms": row["unanswered_since_ms"],
                       "why": "not_answering"} for row in rows]
@@ -130,7 +133,8 @@ class WakeHealth:
             # Only routed agents are listed, so the limit counts them alone: unrouted ones never crowd them out.
             routed = self._routed(db)
             rows = db.execute("SELECT s.recipient_id,s.pending_count FROM recipient_schedule s JOIN actors a ON a.id=s.recipient_id "
-                              "WHERE s.pending_count>0 AND a.kind='agent' AND a.enabled=1 ORDER BY s.recipient_id")
+                              "WHERE s.pending_count>0 AND a.kind='agent' AND a.enabled=1 AND NOT " +
+                              ACTOR_SEAT_ENDED + " ORDER BY s.recipient_id")
             for row in rows:
                 if routed(row["recipient_id"]):
                     quiet.append({"actor_id": row["recipient_id"], "waiting": row["pending_count"], "why": "wakes_paused"})

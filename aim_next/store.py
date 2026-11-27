@@ -10,7 +10,7 @@ import uuid
 from typing import Any
 
 
-from .contract import LIMITS, Refusal, StoreError, organises, _json, _identifier, _body, _bounded_page, _page_size, _prefix, _revision
+from .contract import ACTOR_SEAT_ENDED, LIMITS, Refusal, StoreError, organises, _json, _identifier, _body, _bounded_page, _page_size, _prefix, _revision
 from .drafts import Drafts, DRAFT_SCHEMA
 from .openings import Openings, OPENING_SCHEMA
 from .conversation import Conversation, CONVERSATION_SCHEMA, MESSAGE_INTENT_SCHEMA, MESSAGE_TIME_SCHEMA, WRITTEN_SCHEMA
@@ -801,27 +801,34 @@ class Store(ReleaseCards, ActionPerformance, CurrentRule, PieceClock, HostedReco
         kind = args.get("kind")
         if kind is not None and kind not in ("human", "agent"):
             raise Refusal("INVALID_ARGUMENT", "An actor is a human or an agent")
-        rows = db.execute("SELECT id,kind,substr(CAST(name AS BLOB),1,1025) AS name_prefix FROM actors "
+        rows = db.execute("SELECT id,kind,substr(CAST(name AS BLOB),1,1025) AS name_prefix, "
+                          + ACTOR_SEAT_ENDED + " AS seat_ended FROM actors AS a "
                           "WHERE enabled=1 AND id>?" + (" AND kind=?" if kind else "") + " ORDER BY id LIMIT ?",
                           (args.get("cursor", ""),) + ((kind,) if kind else ()) + (limit + 1,)).fetchall()
 
         def item(row):
             name, truncated = _prefix(row["name_prefix"])
-            return {"id": row["id"], "kind": row["kind"], "name": name, "name_truncated": truncated}
+            result = {"id": row["id"], "kind": row["kind"], "name": name, "name_truncated": truncated}
+            if row["seat_ended"]:
+                result["seat_ended"] = True
+            return result
         return _bounded_page({"instance_id": self.instance_id}, rows, limit, item, "id")
 
     def _view_workspace_members(self, db, actor, args):
         workspace = self._workspace(db, actor, args.get("workspace_id"))
         limit = _page_size(args)
-        rows = db.execute("SELECT m.actor_id,a.kind,a.enabled,substr(CAST(a.name AS BLOB),1,1025) AS name_prefix "
-                          "FROM workspace_members AS m JOIN actors AS a ON a.id=m.actor_id "
+        rows = db.execute("SELECT m.actor_id,a.kind,a.enabled,substr(CAST(a.name AS BLOB),1,1025) AS name_prefix, "
+                          + ACTOR_SEAT_ENDED + " AS seat_ended FROM workspace_members AS m JOIN actors AS a ON a.id=m.actor_id "
                           "WHERE m.workspace_id=? AND m.actor_id>? ORDER BY m.actor_id LIMIT ?",
                           (workspace["id"], args.get("cursor", ""), limit + 1)).fetchall()
 
         def item(row):
             name, truncated = _prefix(row["name_prefix"])
-            return {"actor_id": row["actor_id"], "kind": row["kind"], "name": name, "name_truncated": truncated,
-                    "enabled": bool(row["enabled"])}
+            result = {"actor_id": row["actor_id"], "kind": row["kind"], "name": name, "name_truncated": truncated,
+                      "enabled": bool(row["enabled"])}
+            if row["seat_ended"]:
+                result["seat_ended"] = True
+            return result
         return _bounded_page({"instance_id": self.instance_id, "relevant_versions": {"workspace": workspace["version"]}},
                              rows, limit, item, "actor_id")
 
