@@ -408,7 +408,7 @@ export class InlineComposer {
     const p = this.presentation, editor = this.editor;
     const off = name => this.removeName(name, p, editor);
     paintAddress(this.$('recipient-chips'), this.$('recipient-input'), { people: this.callbacks.addressable?.() ?? [],
-      nameOf: this.callbacks.actorLabel,
+      nameOf: this.callbacks.actorLabel, seatEnded: this.callbacks.seatEnded,
       named: recipientChoices(editor.draft.addressees).map(({ name }) => name), reach: this.callbacks.reach, remove: off,
       toggle: (name, on) => on ? this.addName(name) : off(name), summary: { host: this.naming.named, opener: this.naming.opener } });
     this.callbacks.recipientsPainted?.(editor.draft.addressees);

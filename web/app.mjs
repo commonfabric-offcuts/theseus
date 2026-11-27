@@ -197,7 +197,7 @@ let comparison = null, reviewSerial = 0, reviewOpener = null;
 // Whether each agent's wakes are getting through, said on its name where it is not.
 const wakeLights = new WakeLights({ read: async () => checkedView(await api.view('wakes', {}, { readClass: 'background' }), bootstrap.instance_id),
   painted: () => { const words = wakeLights.notice(); $('wakes-status').textContent = words ?? ''; $('wakes-status').hidden = !words; finishPageNotice($('wakes-status')); } });
-const wakeLight = person => person.kind === 'agent' || person.kind === undefined ? wakeLights.words(person.actor_id) : null;
+const wakeLight = person => !person.seat_ended && (person.kind === 'agent' || person.kind === undefined) ? wakeLights.words(person.actor_id) : null;
 const sourceIdentity = ref => JSON.stringify(ref);
 const validate = answer => {
   if (answer?.error) throw Error(answer.error.message);
@@ -2222,7 +2222,7 @@ function participantName(person, label = person.name || person.actor_id) {
     participantNames.set(person.actor_id, name);
   }
   if (name.textContent !== label) name.textContent = label;
-  name.title = `Change ${label}'s color`;
+  name.title = person.seat_ended ? 'seat ended' : `Change ${label}'s color`;
   name.className = 'pill-name';
   return name;
 }
@@ -2314,7 +2314,7 @@ function whisperPeople() {
   // moved to the outcome's conversation goes to its team.
   const members = topicId => [...outcomeMembers ?? [], ...topicId === topic?.id ? views?.participants ?? [] : []]
     .filter(person => person.enabled !== false && person.actor_id !== bootstrap.actor)
-    .map(person => ({ id: person.actor_id, name: person.name ?? null }));
+    .map(person => ({ id: person.actor_id, name: person.name ?? null, ...(person.seat_ended ? { seat_ended: true } : {}) }));
   return { kindOf: name => kinds.get(name), everyone, members };
 }
 // What the page knows of the person's marks: the topic's line, each loaded
@@ -3979,7 +3979,7 @@ async function initialize() {
   } catch { $('workspace-name').textContent = topic.workspace_id; }
   // Those who can be added: the outcome's team, or everyone when the team cannot be read.
   participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add someone to this topic', dismissible: true,
-    candidates: () => outcomeMembers ? outcomeMembers.filter(person => person.enabled !== false).map(person => ({ id: person.actor_id, name: person.name, kind: person.kind })) : directoryPeople,
+    candidates: () => outcomeMembers ? outcomeMembers.filter(person => person.enabled !== false).map(({ actor_id, ...person }) => ({ ...person, id: actor_id })) : directoryPeople,
     opened: () => { refreshMembers(); refreshDirectory(); },
     add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName, light: wakeLight, pill: participantPill,
     read: async () => (await readTopic()).participants });
@@ -4016,7 +4016,7 @@ async function initialize() {
     images: topicImages, imageBytes,
     actorLabel,
     admits: (p, editor) => registry?.isCurrent(p, editor),
-    reach: recipientReach, addressable: addressPeople,
+    reach: recipientReach, addressable: addressPeople, seatEnded: actorSeatEnded,
     uploads: editor => registry.sessionFor(editor).uploads,
     edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
     status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, savedAt: editor => registry.savedTime(editor), needsReview, reviewState,
@@ -4041,7 +4041,7 @@ async function initialize() {
     admits: (p, editor) => registry?.isCurrent(p, editor),
     writes: (p, editor) => registry?.isWritable(p, editor),
     closing: p => registry?.isClosing(p),
-    reach: recipientReach, addressable: addressPeople,
+    reach: recipientReach, addressable: addressPeople, seatEnded: actorSeatEnded,
     revisionOffer,
     retrySource: () => run(retrySource),
     uploads: editor => registry?.sessionFor(editor).uploads,
@@ -4460,6 +4460,10 @@ function paintParticipants(current, participants) {
 function addressPeople() {
   return (views?.participants ?? []).filter(person => person.enabled !== false && person.actor_id !== bootstrap.actor).map(person => person.actor_id);
 }
+function actorSeatEnded(id) {
+  return [...views?.participants ?? [], ...outcomeMembers ?? [], ...directoryPeople]
+    .some(person => (person.actor_id ?? person.id) === id && person.seat_ended);
+}
 // Whether a message to name would reach them: they must be able to see the
 // topic. Unknown when the outcome's team could not be read.
 function recipientReach(name) {
@@ -4510,7 +4514,7 @@ let directoryRead = null, directoryPeople = [];
 function refreshDirectory() {
   directoryRead ??= readDirectory(api, bootstrap.instance_id).then(({ items }) => {
     fillNames($('directory-names'), items);
-    directoryPeople = items.map(item => ({ id: item.id, name: item.name, kind: item.kind }));
+    directoryPeople = items;
     teamPanel?.paintChoices(); participantsPanel?.paintChoices();
     // The background directory may arrive after a card. Update labels in
     // place, without reloading content or rearranging what is being read.

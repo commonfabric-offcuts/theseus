@@ -968,7 +968,7 @@ export class Reader {
     const named = recipientChoices(this.own(editor)).map(({ name }) => name);
     const off = name => this.removeName(name, editor, presentation);
     paintAddress(this.$('recipient-chips'), this.$('recipient-input'), { people: this.callbacks.addressable?.() ?? [], named: [...new Set(named)],
-      nameOf: this.callbacks.actorLabel,
+      nameOf: this.callbacks.actorLabel, seatEnded: this.callbacks.seatEnded,
       reach: this.callbacks.reach, remove: off, toggle: (name, on) => on ? this.addName(name) : off(name),
       summary: this.naming && { host: this.naming.named, opener: this.naming.opener } });
     this.callbacks.recipientsPainted?.(this.own(editor), editor.context.topicId);

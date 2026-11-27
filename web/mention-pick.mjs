@@ -1,3 +1,5 @@
+import { markSeatEnded } from './people.mjs';
+
 // Completion changes only writing. Core still owns leading-@ addressing.
 export function mentionQuery(value, start, end = start) {
   if (start !== end) return null;
@@ -61,6 +63,7 @@ export class MentionPick {
       row.id = `${this.list.id}-${index}`; row.setAttribute('role', 'option');
       row.setAttribute('aria-selected', String(index === this.active));
       row.textContent = `@${person.id}${person.name && person.name !== person.id ? ' · ' + person.name : ''}`;
+      markSeatEnded(row, person.seat_ended);
       row.onclick = () => this.pick(person.id); return row;
     });
     this.list.replaceChildren(...rows); this.list.hidden = false;
