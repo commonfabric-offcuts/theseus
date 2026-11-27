@@ -151,12 +151,12 @@ export class EditorRegistry {
     try { return await loading; }
     finally { foreground.release(); if (this.cardOpenings.get(id) === loading) this.cardOpenings.delete(id); }
   }
-  async hideCard(p) {
-    if (!p || this.cards.get(p.source.source_ref.id) !== p || this.disposed || p.closing) return false;
+  async hideCard(p, { current = () => true } = {}) {
+    if (!p || this.cards.get(p.source.source_ref.id) !== p || this.disposed || p.closing || !current()) return false;
     p.closing = true; this.activity();
     try {
       await this.keepLocal(p);
-      if (this.disposed) return false;
+      if (this.disposed || !current()) return false;
       p.hidden = true; return true;
     } catch (error) { throw this.closeRefusal(error); }
     finally { p.closing = false; this.activity(); }
