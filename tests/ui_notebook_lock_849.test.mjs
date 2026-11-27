@@ -76,17 +76,66 @@ async function fixture(t,mode='cards') {
     attachments:[],references:[],reader_may_write:true,reader_may_delete:true};
   const api={view:async(name)=>{assert.equal(name,'memory_current');return structuredClone(source);},
     command:async envelope=>{commands.push(envelope);throw Error('Unexpected command');}};
-  const make=async(mode)=>{
+  const create=(mode,deleteUI)=>{
     const host=doc.createElement('section');doc.body.append(host);
     const page=new NotebookPage({doc,host,item:'page',mode,bootstrap:{instance_id:'fixture-instance',actor:'fixture-person',authority:{authority_id:'fixture-authority',authority_epoch:'fixture-epoch'}},
-      api,read:api.view,send:api.command,header:Object.fromEntries(['eyebrow','title','description'].map(k=>[k,doc.createElement('div')])),
+      api,read:api.view,send:api.command,deleteUI,header:Object.fromEntries(['eyebrow','title','description'].map(k=>[k,doc.createElement('div')])),
       place:async()=>({title:'Fixture',href:'/fixture'}),askIn:async()=>null,viewPreference:{get:()=>mode,set(){}}});
-    pages.push(page);assert.equal(await page.load(),true);return page;
+    pages.push(page);return page;
   };
-  t.after(async()=>{try{for(const p of pages)p.close();await Promise.all(pages.map(p=>p.writing.serial));await Promise.all(disk.lifetimes);}finally{restore();}});
+  const make=async mode=>{const page=create(mode);assert.equal(await page.load(),true);return page;};
+  t.after(async()=>{try{for(const p of pages)p.close();await Promise.all(pages.map(p=>p.writing?.serial));await Promise.all(disk.lifetimes);}finally{restore();}});
   const owner=await make('cards'),page=await make(mode);
-  return {doc,owner,page,source,commands,disk,make};
+  return {doc,owner,page,source,commands,disk,make,create};
 }
+
+test('concurrent Notebook loads share the whole first open',async t=>{
+  const f=await fixture(t);
+  f.owner.close();await f.disk.lifetimes[0];
+  const storage=Promise.withResolvers(), header=Promise.withResolvers(), headerEntered=Promise.withResolvers();
+  let opens=0, registrations=0, headers=0;
+  const page=f.create('cards',{
+    beforeOpen(){opens++;return storage.promise;},
+    register(){registrations++;},changed(){},release(){},retains(){return false;}
+  });
+  const paintHeader=page.paintHeader.bind(page);
+  page.paintHeader=async()=>{headers++;headerEntered.resolve();await header.promise;return paintHeader();};
+  const first=page.load();
+  const second=page.load();
+  const results=Promise.allSettled([first,second]);
+  assert.equal(page.writing,undefined);
+  storage.resolve();
+  await headerEntered.promise;
+  const third=page.load();
+  const late=Promise.allSettled([third]);
+  header.resolve();
+  const opened={status:'fulfilled',value:true};
+  assert.deepEqual(await results,[opened,opened]);
+  assert.deepEqual(await late,[opened]);
+  assert.deepEqual({opens,registrations,headers,locks:f.disk.requested.length},{opens:1,registrations:1,headers:1,locks:3});
+  assert.equal(page.writing.value.body,f.source.body);
+  assert.equal(page.readOnly,false);
+});
+
+test('closing during Notebook open releases the device lock without drawing the old page',async t=>{
+  const f=await fixture(t);
+  f.owner.close();await f.disk.lifetimes[0];
+  const storage=Promise.withResolvers();
+  let registrations=0;
+  const page=f.create('cards',{
+    beforeOpen:()=>storage.promise,register(){registrations++;},changed(){},release(){},retains(){return false;}
+  });
+  const first=page.load(), second=page.load();
+  const results=Promise.allSettled([first,second]);
+  page.close();
+  storage.resolve();
+  const closed={status:'fulfilled',value:false};
+  assert.deepEqual(await results,[closed,closed]);
+  assert.equal(registrations,0);
+  assert.equal(page.list.children.length,0);
+  const fresh=await f.make('cards');
+  assert.equal(fresh.readOnly,false);
+});
 const key=(page,key,extra={})=>{const event={key,target:page.list,preventDefault(){this.defaultPrevented=true;},...extra};page.key(event);return event;};
 const notice=page=>{assert.match(page.status.text,/another tab/);assert.equal(page.status.children[0].dataset.save,'attention');};
 const unchanged=f=>{

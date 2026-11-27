@@ -78,6 +78,9 @@ export class CardDisclosure {
     words.classList.toggle('deck-expanded',record.expanded);
     const entry={row,words,button,record,visible:!this.intersection};
     this.entries.push(entry);this.byWords.set(words,entry);row.append(button);
+    // Keep the last measured disclosure in place across a repaint. The
+    // visible row is measured again when its new words intersect.
+    if(record.truncated)this.present(entry,true);
     button.addEventListener('click',event=>{
       event.stopPropagation();if(!this.view()||button.hidden||!button.isConnected)return;
       // Its visible pill already establishes overflow. Respond to the press
@@ -113,7 +116,9 @@ export class CardDisclosure {
     const measured=entries.map(entry=>({entry,focused:this.doc.activeElement===entry.button,
       truncated:Boolean(entry.words.clientWidth>0&&entry.words.getClientRects().length&&entry.words.scrollHeight>entry.words.clientHeight+1)}));
     for(const {entry,focused,truncated}of measured){
-      const {button,row}=entry;this.present(entry,truncated);
+      const {button,row,record}=entry;
+      record.truncated=truncated;
+      this.present(entry,truncated);
       if(focused&&!truncated&&row.isConnected&&!row.hidden)row.focus({preventScroll:true});
     }
     const pending=this.pendingFocus;
