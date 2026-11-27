@@ -177,8 +177,8 @@ export class StackFeed {
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
     newest = () => {}, refreshPositions = async () => {}, acted = () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), navigate = () => {}, press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
-    colorOf = () => null, readNamed = null, captureArchive = () => null, captureEmptyReply = null, closeReplyToFold = null, clock = () => Date.now(), thumbPending = () => null, doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, captureArchive, captureEmptyReply, closeReplyToFold, clock, doc });
+    colorOf = () => null, landReply = () => {}, readNamed = null, captureArchive = () => null, captureEmptyReply = null, closeReplyToFold = null, clock = () => Date.now(), thumbPending = () => null, doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, landReply, captureArchive, captureEmptyReply, closeReplyToFold, clock, doc });
     this.archiveReads = new Map();
     this.thumbPending = thumbPending;
     this.readNamed = readNamed; this.headerStars = new Set();
@@ -323,6 +323,7 @@ export class StackFeed {
       },
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message is' : `${count} earlier messages are`} shown, for this visit`),
       arranged: () => this.arranged(), acted: id => this.acted(id), newest: (stack, mark) => this.newest(stack, mark),
+      landReply: id => this.landReply(id),
       // Reply targets the newest loaded message; the menu remains the dossier's.
       reply: stack => {
         const latest = [stack.head, ...stack.replies].reduce((a, b) => b.seq > a.seq ? b : a);

@@ -78,7 +78,7 @@ import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, paintOwnNoteFold, opened } from './fold.mjs';
 import { MessageEditWriting, messageEditStore, mayEdit, revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { MessageEdit } from './message-edit.mjs';
-import { withdrawalItem, paintWithdrawal, Withdrawals, learnWithdrawal } from './question-withdrawal.mjs';
+import { ownWithdrawnQuestion, withdrawalItem, paintWithdrawal, Withdrawals, learnWithdrawal } from './question-withdrawal.mjs';
 import { removalItem, paintRemoval, readRemoval, Removals } from './message-removal.mjs';
 import { cardClass, paintCardColor, agentColor, paneClass } from './author-colors.mjs';
 import { paintWhisperAuthor, mayStartFrom } from './whisper-choice.mjs';
@@ -1943,6 +1943,7 @@ function feedOf() {
     closeReplyToFold: id => cardReplies?.close(id, { focus: false }),
     nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     newest: (stack, mark) => run(() => openDossierNew(stack, mark)),
+    landReply: id => run(() => landOnMessage(id, undefined, undefined, false, true)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), arranged: stacksRedrawn,
     hold: (paint, act) => keepListAnchor(paint, act), navigate: () => releaseTopArrivals(), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyInCard(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), thumbPending: id => reactions?.pending.get(id) ?? null,
@@ -2078,12 +2079,15 @@ function landOn(id, { full = false } = {}) {
 // anchored page, preserving the paging gap. With no visible card, the exact
 // source opens through the ordinary Reader owner instead.
 let landingSerial = 0;
-async function landOnMessage(id, serial = ++landingSerial, current = () => true, dossier = false) {
+async function landOnMessage(id, serial = ++landingSerial, current = () => true, dossier = false, exact = false) {
   const accessEpoch = listAccessEpoch, generation = registry.generation, windowRequest = ++windowReadSerial, windowReadStart = views.windowKnowledge;
   const mine = () => !retired && !registry.disposed && !topicUnavailable &&
     accessEpoch === listAccessEpoch && serial === landingSerial && generation === registry.generation && windowRequest === windowReadSerial && current();
   if (!mine()) return false;
-  if (dossier || !views.messages.has(id)) {
+  const openExact = () => openSource({ kind: 'message', id }, document.activeElement);
+  const local = exact ? feedMessages().get(id) : null;
+  if (ownWithdrawnQuestion(local, bootstrap.actor)) return Boolean(await openExact());
+  if (dossier || !(views.messages.has(id) || local && stackFeed.entryFor(id))) {
     const foreground = registry.cleanup.foreground();
     try {
       let cursor = Number.MAX_SAFE_INTEGER, args = { topic_id: topic.id, limit: 30 };
@@ -2109,8 +2113,11 @@ async function landOnMessage(id, serial = ++landingSerial, current = () => true,
   // A loaded same-topic target can land during the rail's tap handler,
   // before its bubbling click closes the drawer and removes main's inertness.
   if (shell.drawer?.isOpen()) shell.drawer.close();
+  // An authored withdrawal has no card in this reader's feed. Echo
+  // activation still opens the exact original instead of selecting a reply.
+  if (exact && ownWithdrawnQuestion(feedMessages().get(id), bootstrap.actor)) return Boolean(await openExact());
   const card = landOn(id, { full: true });
-  if (!card) return Boolean(await openSource({ kind: 'message', id }, document.activeElement));
+  if (!card) return Boolean(await openExact());
   card.focus({ preventScroll: true });
   return true;
 }

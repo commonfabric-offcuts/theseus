@@ -324,12 +324,34 @@
 /* The replies: sheets in the folder, oldest first. */
 .stack-replies{position:relative;display:flex;flex-direction:column;gap:0;margin:0}
 .stack-replies:empty{display:none}
+.reply-echo{--echo-fill:var(--stack-read-sheet);--echo-hover:var(--stack-read-hover);
+  --echo-tag:color-mix(in srgb,var(--ink) 7%,var(--echo-fill));align-self:stretch;display:grid;align-content:center;box-sizing:border-box;
+  min-width:0;min-height:2.6rem;margin:0;padding:.2rem 1.15rem;border:0;border-radius:var(--stack-r-sheet);
+  background:var(--echo-fill);color:var(--muted);font:inherit;font-size:.78rem;line-height:1rem;
+  text-align:left;cursor:pointer;user-select:none;-webkit-user-select:none}
+.reply-echo[data-color=agent]{--echo-fill:color-mix(in srgb,var(--agent-card) 58%,var(--stack-read-sheet));
+  --echo-hover:color-mix(in srgb,var(--agent-hover) 68%,var(--stack-read-hover));
+  --echo-tag:color-mix(in srgb,var(--agent-tag) 58%,var(--stack-read-sheet))}
+.reply-echo:hover{background:var(--echo-hover);box-shadow:inset 0 0 0 1px var(--muted)}
+.reply-echo:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.reply-stack:focus{outline:2px solid var(--focus)}
+.reply-echo-heading{display:flex;align-items:baseline;min-width:0;white-space:nowrap}
+.reply-echo-heading::before{content:'↩';margin-inline-end:.35rem}
+.reply-echo-author{min-width:0;padding-inline:.32rem;border-radius:.3rem;background:var(--echo-tag);font-weight:650}
+.reply-echo-author,.reply-echo-excerpt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reply-echo-author::before,.reply-echo-excerpt::before,.reply-echo-detail::before{content:attr(data-words)}
+.reply-echo-detail{white-space:pre}
+.reply-echo+[data-id]{margin-top:.15rem}
+.message-card[data-reply-echo]>.message-reply-to{display:none}
+@media(max-width:640px),(pointer:coarse){.reply-echo{min-height:44px}}
 /* Later faces paint above earlier ones in DOM order. The root stays static:
    its absolutely positioned tab still belongs to the folder, not the card. */
 .reply-stack:not(.only-new *) .stack-replies>[data-id]{position:relative}
 .reply-stack:not(.only-new *) .stack-replies>[data-stack-overlap=true]{margin-top:calc(-1 * var(--stack-overlap))}
 /* What More messages filled the stack with: whole cards a sheet gap apart (reply-stacks.mjs, stack.filled). */
 .reply-stack:not(.only-new *) .stack-replies>[data-stack-filled=true]{margin-top:var(--stack-sheet-gap)}
+.reply-stack:not(.only-new *) .stack-replies>.reply-echo+[data-id],
+.reply-stack:not(.only-new *)>.reply-echo+[data-id]{margin-top:.15rem}
 /* The overlap covers only this extra material, never the last words or a
    control. A wrapped entry puts that material on its actual visible face. */
 .reply-stack:not(.only-new *) :is(.message-card[data-stack-covered=true],.message-fold[data-stack-covered=true]>.message-card){padding-bottom:calc(1rem + var(--stack-overlap))}
