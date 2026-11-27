@@ -486,7 +486,18 @@ export class ThingsRail {
     const handles = this.handles;
     if (!handles) return true;
     const serial = ++this.serial, workspace = handles.workspaceId, topicId = this.topicId;
-    const view = (name, args) => handles.view(name, args);
+    // Give the visible rail a foreground turn, one read at a time per page.
+    // Keep room for the feed and other clients, and skip reads overtaken by a move.
+    let tail = Promise.resolve();
+    const view = (name, args) => {
+      const next = tail.then(() => {
+        if (serial !== this.serial || handles !== this.handles) throw Error('The rail read was superseded.');
+        const readClass = this.shows() && this.doc.visibilityState === 'visible' ? 'foreground' : 'background';
+        return handles.view(name, args, readClass);
+      });
+      tail = next.catch(() => {});
+      return next;
+    };
     this.stale = false;
     // A topic the page can no longer read (its updates refused) is not read here either.
     const readable = id => id !== handles.topic?.id || handles.readable?.() !== false;
@@ -494,7 +505,7 @@ export class ThingsRail {
     const tools = !readable(topicId) ? settle(Promise.resolve(null))
       : settle(view('topic_tools', { topic_id: topicId }).then(answer => answer.linked.map(tool => ({ ...tool, home: tool.home_workspace_id }))));
     const notebook = !readable(topicId) ? settle(Promise.resolve(null)) : settle(this.readNotebook(view, { kind: 'topic', id: topicId }));
-    const links = this.links ? settle(readable(topicId) ? this.links.read(handles) : Promise.resolve(null)) : settle(Promise.resolve(undefined));
+    const links = this.links ? settle(readable(topicId) ? this.links.read(handles, view) : Promise.resolve(null)) : settle(Promise.resolve(undefined));
     const places = [this.topicPlace(handles)].filter(place => readable(place.id));
     if (serial !== this.serial || handles !== this.handles) return true;
     const reads = places.map(place => settle(this.readPlace(view, place, 24)));
@@ -528,11 +539,15 @@ export class ThingsRail {
   async readPlace(view, place, limit) {
     const kept = this.kept.get(place.id);
     if (kept && place.version !== undefined && kept.version === place.version && kept.limit === limit) return { ...kept.value, place };
-    const [messages, images] = await Promise.all([
+    const [messages, images] = await Promise.allSettled([
       view('topic_messages', { topic_id: place.id, direction: 'before', limit: MESSAGES }),
       view('topic_images', { topic_id: place.id, limit }),
     ]);
-    const value = { place, messages: messages.items ?? [], images: (images.items ?? []).filter(image => image.topic_id === place.id) };
+    // The pass owns both reads even if one fails. A queued reload starts
+    // only after the other has settled, and a partial pair never enters kept.
+    if (messages.status === 'rejected') throw messages.reason;
+    if (images.status === 'rejected') throw images.reason;
+    const value = { place, messages: messages.value.items ?? [], images: (images.value.items ?? []).filter(image => image.topic_id === place.id) };
     this.kept.set(place.id, { version: place.version, limit, value });
     return value;
   }
