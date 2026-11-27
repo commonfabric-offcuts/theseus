@@ -98,7 +98,7 @@ EXPECTED = {"release_card.create": set(), "release_card.update": {"message_revis
             "workspace.update": {"workspace_revision"}, "opening.save": {"opening_revision"},
             "opening.publish": {"opening_revision"}, "opening.discard": {"opening_revision"},
             "message.mark": {"mark_revision"}, "color.set": {"color_revision"}, "outcome.color_set": {"color_revision"},
-            "message.thumb": {"thumb_revision"}, "message.answer": {"answer_revision"},
+            "message.thumb": {"thumb_revision", "message_revision"}, "message.answer": {"answer_revision"},
             "responsibility.set": {"responsibility_revision"}, "workspace.coordinator_set": {"workspace_revision"},
             "pipeline.configure": {"pipeline_revision"},
             "pipeline.stages_set": {"pipeline_revision"},
