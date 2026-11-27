@@ -51,7 +51,8 @@ from tools import checks as outcome_checks, known_reds as known_reds_check, rele
 PYTHON = "/usr/bin/python3"
 Config = collections.namedtuple(
     "Config", "live instance python server_profile port tailnet_origin runner_profile runner_id routes outcome reporter_profile "
-    "release_branch repository pipeline_outcome pipeline_instance pipeline_broker pipeline_profile seat_template", defaults=(None, None, None, None, None))
+    "release_branch repository pipeline_outcome pipeline_instance pipeline_broker pipeline_profile seat_template admission_auditor",
+    defaults=(None, None, None, None, None, gauntlet_admission.DEFAULT_AUDITOR))
 REQUIRED_KEYS = ("live", "instance", "server_profile", "port", "runner_profile", "runner_id", "routes")
 # outcome: the outcome whose checks this deploy measures (docs/targets.md); reporter_profile: the profile of a member, not
 # its coordinator, that reads them, opens fix topics, writes the candidate's run and moves the release piece (D27).
@@ -59,7 +60,7 @@ REQUIRED_KEYS = ("live", "instance", "server_profile", "port", "runner_profile",
 # read from (owner/name), which --train needs (tools/train.py). After recording a verified new release,
 # release_branch is also fast-forwarded on the live checkout's origin and read back from that remote.
 OPTIONAL_KEYS = ("python", "tailnet_origin", "outcome", "reporter_profile", "release_branch", "repository",
-                 "pipeline_outcome", "pipeline_instance", "pipeline_broker", "pipeline_profile", "seat_template")
+                 "pipeline_outcome", "pipeline_instance", "pipeline_broker", "pipeline_profile", "seat_template", "admission_auditor")
 
 
 class Refused(Exception):
@@ -86,6 +87,8 @@ def load_config(path):
     require(type(raw["port"]) is int and 0 < raw["port"] < 65536, "deploy config: port must be a TCP port number")
     require('seat_template' not in raw or re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', raw['seat_template']),
             'deploy config: seat_template must name an existing actor')
+    auditor = raw.get('admission_auditor', gauntlet_admission.DEFAULT_AUDITOR)
+    require(gauntlet_admission.valid_auditor(auditor), 'deploy config: admission_auditor must be a valid actor ID')
     for key in ("live", "instance") + (("python",) if "python" in raw else ()):
         require(os.path.isabs(raw[key]), "deploy config: %s must be an absolute path" % key)
     instance = Path(raw["instance"])
@@ -111,7 +114,7 @@ def load_config(path):
                   pipeline_outcome=raw.get('pipeline_outcome'), pipeline_instance=raw.get('pipeline_instance'),
                   pipeline_broker=Path(raw['pipeline_broker']) if raw.get('pipeline_broker') else None,
                   pipeline_profile=Path(raw['pipeline_profile']) if raw.get('pipeline_profile') else None,
-                  seat_template=raw.get('seat_template'))
+                  seat_template=raw.get('seat_template'), admission_auditor=auditor)
 
 
 def server_argv(config):

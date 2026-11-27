@@ -23,6 +23,16 @@ of a machine clock. Approved ordinary work still lands first; there is no
 late-waiter bypass. Warp18837 revision1 sets the retained maximum of three
 Pipeline items per judged train.
 
+An optional `admission_auditor` in deploy configuration selects the actor
+whose Core-authored acceptance can authorize judged admission. Omit the key
+to use `auditor`. Use the CLI's safe actor-id form. The selected actor must
+appear in the enabled actor list, and must be independent of every source
+piece. The guard uses the same bound Core channel to check the freeze author,
+the actor who started the piece, its Build-stage actors and the build topic's
+creator. The item view retains these facts after combine. A missing or
+inconsistent identity refuses admission. The same checks run before each
+guarded effect; the acceptance text, digest and ordering format stay the same.
+
 An artifact reference is an absolute `path` and `sha256`. JSON has no duplicate
 keys or non-finite numbers. `node_comparison` points to `base` and `carry` runs.
 Each run names its `run`, positive `attempt`, full `head`/`tree`, unchanged
@@ -100,8 +110,9 @@ bound CLI as the pipeline, rejects removed/withheld/stale/private sources, and
 requires an entire affirmative decision, rather than a substring in a quotation
 or rejection. If the bound source records a Core reply prefix, the prefix must
 match the stored body byte for byte and the guard consumes it once. The
-auditor's own text is `(codex) auditor —1131 ` followed by
-one JSON object with exactly `decision: "accept"`, `evidence_sha256`,
+auditor's own text begins with `(codex) auditor —1131 ` for the default
+actor, or with the configured actor ID in that position (hyphens rendered
+as underscores). One JSON object follows with exactly `decision: "accept"`, `evidence_sha256`,
 `approval_before_carry: true`, and `carry_started_at_ms`. The digest is SHA256
 of canonical JSON of the judgment without `audit`; it binds all source/run/raw/
 cohort/browser references, including optional Verdicts. The carry time must

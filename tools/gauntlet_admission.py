@@ -3,9 +3,15 @@ from __future__ import annotations
 """Read-only admission at each caller's effect boundary; not a reservation."""
 import json
 from pathlib import Path
+import re
 
 from tools import train, releases, deterministic_admission
 from aim_next.judgment import SHA, source_diff
+
+
+DEFAULT_AUDITOR = 'auditor'
+# Match the safe actor names accepted by the bound CLI.
+ACTOR_ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9._@-]{0,199}')
 
 
 class Refused(Exception):
@@ -15,6 +21,10 @@ class Refused(Exception):
 def require(holds, words):
     if not holds:
         raise Refused(words)
+
+
+def valid_auditor(value):
+    return isinstance(value, str) and ACTOR_ID.fullmatch(value) is not None
 
 
 def _json_call(run, argv, request=None):
@@ -28,7 +38,7 @@ def _json_call(run, argv, request=None):
     return value
 
 
-def approved(config, run):
+def _admission_reader(config, run):
     outcome = getattr(config, 'pipeline_outcome', None)
     instance = getattr(config, 'pipeline_instance', None)
     broker = getattr(config, 'pipeline_broker', None)
@@ -42,14 +52,23 @@ def approved(config, run):
     binding = _json_call(run, argv + ['binding']).get('binding')
     require(isinstance(binding, dict) and binding.get('instance_id') == instance,
             'The admission binding belongs to another instance')
+
+    def read(name, args):
+        page = _json_call(run, argv + ['view', '-'], {'v': 1, 'binding': binding, 'view': {'name': name, 'args': args}})
+        require(page.get('instance_id') == instance, 'The admission read belongs to another instance')
+        return page
+
+    return outcome, read
+
+
+def approved(config, run):
+    outcome, read = _admission_reader(config, run)
     cursor, seen, pieces, expected, waiting = 0, set(), {}, None, None
     unseen = object()
     open_release = unseen
     for _ in range(1000):
-        request = {'v': 1, 'binding': binding, 'view': {'name': 'pipeline',
-            'args': {'workspace_id': outcome, 'section': 'now', 'cursor': cursor, 'limit': 100}}}
-        page = _json_call(run, argv + ['view', '-'], request)
-        require(page.get('instance_id') == instance and page.get('workspace_id') == outcome,
+        page = read('pipeline', {'workspace_id': outcome, 'section': 'now', 'cursor': cursor, 'limit': 100})
+        require(page.get('workspace_id') == outcome,
                 'The admission pipeline belongs to another instance or outcome')
         require(isinstance(page.get('pipeline'), dict) and page['pipeline'].get('enabled') is True and
                 page['pipeline'].get('ships_in_releases') is True, 'Admission needs the enabled release pipeline')
@@ -188,18 +207,68 @@ def _sources(config, pieces, waiting, items, candidate, run, git, judged_head):
     return sorted(result, key=lambda source: (source['approval']['at_ms'], source['approval']['seq']))
 
 
-def _audit_source(config, run, audit):
-    profile, broker = getattr(config, 'pipeline_profile', None), getattr(config, 'pipeline_broker', None)
-    require(bool(profile) != bool(broker), 'Audit admission needs the selected pipeline channel')
-    argv = [config.python, '-I', '-B', str(config.live / 'bin/aim-next'),
-            '--profile' if profile else '--broker', str(profile or broker)]
-    binding = _json_call(run, argv + ['binding']).get('binding')
-    require(isinstance(binding, dict) and binding.get('instance_id') == config.pipeline_instance,
-            'Audit binding belongs to another instance')
-    source = _json_call(run, argv + ['view', '-'], {'v': 1, 'binding': binding,
-        'view': {'name': 'source', 'args': {'source_ref': {'kind': 'message', 'id': audit['message']}}}})
-    require(source.get('instance_id') == config.pipeline_instance, 'Audit source belongs to another instance')
-    return source
+def _require_enabled_auditor(read, auditor):
+    # The actor list is ordered and includes enabled identities only. Begin at
+    # the ID's prefix, including an empty prefix for a one-letter actor ID.
+    cursor = auditor[:-1]
+    for _ in range(1000):
+        page = read('actors', {'cursor': cursor, 'limit': 100})
+        rows, following = page.get('items'), page.get('next_cursor')
+        require(isinstance(rows, list) and 'next_cursor' in page and
+                all(isinstance(row, dict) and isinstance(row.get('id'), str) for row in rows),
+                'The admission actor list is incomplete')
+        ids = [row['id'] for row in rows]
+        require(ids == sorted(set(ids)) and all(id_ > cursor for id_ in ids),
+                'The admission actor list is out of order')
+        match = next((row for row in rows if row['id'] == auditor), None)
+        if match is not None:
+            require(match.get('seat_ended') is not True, 'The admission auditor seat has ended')
+            return
+        if following is None or ids and ids[-1] > auditor:
+            break
+        require(ids and following == ids[-1], 'The admission actor list has an invalid cursor')
+        cursor = following
+    raise Refused('The admission auditor is missing or disabled')
+
+
+def _require_independent_auditor(read, outcome, auditor, sources, version):
+    for source in sources:
+        number = source['items'][0]
+        page = read('pipeline_item', {'workspace_id': outcome, 'number': number})
+        require(page.get('workspace_id') == outcome and (page.get('relevant_versions') or {}).get('pipeline') == version,
+                'The admission pipeline changed while the auditor was checked')
+        item = page.get('item') or {}
+        require(isinstance(item, dict) and item.get('number') == number and isinstance(item.get('pieces'), list) and
+                all(isinstance(piece, dict) for piece in item['pieces']),
+                'The admission pipeline omitted the source piece history')
+        matches = [piece for piece in item['pieces'] if piece.get('id') == source['piece_id']]
+        # The item history still names its closed source after combine moves
+        # its current membership to the release. The freeze must still match.
+        require(len(matches) == 1 and matches[0].get('kind') == 'piece' and
+                matches[0].get('freeze') == source['freeze'],
+                'The admission pipeline omitted or changed the source build identity')
+        piece = matches[0]
+        topic_id = (piece.get('topic') or {}).get('id')
+        stages = piece.get('stages_so_far')
+        started_by = (piece.get('started') or {}).get('by')
+        require(isinstance(topic_id, str) and topic_id and isinstance(started_by, str) and started_by and
+                isinstance(stages, list) and all(isinstance(stage, dict) for stage in stages),
+                'The admission pipeline did not identify the source builders')
+        topic = read('topic', {'topic_id': topic_id}).get('topic') or {}
+        creator = topic.get('creator_id')
+        builders = [source['freeze']['by'], started_by, creator]
+        builders.extend(stage.get('entered_by') for stage in stages if stage.get('stage_id') == 'build')
+        require(topic.get('id') == topic_id and topic.get('workspace_id') == outcome and
+                all(isinstance(actor, str) and actor for actor in builders),
+                'The admission pipeline did not identify the source builders')
+        require(auditor not in builders, 'The admission auditor must be independent of the source builders')
+
+
+def _audit_source(config, run, audit, auditor, sources, version):
+    outcome, read = _admission_reader(config, run)
+    _require_enabled_auditor(read, auditor)
+    _require_independent_auditor(read, outcome, auditor, sources, version)
+    return read('source', {'source_ref': {'kind': 'message', 'id': audit['message']}})
 
 
 def admit(config, candidate, run, *, started_landing=False, producer=None, github=None, judgment=None):
@@ -222,6 +291,8 @@ def admit(config, candidate, run, *, started_landing=False, producer=None, githu
     guarded = train.guarded(paths)
     if not guarded:
         return {'judged': False, 'base_commit': base, 'head_commit': candidate, 'blocked': []}
+    auditor = getattr(config, 'admission_auditor', DEFAULT_AUDITOR)
+    require(valid_auditor(auditor), 'admission_auditor must be a valid actor ID')
     git('merge-base', '--is-ancestor', base, candidate)
     items = set()
     for line in git('log', '--format=%(trailers:key=Pipeline,valueonly,separator=%x1d)', base + '..' + candidate).splitlines():
@@ -257,8 +328,8 @@ def admit(config, candidate, run, *, started_landing=False, producer=None, githu
         require({row['piece_id']: row['head'] for row in named} ==
                 {row['piece_id']: row['freeze']['head_commit'] for row in sources},
                 'Core cohort does not name every exact canonical frozen source')
-        deterministic_admission.audit(judgment, _audit_source(config, run, judgment['audit']),
-                getattr(config, 'admission_auditor', 'auditor'))
+        deterministic_admission.audit(judgment, _audit_source(config, run, judgment['audit'], auditor, sources, version),
+                                      auditor)
     except deterministic_admission.Refused as error:
         raise Refused(str(error))
     return {'judged': True, 'base_commit': base, 'head_commit': candidate, 'guarded_paths': guarded,

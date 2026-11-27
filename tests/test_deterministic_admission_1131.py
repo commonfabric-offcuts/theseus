@@ -45,9 +45,18 @@ if sys.argv[-1]=='binding':
 else:
  request=json.load(sys.stdin)
  assert request['binding']=={'instance_id':'scratch1131','actor_id':'reader1131'}
- name=request['view']['name']
+ name,args=request['view']['name'],request['view']['args']
  with (root/'reads').open('a') as f:f.write(name+'\\n')
- print((root/('audit.json' if name=='source' else 'pipeline.json')).read_text())
+ if name=='actors':
+  actors=json.loads((root/'actors.json').read_text())
+  rows=[row for row in actors if row['enabled'] and row['id']>args['cursor']]
+  rows=sorted((dict(id=row['id']) for row in rows),key=lambda row:row['id'])
+  print(json.dumps(dict(instance_id='scratch1131',items=rows,next_cursor=None)))
+ else:
+  file={'source':'audit.json','pipeline':'pipeline.json'}.get(name)
+  if name=='pipeline_item': file='item-%s.json' % args['number']
+  if name=='topic': file='%s.json' % args['topic_id']
+  print((root/file).read_text())
 ''')
         self.base = self.commit('base', 1700000000)
         self.write('tools/deploy.py', '# revised guarded owner\n')
@@ -66,6 +75,7 @@ else:
             'created_at_ms': 1700000020000}, 'node_comparison': self.node_pair(),
             'core_cohort': self.core_cohort(), 'browser_cells': [self.cell()],
             'audit': {'message': 'm-'+'a'*32, 'revision': 1}}
+        self.actors(auditor=True, **{'auditor-prod': True, 'scratch-builder': True})
         self.pipeline(); self.bind_audit()
         self.git('checkout', '-q', '--detach', self.base)
 
@@ -173,11 +183,25 @@ else:
             'pieces': rows, 'items': [], 'next_cursor': None, 'release_piece': None,
             'facts': {'approved_waiting': [n for row in rows for n in row['items']], 'next_release': None}}
         (self.root/'pipeline.json').write_text(json.dumps(page))
+        for row in rows:
+            topic_id = 'topic-' + row['id']
+            source = dict(row, kind='piece', topic={'id': topic_id}, started={'by': 'scratch-starter'},
+                          stages_so_far=[{'stage_id': 'build', 'entered_by': 'scratch-build-stage'}])
+            topic = {'id': topic_id, 'workspace_id': 'scratch-work', 'creator_id': 'scratch-creator'}
+            (self.root/(topic_id+'.json')).write_text(json.dumps(dict(instance_id='scratch1131', topic=topic)))
+            for number in row['items']:
+                item = {'number': number, 'pieces': [source]}
+                (self.root/('item-%d.json' % number)).write_text(json.dumps(dict(page, item=item)))
+
+    def actors(self, **enabled):
+        rows = [dict(id=actor, enabled=active) for actor, active in enabled.items()]
+        (self.root/'actors.json').write_text(json.dumps(rows))
 
     def bind_audit(self, **overrides):
+        actor = getattr(self.config, 'admission_auditor', 'auditor')
         data = {'instance_id': 'scratch1131', 'source_ref': {'kind': 'message', 'id': 'm-'+'a'*32},
-            'revision': 1, 'author': 'auditor', 'sent_ms': 1700000030000,
-            'body': '(codex) auditor —1131 '+json.dumps({'decision': 'accept',
+            'revision': 1, 'author': actor, 'sent_ms': 1700000030000,
+            'body': '(codex) '+actor.replace('-', '_')+' —1131 '+json.dumps({'decision': 'accept',
                 'evidence_sha256': proof.evidence_digest(self.value), 'approval_before_carry': True,
                 'carry_started_at_ms': self.value['carry']['created_at_ms']}),
             'whisper': False, 'withheld': False, 'removal': None, 'withdrawal': None, 'struck': None}
@@ -196,6 +220,52 @@ else:
         self.assertEqual(result['deterministic']['core_cohort']['result'], 'PASS')
         self.assertEqual(result['deterministic']['browser_cells'], ['completed-cell1131'])
         self.assertEqual(result['sources'][0]['freeze']['head_commit'], self.source)
+
+    def test_deploy_config_defaults_and_validates_the_auditor_id(self):
+        raw = dict(live=str(self.repo), instance=str(self.root/'instance'), port=5193,
+                   server_profile='server.json', runner_profile='runner.json', runner_id='runner', routes='routes.json')
+        path = self.root/'deploy.json'
+        path.write_text(json.dumps(raw))
+        self.assertEqual(deploy.load_config(path).admission_auditor, 'auditor')
+        raw['admission_auditor'] = 'auditor-prod'
+        path.write_text(json.dumps(raw))
+        self.assertEqual(deploy.load_config(path).admission_auditor, 'auditor-prod')
+        for invalid in ('../auditor', 'auditor prod', '-auditor', 'a'*201, '', None, 7):
+            raw['admission_auditor'] = invalid
+            path.write_text(json.dumps(raw))
+            with self.subTest(invalid=invalid), self.assertRaises(deploy.Refused):
+                deploy.load_config(path)
+
+    def test_configured_auditor_accepts_only_its_own_current_affirmative_decision(self):
+        self.config.admission_auditor = 'auditor-prod'
+        self.bind_audit()
+        accepted = json.loads((self.root/'audit.json').read_text())['body']
+        self.assertTrue(self.admit()['judged'])
+        for override in ({'author': 'auditor'}, {'author': 'outside'}, {'revision': 2},
+                         {'body': accepted.replace('"accept"', '"reject"')},
+                         {'body': accepted.replace('auditor_prod', 'auditor')},
+                         {'body': accepted.replace(proof.evidence_digest(self.value), '0'*64)}):
+            with self.subTest(override=override):
+                self.bind_audit(**override)
+                with self.assertRaises(deploy.Refused):
+                    self.admit()
+
+    def test_configured_auditor_must_be_enabled_and_independent_of_source_builders(self):
+        self.config.admission_auditor = '../other'
+        with self.assertRaisesRegex(deploy.Refused, 'valid actor ID'):
+            self.admit()
+        self.config.admission_auditor = 'auditor-prod'
+        self.bind_audit()
+        for roster in ({'auditor': True}, {'auditor': True, 'auditor-prod': False}):
+            self.actors(**roster)
+            with self.subTest(roster=roster), self.assertRaisesRegex(deploy.Refused, 'missing or disabled'):
+                self.admit()
+        for builder in ('scratch-builder', 'scratch-starter', 'scratch-build-stage', 'scratch-creator'):
+            self.actors(**{builder: True})
+            self.config.admission_auditor = builder
+            self.bind_audit()
+            with self.subTest(builder=builder), self.assertRaisesRegex(deploy.Refused, 'independent'):
+                self.admit()
 
     def test_1131_failed_verdict_and_dead_browser_machine_are_recorded_without_a_veto(self):
         self.value['verdicts'] = [{'run': 8, 'attempt': 1, 'check': 88, 'conclusion': 'failure',
@@ -408,6 +478,8 @@ else:
         with self.assertRaisesRegex(deploy.Refused, 'approval-before-carry ordering'): self.admit()
 
     def test_1131_bound_reply_prefix_keeps_the_auditors_own_decision(self):
+        self.config.admission_auditor = 'auditor-prod'
+        self.bind_audit()
         body = json.loads((self.root/'audit.json').read_text())['body']
         for words in ({'excerpt': 'Check the packet\nRead its evidence'}, {'reason': 'Audit the packet', 'reason_format': 2}):
             with self.subTest(words=words):
@@ -417,6 +489,8 @@ else:
                 self.assertTrue(self.admit()['judged'])
 
     def test_1131_quote_alone_or_unattributed_quote_cannot_admit(self):
+        self.config.admission_auditor = 'auditor-prod'
+        self.bind_audit()
         body = json.loads((self.root/'audit.json').read_text())['body']
         basis = {'excerpt': body, 'source': {'kind': 'message', 'id': 'm-'+'b'*32, 'revision': 1},
                  'author_id': 'builder'}
