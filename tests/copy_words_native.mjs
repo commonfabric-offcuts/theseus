@@ -9,7 +9,7 @@ const [directory, widthOption = '1280', scheme = 'light', look = 'bookends'] = p
 const width = Number(widthOption), phone = width < 760;
 assert.ok(directory && [1280, 390].includes(width));
 await mkdir(directory, { recursive: true });
-const report = { width, scheme, look, checks: [], errors: [] };
+const report = { width, scheme, look, checks: [], selections: [], errors: [] };
 const { chromium } = await import(process.env.AIM_PLAYWRIGHT_CORE);
 const fixture = spawn('/usr/bin/python3', ['-B', 'tests/fixtures/ui_http.py', '--freshness', '--live', '--agent-colors', '--other-person',
   '--teardown-observations', directory + '/teardown.jsonl']);
@@ -29,6 +29,8 @@ try {
   };
   const message = '> Earlier words\n\nAlpha **marked words** and [sample link](https://example.org/sample).\n\nFirst memory line\nSecond memory line\n\n- One\n- Two\n\n```js\nconst value = 1;\n```';
   await put('message', message, { attachments: [{ name: 'omitted.txt', text: 'Omitted file contents.' }] });
+  const code = '    let first = 1;\n      let next = 2;\n';
+  await put('fragments', '3. Before **select these words** after\n9. Next row ends here\n\n```js\n' + code + '```');
   const long = 'First line of a long source.\n\n' + 'An additional line to read. '.repeat(51) + '\n\nLast words of the complete source.';
   await put('long', long);
   const folded = 'Filed for another reader.\n\n**Exact folded message ending.**';
@@ -103,13 +105,14 @@ try {
     if (html) assert.match(entry.html, html);
     assert.doesNotMatch(entry.html, /omitted\.txt|Omitted file contents|fence-copy/);
   };
-  const expectPlainSelection = async selected => {
+  const expectSelection = async (selected, html) => {
     await clipboardStarts(selected);
-    const entry = await page.evaluate(async () => {
-      const [item] = await navigator.clipboard.read();
-      return { types: item.types, plain: await (await item.getType('text/plain')).text() };
-    });
-    assert.deepEqual(entry, { types: ['text/plain'], plain: selected });
+    const entry = await plainAndHTML();
+    assert.equal(entry.plain, selected);
+    assert.match(entry.html, html);
+    assert.doesNotMatch(entry.html, /data-(?:start|end|act)=|fence-copy/);
+    report.selections.push(entry);
+    return entry.html;
   };
   const copyFrom = async (row, status, said) => {
     await press(row);
@@ -129,12 +132,64 @@ try {
       return { x, y, width, height };
     });
   const select = async (target, end = target) => {
+    await page.evaluate(() => getSelection().removeAllRanges());
     const first = await selectionRect(target), last = await selectionRect(end);
     await page.mouse.move(first.x + 1, first.y + first.height / 2);
     await page.mouse.down();
     await page.mouse.move(last.x + last.width - 1, last.y + last.height / 2, { steps: 10 });
     await page.mouse.up();
     return page.evaluate(() => getSelection().toString());
+  };
+  const selectCode = async target => {
+    await page.evaluate(() => getSelection().removeAllRanges());
+    const points = await locator(target).evaluate(el => {
+      const node = el.firstChild;
+      return [2, node.textContent.trimEnd().length].map(offset => {
+        const range = document.createRange();
+        range.setStart(node, offset);
+        range.collapse(true);
+        const rect = range.getBoundingClientRect();
+        return { x: rect.x, y: rect.y + rect.height / 2 };
+      });
+    });
+    await page.mouse.move(points[0].x, points[0].y);
+    await page.mouse.down();
+    await page.mouse.move(points[1].x, points[1].y, { steps: 10 });
+    await page.mouse.up();
+    return page.evaluate(() => getSelection().toString());
+  };
+  const copyFragment = async (more, selected, html) => {
+    await press(more);
+    assert.equal(await copy.getAttribute('data-menu-label'), 'Copy selected text');
+    await copyFrom(copy, more, 'Selection copied');
+    return expectSelection(selected, html);
+  };
+  const fragmentCases = async (place, host, more) => {
+    const first = host + ' .md-item strong', second = host + ' .md-item-words >> nth=1';
+    await check(`${place}: selected words within one ordered row`, async () => {
+      await locator(first).scrollIntoViewIfNeeded();
+      const selected = await select(first);
+      assert.equal(selected, 'select these words');
+      const html = await copyFragment(more, selected, /<ol start="3"><li><strong>select these words<\/strong><\/li><\/ol>/);
+      assert.doesNotMatch(html, /Before|after|Next row/);
+    });
+    await check(`${place}: partial ordered selection preserves 3 and 9 in one list`, async () => {
+      const selected = await select(first, second);
+      assert.match(selected, /select these words after[\s\S]*Next row ends here/);
+      const html = await copyFragment(more, selected, /<ol start="3"><li><strong>select these words<\/strong> after<\/li><li value="9">Next row ends here<\/li><\/ol>/);
+      assert.equal((html.match(/<ol\b/g) ?? []).length, 1);
+      assert.doesNotMatch(html, /Before/);
+    });
+    await check(`${place}: selection inside code retains the fence's indentation in HTML`, async () => {
+      const pre = host + ' .md-pre';
+      await locator(pre).scrollIntoViewIfNeeded();
+      const selected = await selectCode(pre);
+      assert.equal(selected, code.slice(2).trimEnd());
+      const html = await copyFragment(more, selected, /<pre><code>[\s\S]*<\/code><\/pre>/);
+      const richCode = await page.evaluate(html => new DOMParser().parseFromString(html, 'text/html')
+        .querySelector('pre code').textContent, html);
+      assert.equal(richCode, selected);
+    });
   };
   const openTopic = async () => {
     await page.goto(origin + '/?topic=' + topic);
@@ -163,7 +218,7 @@ try {
     assert.ok(['⌘C', 'Ctrl+C'].includes(await copy.getAttribute('data-menu-keys')));
     await screenshot('message-selected');
     await copyFrom(copy, feedMore, 'Selection copied');
-    await expectPlainSelection(selected);
+    await expectSelection(selected, /<strong>marked words<\/strong>/);
   });
   await check('selection spanning two list rows preserves exact plain text', async () => {
     const list = words('message') + ' .md-item-words';
@@ -172,8 +227,11 @@ try {
     await press(feedMore);
     assert.equal(await copy.getAttribute('data-menu-label'), 'Copy selected text');
     await copyFrom(copy, feedMore, 'Selection copied');
-    await expectPlainSelection(selected);
+    await expectSelection(selected, /<ul><li>One<\/li><li>Two<\/li><\/ul>/);
   });
+  if (phone) await press(card('fragments') + ' .message-author');
+  else await locator(card('fragments')).hover();
+  await fragmentCases('feed', words('fragments'), feedMore);
   await check('right-click Copy text uses the status line', async () => {
     await press('#topic-title');
     await page.keyboard.press('ArrowRight');
@@ -263,7 +321,7 @@ try {
     assert.equal(await copy.getAttribute('data-menu-label'), 'Copy selected text');
     await screenshot('reader-selected');
     await copyFrom(copy, '#reader-menu', 'Selection copied');
-    await expectPlainSelection(selected);
+    await expectSelection(selected, /<strong>marked words<\/strong>/);
     const devtools = await context.newCDPSession(page);
     const { targetInfo } = await devtools.send('Target.getTargetInfo');
     for (const allowWithoutSanitization of [false, true]) {
@@ -278,6 +336,10 @@ try {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin });
     await press('#reader-close');
   });
+  await page.goto(`${origin}/?topic=${topic}&message=${ids.fragments}`);
+  await locator('#reader[open] #source-body strong').filter({ hasText: 'select these words' }).waitFor();
+  await fragmentCases('Reader', '#source-body', '#reader-menu');
+  await press('#reader-close');
   const pageMenu = page.getByRole('menu', { name: 'This page', exact: true });
   const pageCopy = pageMenu.locator('[data-notebook-action=copy-text]');
   const notebookMore = '#deck-page .notebook-menu';

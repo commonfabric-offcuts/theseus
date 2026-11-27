@@ -866,7 +866,7 @@ function tableNode(block, doc, meter, scrolling = true) {
   return wrap;
 }
 
-function clipboardList(items, doc) {
+export function clipboardList(items, doc) {
   const root = doc.createDocumentFragment(), entered = [];
   const firstDepth = items.reduce((depth, item) => Math.min(depth, item.depth), items[0]?.depth ?? 0);
   for (const { depth, marker, contents, task } of items) {
