@@ -9,11 +9,12 @@ Core freeze/combine checks below retain their original assertions.
 import json
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 import unittest
 from unittest import mock
 
-from tools import deploy, gauntlet_admission as admission
+from tools import deploy, deterministic_admission as proof, gauntlet_admission as admission
 from test_gauntlet_admission_987 import Admission987
 from test_gauntlet_987 import Freeze987
 from test_gauntlet_source_987 import Binder987
@@ -155,6 +156,35 @@ class CoreEntry1087(Binder987):
         after_merge = {'head_commit': merged, 'sources': after_sources}
         self.assertEqual([s['freeze']['head_commit'] for s in after_sources], heads)
         self.assertEqual(after_merge['head_commit'], merged)
+        # The source pieces are closed after combine. Admission can still
+        # distinguish the topic creator and freeze author from the auditor
+        # through the same bound CLI, including an actor disabled meanwhile.
+        self.store.register_actor('auditor-prod', 'agent', 'Scratch independent auditor')
+        outcome, read = admission._admission_reader(config, deploy.run)
+        admission._require_enabled_auditor(read, 'auditor-prod')
+        admission._require_independent_auditor(read, outcome, 'auditor-prod', after_sources, revision)
+        for actor in ('agent-a', 'owner'):
+            with self.subTest(actor=actor), self.assertRaisesRegex(admission.Refused, 'independent'):
+                admission._require_independent_auditor(read, outcome, actor, after_sources, revision)
+        self.committed(self.command('participation.set', {'actor_id': 'auditor-prod', 'present': True},
+                                    {'topic_id': 't1'}, actor='owner'))
+        request = self.committed(self.command('message.post', {'body': 'Review the retained exact evidence.'},
+                                              {'topic_id': 't1'}, actor='owner'))['message_id']
+        evidence = {'carry': {'created_at_ms': started}}
+        decision = {'decision': 'accept', 'evidence_sha256': proof.evidence_digest(evidence),
+                    'approval_before_carry': True, 'carry_started_at_ms': started}
+        result = self.committed(self.command('message.post', {
+            'body': '(codex) auditor_prod —1131 ' + json.dumps(decision), 'reply_to': request,
+            'reply_passage': {'source': {'kind': 'message', 'id': request, 'revision': 1}, 'start': 0, 'end': 6}
+        }, {'topic_id': 't1'}, actor='auditor-prod'))
+        evidence['audit'] = {'message': result['message_id'], 'revision': 1}
+        source = admission._audit_source(config, deploy.run, evidence['audit'], 'auditor-prod', after_sources, revision)
+        self.assertEqual(source['reply_basis']['excerpt'], 'Review')
+        proof.audit(evidence, source, 'auditor-prod')
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE actors SET enabled=0 WHERE id='auditor-prod'")
+        with self.assertRaisesRegex(admission.Refused, 'missing or disabled'):
+            admission._require_enabled_auditor(read, 'auditor-prod')
         retain = os.environ.get('JUDGED_1087_EVIDENCE')
         if retain:
             folder = Path(retain) / self.id(); folder.mkdir(parents=True, exist_ok=True)

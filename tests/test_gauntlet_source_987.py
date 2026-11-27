@@ -81,8 +81,8 @@ class Binder987(Freeze987):
         (self.repo/'tools/deploy.py').unlink()
         head=self.commit()
         self.assertTrue(guarded(source_diff(self.repo,self.base,head)))
-        self.assertEqual(guarded(['aim_next/judgment.py','tools/gauntlet_admission.py']),
-                         ['aim_next/judgment.py','tools/gauntlet_admission.py'])
+        paths = ['aim_next/judgment.py', 'tools/gauntlet_admission.py', 'aim_next/reply_passages.py']
+        self.assertEqual(guarded(paths), paths)
         self.assertFalse(guarded(['web/ordinary.mjs','docs/ordinary.md']))
 
     def test_987_foreign_commit_and_non_ancestor_refuse_without_a_record(self):
