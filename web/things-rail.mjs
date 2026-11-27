@@ -172,7 +172,10 @@ export class ThingsRail {
     this.buildWant = BUILD_PAGE; this.buildFrom = null;
     // Each place's messages and images, with the version of the topic they were read at (readPlace).
     this.kept = new Map();
-    this.reload = reloader(() => this.load());
+    this.reload = reloader(() => {
+      const order = this.handles?.railReadOrder;
+      return order ? order.whileVisible(() => this.load()) : this.load();
+    });
     this.build();
     this.imageMenus = new ImageRailMenu(this);
     this.links = new WorkspaceLinks(this);
