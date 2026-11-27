@@ -366,7 +366,7 @@ export class DeckPage {
   // and keyCode 229.
   key(event) {
     if (this.host.hidden || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
-    if (event.target.closest?.('.fence-copy')) return;
+    if (event.target.closest?.('.fence-copy, [data-card-image-control]')) return;
     const command = event.metaKey || event.ctrlKey, up = event.key === 'ArrowUp', down = event.key === 'ArrowDown';
     // The box's line keys come first. Escape and ⌘Return finish; Notebook's
     // nonblank selection keeps its split command. ⌥Return adds above.

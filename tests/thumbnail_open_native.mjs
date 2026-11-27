@@ -12,15 +12,26 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
   const png = await readFile(path.join(root, 'tests/fixtures/media/screen.png'));
   const topic = `thumb-651-${engine}`;
   await control({ method: 'navigation_topics', topics: [{ id: topic, title: 'Thumbnail images' }] });
-  const message = (await control({ method: 'agent_message', operation_id: topic, topic_id: topic, join: true, source: 'topic', body: 'The picture stays with these words.', attachments: [{ name: 'landscape.png', image: 'screen.png' }] })).result.message_id;
-  const reply = (await control({ method: 'agent_message', operation_id: topic + '-reply', topic_id: topic, reply_to: message, body: 'A second picture in the dossier.', attachments: [{ name: 'detail.png', image: 'screen.png' }] })).result.message_id;
+  const message = (await control({ method: 'agent_message', operation_id: topic, topic_id: topic, join: true, source: 'topic',
+    divergence_reason: 'Independent native thumbnail source.',
+    body: 'The picture stays with these words.', attachments: [{ name: 'landscape.png', image: 'screen.png' }] })).result.message_id;
+  const reply = (await control({ method: 'agent_message', operation_id: topic + '-reply', topic_id: topic, reply_to: message,
+    reply_without_quote: 'Synthetic thumbnail fixture reply.', body: 'A second picture in the dossier.',
+    attachments: [{ name: 'detail.png', image: 'screen.png' }] })).result.message_id;
   await control({ method: 'stack_act', sender: facts.agent, kind: 'stack.name', message_id: message, operation_id: topic + '-name', args: { name: 'Picture dossier' } });
   const note = topic + '-note';
   await control({ method: 'outcome_reference', operation_id: note, item_id: note, title: 'Picture Notebook', body: `## Picture\nWords stay as written.\n![landscape.png](attachment:${note}-media-0)`, attachments: [{ name: 'landscape.png', image: 'screen.png' }] });
 
   const ready = async (p, selector) => {
-    await p.locator(selector).first().scrollIntoViewIfNeeded();
+    await p.locator(selector).first().evaluate(image => image.scrollIntoView({ block: 'nearest', behavior: 'instant' }));
     await until(p, s => { const i = document.querySelector(s); return i && !i.hidden && i.complete && i.naturalWidth > 0; }, 'the thumbnail decoded', selector, 15000);
+  };
+  const expand = async (p, selector) => {
+    const tabs = p.ctx.pages().length;
+    await press(p, selector);
+    await until(p, s => document.querySelector(s)?.parentElement.hasAttribute('data-image-expanded'),
+      'the thumbnail expands in its card', selector);
+    assert.equal(p.ctx.pages().length, tabs, 'the first press keeps the image in the card');
   };
   const openImage = async (p, selector, key = false) => {
     const src = await p.locator(selector).first().evaluate(el => (el.matches('img') ? el : el.parentElement.querySelector('img.image-thumb')).src);
@@ -77,6 +88,7 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
       const selector = `.message-card[data-id="${reply}"] .image-thumb`;
       await ready(p, selector);
       await picture(p, 'item-651-dossier-before-press');
+      await expand(p, selector);
       await openImage(p, selector);
       assert.equal(await p.locator('#reader').evaluate(d => d.open), false, 'the thumbnail does not open the Reader');
       await openImage(p, selector, true);
@@ -92,6 +104,7 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
       await ready(p, selector);
       const words = await p.locator(scope).first().textContent();
       await picture(p, 'item-651-' + surface.replaceAll(' ', '-'));
+      if (surface === 'Notebook cards') await expand(p, selector);
       await openImage(p, selector);
       assert.equal(await p.locator(scope).first().textContent(), words, 'the picture caption and words stay exact');
       assert.equal(await p.locator('.deck-writing').count(), 0, 'opening the image does not edit its card');
@@ -207,8 +220,13 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
   const breaks = [
     { name: 'no-new-tab', file: 'web/image-pick.mjs', from: "window.open(image.src, '_blank', 'noopener');", to: 'void image.src;', expected: /thumbnail opens a new tab/, target: 'card' },
     { name: 'strip-not-forwarded', file: 'web/image-rows.mjs', from: "openThumbnail(row.querySelector(':scope > img.image-thumb'), event);", to: 'void event;', expected: /thumbnail opens a new tab/, target: 'strip' },
-    { name: 'no-keyboard-open', file: 'web/image-pick.mjs', from: "if (event.key === 'Enter') openThumbnail(image, event);", to: "if (false) openThumbnail(image, event);", expected: /thumbnail opens a new tab/, target: 'key' },
-    { name: 'first-touch-intercepted-mutant', file: 'web/message-menu.mjs', from: "!event.target.closest?.('a, .fold-line, .image-thumb')", to: "!event.target.closest?.('a, .fold-line')", expected: /thumbnail opens a new tab/, target: 'card' },
+    { name: 'no-keyboard-open', file: 'web/image-pick.mjs',
+      from: "event.key === 'Enter' || event.key === ' '",
+      to: "event.key === ' '", expected: /thumbnail opens a new tab/, target: 'key' },
+    { name: 'first-touch-intercepted-mutant', file: 'web/message-menu.mjs',
+      from: "if (event.target.closest?.('[data-card-image-control]')) return;",
+      to: "if (this.touch && event.target.closest?.('[data-card-image-control]')) { event.preventDefault(); event.stopPropagation(); return; }",
+      expected: /thumbnail expands in its card/, target: 'card' },
     { name: 'thumbnail-edits-card', file: 'web/image-pick.mjs', from: 'event?.preventDefault(); event?.stopPropagation();', to: 'event?.preventDefault();', expected: /the thumbnail does not edit its card/, target: 'parent' },
   ];
   for (const mutation of breaks) await check(`item 651 applied mutant ${mutation.name} and restored source`, async () => {
@@ -233,11 +251,11 @@ export async function thumbnailChecks({ check, page, press, until, picture, clos
           await openImage(p, '#inline-attachments .image-open');
         } else if (mutation.target === 'parent') {
           const selector = '.deck-image .image-thumb'; await ready(p, selector);
-          const popup = p.ctx.waitForEvent('page'); await press(p, selector); const tab = await popup;
+          await expand(p, selector); await openImage(p, selector);
           assert.equal(await p.locator('.deck-writing').count(), 0, 'the thumbnail does not edit its card');
-          await tab.close();
         } else {
           const selector = `.message-card[data-id="${reply}"] .image-thumb`; await ready(p, selector);
+          await expand(p, selector);
           await openImage(p, selector, mutation.target === 'key');
         }
       } catch (error) { failure = error; }

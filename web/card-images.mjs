@@ -2,7 +2,8 @@
 // a card"): on the topic page, in the Conversation and in a dossier, each
 // verified inline image a message carries shows as a thumbnail after its
 // words, the right rail's size, in the order it was sent. A press on the card
-// outside a thumbnail opens the Reader as before; a thumbnail opens its image in a new tab. A message
+// outside an image control opens the Reader. A thumbnail expands in the card, and a press on the expanded image
+// opens it in a new tab. A message
 // with no image draws nothing new.
 //
 // Each thumbnail reads its bytes through its own message (read), so Theseus
@@ -65,7 +66,7 @@ export function paintCardImages(card, item, read) {
       host.cardAttachment = structuredClone(attachment);
       const words = doc.createElement('span'); words.className = 'card-image-name'; words.setAttribute('aria-hidden', 'true');
       host.append(words); host.dataset.coming = '';
-      whenNear(host, () => { delete host.dataset.coming; paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true }); });
+      whenNear(host, () => { delete host.dataset.coming; paintThumb(host, key, () => read(attachment), undefined, { later: true, inlineName: name }); });
     }
     if (strip.children[index] !== host) strip.insertBefore(host, strip.children[index] ?? null);
     host.setAttribute('aria-label', `Image: ${name}`); host.title = name;
@@ -86,7 +87,8 @@ export function adoptCardImages(card, item, read) {
     if (image?.src && !image.hidden) image.dataset.key = key;
     else {
       image?.remove(); host.dataset.coming = '';
-      whenNear(host, () => { delete host.dataset.coming; paintThumb(host, key, () => read(attachment), image => host.prepend(image), { later: true }); });
+      whenNear(host, () => { delete host.dataset.coming; paintThumb(host, key, () => read(attachment), undefined,
+        { later: true, inlineName: attachment.name || 'Image' }); });
     }
   }
 }
