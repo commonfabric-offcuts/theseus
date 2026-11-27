@@ -28,6 +28,7 @@ try {
           menu: measure('.deck-menu'), group: measure('.notebook-card-actions'), current: row.getAttribute('aria-current') };
       });
       assert.ok(dimensions.row > 0);
+      let shortCardTargets;
       if (process.env.AIM_PHONE_WIDTH_BASELINE !== '1' && width < 761) {
         const { title, menu, row } = dimensions;
         assert.ok(title.width >= row * 0.84, JSON.stringify(dimensions));
@@ -36,8 +37,25 @@ try {
         await card.getByRole('button', { name: 'Add child card' }).waitFor();
         await card.getByRole('button', { name: 'This card' }).tap();
         await page.getByRole('menu', { name: 'This card' }).waitFor();
+        await page.keyboard.press('Escape');
+        const shortCard = page.locator('#notebook-sheet-dialog[open] .deck-card[data-index="0"]');
+        await shortCard.focus();
+        assert.equal(await shortCard.getAttribute('aria-current'), 'true');
+        const overflow = shortCard.getByRole('button', { name: 'This card' });
+        const addChild = shortCard.getByRole('button', { name: 'Add child card' });
+        const overflowBox = await overflow.boundingBox();
+        const addBox = await addChild.boundingBox();
+        assert.ok(overflowBox && addBox && overflowBox.y + overflowBox.height <= addBox.y,
+          JSON.stringify({ overflowBox, addBox }));
+        await overflow.tap();
+        await page.getByRole('menu', { name: 'This card' }).waitFor();
+        await page.keyboard.press('Escape');
+        await shortCard.focus();
+        await addChild.tap();
+        await page.locator('#notebook-sheet-dialog[open] .deck-editor:focus').waitFor();
+        shortCardTargets = { overflow: overflowBox, addChild: addBox };
       }
-      console.log(JSON.stringify({ width, colorScheme, ...dimensions }));
+      console.log(JSON.stringify({ width, colorScheme, ...dimensions, shortCardTargets }));
     } finally { await context.close(); }
   }
 } finally {
