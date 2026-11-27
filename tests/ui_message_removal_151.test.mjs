@@ -186,7 +186,7 @@ test('the surviving outline Starred owner shows the original excerpt, Retracted 
   let prevented = false;
   link.onclick({ button: 0, preventDefault() { prevented = true; } });
   assert.equal(prevented, true);
-  assert.deepEqual(opened, [[{ kind: 'topic', id: 'topic', message: 'message', land: true }, 'Original starred words']]);
+  assert.deepEqual(opened, [[{ kind: 'topic', id: 'topic', message: 'message', land: 'dossier' }, 'Original starred words']]);
   for (const host of [state.box]) {
     assert.match(host.text, /Original starred words/);
     assert.equal(host.querySelectorAll('.message-retracted').length, 1);

@@ -2073,23 +2073,30 @@ function landOn(id, { full = false } = {}) {
 // anchored page, preserving the paging gap. With no visible card, the exact
 // source opens through the ordinary Reader owner instead.
 let landingSerial = 0;
-async function landOnMessage(id, serial = ++landingSerial, current = () => true) {
+async function landOnMessage(id, serial = ++landingSerial, current = () => true, dossier = false) {
   const accessEpoch = listAccessEpoch, generation = registry.generation, windowRequest = ++windowReadSerial, windowReadStart = views.windowKnowledge;
   const mine = () => !retired && !registry.disposed && !topicUnavailable &&
     accessEpoch === listAccessEpoch && serial === landingSerial && generation === registry.generation && windowRequest === windowReadSerial && current();
   if (!mine()) return false;
-  if (!views.messages.has(id)) {
+  if (dossier || !views.messages.has(id)) {
     const foreground = registry.cleanup.foreground();
     try {
-      const source = checkedView(await foreground.read(options => api.view('source', { kind: 'message', id }, options)), bootstrap.instance_id);
+      let cursor = Number.MAX_SAFE_INTEGER, args = { topic_id: topic.id, limit: 30 };
+      if (dossier) args.dossier_id = id;
+      else {
+        const source = checkedView(await foreground.read(options => api.view('source', { kind: 'message', id }, options)), bootstrap.instance_id);
+        if (!mine()) return false;
+        if (source.source_ref?.kind !== 'message' || source.source_ref.id !== id || source.topic_id !== topic.id ||
+            !Number.isSafeInteger(source.seq) || source.seq < 1) throw Error('This message could not be found in this topic.');
+        cursor = source.seq + 1;
+        args = { ...args, audience: 'all', direction: 'before', cursor };
+      }
+      const page = checkedView(await foreground.read(options => api.view('topic_messages', args, options)), bootstrap.instance_id);
       if (!mine()) return false;
-      if (source.source_ref?.kind !== 'message' || source.source_ref.id !== id || source.topic_id !== topic.id ||
-          !Number.isSafeInteger(source.seq) || source.seq < 1) throw Error('This message could not be found in this topic.');
-      const cursor = source.seq + 1;
-      const page = checkedView(await foreground.read(options => api.view('topic_messages', { topic_id: topic.id, audience: 'all', direction: 'before', cursor, limit: 30 }, options)), bootstrap.instance_id);
-      if (!mine()) return false;
+      if (dossier && (!Array.isArray(page.items) || !page.items.some(item => item.id === id) || page.items.length > args.limit ||
+          page.items.some(item => item.stack_position?.root_id !== id))) throw Error('This dossier could not be confirmed.');
       windowTargets.add(id);
-      try { if (!views.messagesPage(page, { anchored: true, cursor, windowReadStart })) return false; }
+      try { if (!views.messagesPage(page, { anchored: true, cursor, windowReadStart, sparse: dossier })) return false; }
       finally { windowTargets.delete(id); }
     } finally { foreground.release(); }
   }
@@ -3952,7 +3959,7 @@ async function initialize() {
   let topicId = route.id;
   // A message's link names the message to open once the page is up (docs/links.md).
   const anchored = route.kind === 'topic' ? route.message ?? null : null;
-  const anchoredLand = route.land === true;
+  const anchoredLand = route.land, anchoredDossier = anchoredLand === 'dossier';
   const menuArrival = route.act ? { ...route } : null;
   // So does a Notebook page's link, the page and perhaps its revision.
   const pageAnchor = route.kind === 'topic' && route.page ? { id: route.page, revision: route.revision ?? null } : null;
@@ -4502,7 +4509,7 @@ async function initialize() {
   if (atUnread) run(() => firstReading.then(landOnUnread));
   freshness.invalidate('dossier_move', 0); freshness.request();
   if (anchored) {
-    if (anchoredLand) run(async () => { const arrival = menuArrival && consumeMenuRoute(menuArrival); if (!await landOnMessage(anchored)) return; if (retired || topicUnavailable) return; if (arrival) openDossierMenuRoute(anchored, menuArrival); else if (notebookReturning()) notebookSheetOf().resume(); });
+    if (anchoredLand) run(async () => { const arrival = menuArrival && consumeMenuRoute(menuArrival); if (!await landOnMessage(anchored, undefined, undefined, anchoredDossier)) return; if (retired || topicUnavailable) return; if (arrival) openDossierMenuRoute(anchored, menuArrival); else if (notebookReturning()) notebookSheetOf().resume(); });
     else {
       const entry = entries($('messages')).find(child => child.dataset.id === anchored), card = entry && cardIn(entry);
       run(async () => { await openSource({ kind: 'message', id: anchored }, card || $('main'), null, 'reply', null, { land: true }); if (notebookReturning()) notebookSheetOf().resume(); });
@@ -4855,7 +4862,7 @@ async function openDestination(target, title, from = null, writtenQuery = false)
   }
   // A link to a message in the open topic opens it in the Reader, here.
   if (target.kind === 'topic' && target.message && topic && views && target.id === topic.id) {
-    if (target.land === true) return run(async () => { if (!await landOnMessage(target.message, landing)) return false; if (landing === landingSerial && target.act) return openDossierMenuRoute(target.message, target); });
+    if (target.land) return run(async () => { if (!await landOnMessage(target.message, landing, undefined, target.land === 'dossier')) return false; if (landing === landingSerial && target.act) return openDossierMenuRoute(target.message, target); });
     // Ordinary message links keep their Reader-opening behavior.
     // From the Reader's own text, closing gives the focus to what opened the Reader.
     const opener = from?.closest?.('dialog') ? registry.current?.opener : from;
