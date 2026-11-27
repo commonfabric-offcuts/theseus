@@ -118,21 +118,23 @@ html:has(#messages:not([hidden])){overflow-anchor:none}
   .reading-pane { background: #252b2e; }
 }
 .hover-quote {
-  background: var(--light-field,#000);
+  --quote-field: var(--message-passage-background,var(--light-field,#000));
+  background: var(--quote-field);
   color: var(--light-words,#fff);
   border-radius: 0;
-  box-shadow: 0 calc(-1 * var(--quote-overhang, 0px)) var(--light-field,#000), 0 var(--quote-overhang, 0px) var(--light-field,#000);
+  box-shadow: 0 calc(-1 * var(--quote-overhang, 0px)) var(--quote-field), 0 var(--quote-overhang, 0px) var(--quote-field);
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
 /* A passage lit on a card under the pointer (web/feed-passages.mjs) is painted as the Reader's is; on the person's own black card, the other way round, so it shows. The highlight paints its words' own height; the rest of the field, as tall line by line as the Reader's, is painted in --lit-field behind them (web/lit-field.mjs). */
-.message-card { --lit-field: #000; }
+:is(.message-card,.message-pane) { --lit-field:#000; --message-passage-background:var(--pointer-lit-field,var(--lit-field)); }
 /* In the dark scheme every card lifts its lit passage the same grey, the ink at 42% over black (#5e6160): a black field
    read as nothing on the dark tints and read grounds there (about 1.35:1 on an agent's card). It reads at about 2:1 or
    more on every card's ground, under white words (6:1). The person's own card is black in both schemes and lifts the
    same grey in both (1009). */
-@media (prefers-color-scheme: dark) { .message-card { --lit-field: #5e6160; } }
-.message-preview::highlight(lit-passage), .message-preview *::highlight(lit-passage) { background-color: var(--pointer-lit-field,var(--lit-field)); color: var(--light-words,#fff); }
+@media (prefers-color-scheme: dark) { :is(.message-card,.message-pane) { --lit-field: #5e6160; } }
+:is(.message-card.own-message,.message-pane.own-message-pane) { --lit-field:#5e6160; }
+.message-preview::highlight(lit-passage), .message-preview *::highlight(lit-passage) { background-color: var(--message-passage-background); color: var(--light-words,#fff); }
 .own-message > .message-preview::highlight(lit-passage), .own-message > .message-preview *::highlight(lit-passage) { color: var(--light-words,var(--ink)); }
 /* Notebook display shares the passage paint, scoped away from messages. */
 .notebook-reading-words { --lit-field:var(--ink); --notebook-lit-ink:var(--panel); }
@@ -149,8 +151,6 @@ html:has(#messages:not([hidden])){overflow-anchor:none}
 .reading-pane.passage-probe { position: fixed; top: 0; left: 0; width: 1px; height: 1px; padding: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 .message-card.own-message {
   --ink: #e0e8e5;
-  /* Its passage lit under the pointer: the same grey as every card's in the dark scheme (above), in both schemes. */
-  --lit-field: #5e6160;
   --muted: #9aaba8;
   --accent: #79c7ab;
   background: #000;
