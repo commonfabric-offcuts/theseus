@@ -4514,16 +4514,28 @@ function refreshMembers() {
 }
 // Seat events can change both team and participant badges without changing the topic version.
 async function refreshSeatPeople() {
-  const current = views, id = topic.id;
+  const current = views, id = topic.id, access = listAccessEpoch;
+  const currentRun = () => !retired && !registry.disposed && views === current && topic.id === id &&
+    access === listAccessEpoch && !authorityReviewPending();
+  if (topicUnavailable) return true;
+  if (!currentRun()) return false;
   const team = async () => {
     try { return await readMembers(api, bootstrap.instance_id, topic.workspace_id); }
     catch (error) { if (error.details?.error?.code === 'FORBIDDEN') return null; throw error; }
   };
-  const [answer, members] = await Promise.all([
-    api.view('topic', { topic_id: id }, { readClass: 'background' }).then(reply => checkedView(reply, bootstrap.instance_id)),
-    team(),
-  ]);
-  if (retired || views !== current || topic.id !== id) return false;
+  let answer, members;
+  try {
+    [answer, members] = await Promise.all([
+      api.view('topic', { topic_id: id }, { readClass: 'background' }).then(reply => checkedView(reply, bootstrap.instance_id)),
+      team(),
+    ]);
+  } catch (error) {
+    if (!currentRun()) return false;
+    if (topicUnavailable || readFailure(error).kind === 'forbidden') return true;
+    throw error;
+  }
+  if (topicUnavailable) return true;
+  if (!currentRun() || !Array.isArray(answer.participants) || !Array.isArray(current.participants)) return false;
   outcomeMembers = members;
   const ended = new Set(answer.participants.filter(person => person.seat_ended).map(person => person.actor_id));
   current.participants = current.participants.map(person => ended.has(person.actor_id) ? { ...person, seat_ended: true } : person);
