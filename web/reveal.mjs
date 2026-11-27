@@ -24,6 +24,14 @@ function scrollerOf(el) {
   return null;
 }
 
+// Keep the top of an in-place control fixed through a layout change.
+export function keepTop(el, change) {
+  const top = el.getBoundingClientRect().top;
+  change();
+  const by = el.getBoundingClientRect().top - top;
+  if (Math.abs(by) >= 1) (scrollerOf(el) ?? el.ownerDocument.defaultView).scrollBy({ top: by, behavior: 'instant' });
+}
+
 // How far to scroll (positive: down) to bring a selection from top to bottom
 // into the area from area.top to area.bottom, room being MARGIN of its height:
 // - one that fits: the least scroll that shows all of it with room beyond the
@@ -53,7 +61,7 @@ function padding(style, side) {
 
 // Scrolls el's nearest scrolling box, at once, by revealBy. The area is what
 // of that box shows in the window, less its scroll-padding.
-export function revealSelection(el, { margin = MARGIN, viewport = null } = {}) {
+export function revealSelection(el, { margin = MARGIN, viewport = null, onlyOffscreen = false } = {}) {
   if (!el?.getBoundingClientRect || !el.isConnected) return;
   const doc = el.ownerDocument, view = doc.defaultView, box = scrollerOf(el);
   const shown = box ? box.getBoundingClientRect() : { top: 0, bottom: view.innerHeight };
@@ -70,6 +78,7 @@ export function revealSelection(el, { margin = MARGIN, viewport = null } = {}) {
     if (rect.width > 0 && rect.height > 0 && rect.right > selection.left && rect.left < selection.right &&
         rect.bottom > area.top && rect.top < area.bottom) area.bottom = Math.max(area.top, rect.top);
   }
+  if (onlyOffscreen && selection.bottom > area.top && selection.top < area.bottom) return;
   const by = Math.round(revealBy(selection, area, margin));
   if (!by) return;
   if (box) box.scrollBy({ top: by, behavior: 'instant' });

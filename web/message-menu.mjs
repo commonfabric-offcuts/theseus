@@ -142,6 +142,7 @@ export class MessageMenu {
       // An earlier message's row shows whole at the first tap (reply-stacks.mjs, item 476); its tab, and the card
       // drawn whole under Only new, light first as any card's does.
       if (onEarlierRow(entry, event.target)) return;
+      if (event.target.closest?.('[data-card-image-control]')) return;
       // A message folded to its row unfolds at the first tap (reply-stacks.mjs).
       if (this.touch && entry !== this.before && !event.target.closest?.('a, .message-preview, .card-reply-composer, .fold-line, .image-thumb, .note-corner, .cover-refresh-glyph, .waiting-silence, .stack-new-action, .stack-star') && cardIn(entry).dataset.folded !== 'true') {
         this.light(entry);

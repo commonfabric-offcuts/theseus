@@ -1317,7 +1317,18 @@ dialog.notebook-sheet-dialog:not([open]){display:none}
 @media(max-width:480px){#reader:has(#reader-composer[data-compose=writing]) #reader-cover{display:none}}
 
 /* A displayed thumbnail opens its image (651), with visible keyboard focus. */
-.image-thumb[role=link]{cursor:pointer}.image-thumb[role=link]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.image-thumb[role=link]{cursor:pointer}.image-thumb[data-card-image-control][role=button]{cursor:zoom-in}
+.image-thumb[role=link]:focus-visible,[data-card-image-control]:focus{outline:2px solid var(--focus);outline-offset:2px}
+/* Card images use the already loaded picture at the card's available width. */
+:is(.card-image,.deck-image)[data-image-expanded]{display:flex;flex:0 0 100%;flex-direction:column;align-items:flex-start;gap:.35rem;width:100%;height:auto;min-width:0;overflow:visible;border:0;background:none}
+:is(.card-image,.deck-image)[data-image-expanded]>img.image-thumb{align-self:center;width:100%;height:auto;max-width:min(100%,calc((80vh - 2px) * var(--inline-image-ratio,1000) + 2px));max-height:80vh;object-fit:contain;border:1px solid var(--line);border-radius:.45rem}
+.deck-image[data-image-expanded]>img.image-thumb{border-radius:.5rem}
+.card-image-actions{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.25rem;width:100%}
+.card-image-actions[hidden]{display:none}
+.card-image-actions>button{display:inline-flex;align-items:center;gap:.35rem;min-height:2rem;padding:.2rem .45rem;border:0;border-radius:.4rem;background:none;color:var(--muted);font-size:.82rem;cursor:pointer}
+.card-image-actions>button:last-child{justify-self:end;max-width:100%;text-align:right;white-space:normal}
+.card-image-actions>button:hover{background:var(--soft);color:var(--ink)}
+@media(pointer:coarse),(max-width:760px){.card-image-actions>button{min-height:44px;min-width:44px}}
 /* 653: the Notebook list's contain thumbnail beside the existing named Open.
    Its square is reserved while loading; no image leaves Open as the fallback.
    Keep both acts at least 44px, with wrapping for long file names on phones. */
