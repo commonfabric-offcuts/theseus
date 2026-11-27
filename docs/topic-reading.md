@@ -314,8 +314,8 @@ topic page, in the Conversation and in a dossier (`web/card-images.mjs`). Each
 verified inline image (PNG, JPEG, GIF, WebP) is a square the right rail's
 thumbnail size (4.2rem, `.things-thumbs`), in the order it was sent; the
 squares wrap on a phone and never run past the card. Each is named for a
-screen reader ("Image: screen.png"); its displayed image names its
-“Open image in a new tab” action under the pointer. A square holds its place, blank, from the moment it is drawn until
+screen reader ("Image: screen.png"). Its thumbnail offers to expand the image.
+A square holds its place, blank, from the moment it is drawn until
 its picture comes, also while it waits to come near the window before its
 picture is asked for; only one whose read brings nothing shows the image's
 name instead, so a picture on its way never looks refused.
@@ -332,9 +332,10 @@ reads only the pictures near where the reader is. Scrolling a card near,
 unfolding it, or showing an earlier message whole reads its pictures then. When
 the topic becomes one the reader can no longer read, the thumbnails go at once
 with the right rail's pictures, and the page holds none of their bytes. A press
-on a displayed thumbnail opens its image in a new tab (item 651,
-docs/images.md); a press elsewhere on the card opens the Reader, where each
-attachment keeps its Open. A message with no image, a file that is not an image
+or Return on a displayed thumbnail expands the image in the card. The expanded
+image and **Open in new tab** open those bytes in a new tab. **Fold** or Escape
+on an image control brings back the thumbnail and its focus. A press elsewhere
+on the card opens the Reader, where each attachment keeps its Open. A message with no image, a file that is not an image
 and a message shown as one row (folded, between others, or an earlier message's row) draw no
 thumbnails.
 

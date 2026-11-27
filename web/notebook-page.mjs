@@ -980,7 +980,7 @@ export class NotebookPage extends DeckPage {
     caption.textContent=name+state;
     if(local||own?.ready?.inline||(!own&&attached?.inline))paintThumb(figure,'card:'+image.id,async()=>local??(own?.ready
       ?(await this.api.media(this.bootstrap.instance_id,{...own.ready,id:own.ready.media_id})).blob
-      :(await this.api.media(this.bootstrap.instance_id,attached,w.base.source.source_ref)).blob),img=>caption.before(img));
+      :(await this.api.media(this.bootstrap.instance_id,attached,w.base.source.source_ref)).blob),img=>caption.before(img),{inlineName:name});
   }
   // × on an image in a card box: it leaves the card, and the page, unless another card still shows it; Undo, or its
   // line written again, puts it back (keepNamed).

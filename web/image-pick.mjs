@@ -2,7 +2,8 @@
 // topic's recent images, the thumbnail on each image row, and whether the
 // image button can say "Paste image".
 import { shownTime } from './times.mjs';
-import { revealSelection } from './reveal.mjs';
+import { keepTop, revealSelection } from './reveal.mjs';
+import { glyph } from './glyphs.mjs';
 
 const node = (doc, tag, text, className) => {
   const el = doc.createElement(tag);
@@ -78,10 +79,66 @@ export function openThumbnail(image, event) {
   window.open(image.src, '_blank', 'noopener');
   return true;
 }
-const show = (image, picture) => {
+
+function inlineCardImage(row, image, name) {
+  const doc = row.ownerDocument;
+  const actions = node(doc, 'span', undefined, 'card-image-actions');
+  const fold = node(doc, 'button', undefined, 'card-image-collapse');
+  const open = node(doc, 'button', 'Open in new tab');
+  const arrow = node(doc, 'span', '↗');
+  arrow.setAttribute('aria-hidden', 'true');
+  fold.append(glyph('fold', doc, 16), 'Fold');
+  open.append(arrow);
+  fold.type = open.type = 'button';
+  image.dataset.cardImageControl = fold.dataset.cardImageControl = open.dataset.cardImageControl = '';
+  actions.append(fold, open);
+  image.after(actions);
+  const intrinsicSize = () => {
+    if (image.naturalHeight) image.style.setProperty('--inline-image-ratio', image.naturalWidth / image.naturalHeight);
+  };
+  if (image.complete) intrinsicSize();
+  else image.addEventListener('load', intrinsicSize, { once: true });
+  let expanded = false;
+  const showSize = large => {
+    expanded = large;
+    row.toggleAttribute('data-image-expanded', large);
+    actions.hidden = !large;
+    image.setAttribute('role', large ? 'link' : 'button');
+    image.title = large ? 'Open in a new tab' : `Expand ${name}`;
+    image.setAttribute('aria-label', large ? `Open ${name} in a new tab` : image.title);
+    image.alt = name;
+  };
+  const collapse = event => {
+    event.preventDefault(); event.stopPropagation();
+    showSize(false);
+    image.focus({ preventScroll: true });
+    revealSelection(image, { margin: 0, onlyOffscreen: true, viewport: doc.defaultView.visualViewport });
+  };
+  const activate = event => {
+    if (expanded) { openThumbnail(image, event); return; }
+    event.preventDefault(); event.stopPropagation();
+    keepTop(image, () => showSize(true));
+    image.focus({ preventScroll: true });
+  };
+  image.onclick = activate;
+  image.onkeydown = event => {
+    if (event.key === 'Escape' && expanded) collapse(event);
+    else if (event.key === 'Enter' || (event.key === ' ' && !expanded)) {
+      if (!event.repeat) activate(event);
+      else { event.preventDefault(); event.stopPropagation(); }
+    }
+  };
+  fold.onclick = collapse;
+  open.onclick = event => openThumbnail(image, event);
+  actions.onkeydown = event => { if (event.key === 'Escape') collapse(event); };
+  showSize(false);
+}
+
+const show = (image, picture, row, inlineName) => {
   picture.images.add(image); image.src = picture.url; image.hidden = false;
   image.tabIndex = 0; image.setAttribute('role', 'link');
   image.alt = image.title = 'Open image in a new tab';
+  if (inlineName) inlineCardImage(row, image, inlineName);
 };
 // A thumbnail in the row, at its start unless place(image) puts it elsewhere:
 // the image itself, made small (Theseus keeps no smaller copy), from the bytes
@@ -91,22 +148,26 @@ const show = (image, picture) => {
 // own bytes, when its turn comes and only if it is still in the page; with
 // later, behind every read that is not (readInTurn). One that brings none
 // leaves its row, so the row's next paint reads the picture again.
-export function paintThumb(row, key, load, place = image => row.prepend(image), { later = false } = {}) {
+export function paintThumb(row, key, load, place = image => row.prepend(image), { later = false, inlineName = null } = {}) {
   letGo();
   let image = row.querySelector(':scope > img.image-thumb');
-  if (image?.dataset.key === key) { place(image); return; }
+  if (image?.dataset.key === key) { if (!inlineName) place(image); return; }
+  if (image?.dataset.cardImageControl !== undefined) {
+    row.querySelector(':scope > .card-image-actions')?.remove();
+    row.removeAttribute('data-image-expanded');
+  }
   image?.remove();
   image = node(row.ownerDocument, 'img', undefined, 'image-thumb'); image.alt = ''; image.dataset.key = key; image.hidden = true;
   image.onclick = event => openThumbnail(image, event);
   image.onkeydown = event => { if (event.key === 'Enter') openThumbnail(image, event); };
   place(image);
-  if (pictures.has(key)) { show(image, pictures.get(key)); return; }
+  if (pictures.has(key)) { show(image, pictures.get(key), row, inlineName); return; }
   const shown = image;
   readInTurn(() => (shown.isConnected ? load() : null), { later }).catch(() => null).then(blob => {
     if (!blob || !shown.isConnected) { shown.remove(); return; }
     letGo();
     if (!pictures.has(key)) keep(key, blob);
-    placed.add(shown); show(shown, pictures.get(key));
+    placed.add(shown); show(shown, pictures.get(key), row, inlineName);
   });
 }
 
