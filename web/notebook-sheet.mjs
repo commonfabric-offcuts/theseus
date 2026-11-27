@@ -197,6 +197,9 @@ export class NotebookSheet {
   // A new commit: the page showing is read again; a page closed or let go is not, but writing of its own that
   // Core has not confirmed still goes (a save that went unanswered goes again once the feed is back).
   async followed(page) {
+    // The initial read may precede this commit even while the first draw is
+    // still opening. Let the open finish, then catch up the visible page.
+    if(this.current===page&&this.showing&&page.openingLoad)await page.openingLoad.catch(()=>{});
     if (this.current === page && this.showing) return page.load();
     const writing = page.writing;
     if (writing && !writing.closed && !writing.running && (writing.pending || writing.dirty)) await writing.flush();
@@ -375,8 +378,11 @@ export class NotebookSheet {
     this.keepWriting(page);
     page.host.hidden = true; page.host.remove(); page.leaving = true;
     this.leaving.set(page.item, page);
-    Promise.resolve(page.writing?.flush()).catch(() => {}).finally(() => {
-      if (!page.leaving) return;
+    const saved=page.openingLoad
+      ? page.openingLoad.then(()=>{if(page.leaving)return page.writing?.flush();})
+      : page.writing?.flush();
+    Promise.resolve(saved).catch(() => {}).finally(() => {
+      if (!page.leaving || this.leaving.get(page.item)!==page) return;
       this.leaving.delete(page.item); page.close?.();
     });
   }

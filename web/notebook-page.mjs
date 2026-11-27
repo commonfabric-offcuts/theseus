@@ -200,11 +200,19 @@ export class NotebookPage extends DeckPage {
       : this.openPageMenu(at);
     if(menu){this.contextClick=Boolean(event.ctrlKey);event.preventDefault();}
   }
-  async load() {
-    if (!this.started) {
-      this.started=true;
+  load() {
+    if(this.detached)return Promise.resolve(false);
+    if(this.openingLoad)return this.openingLoad;
+    if(this.writing)return this.loadPage(false);
+    // A refresh or second opener needs the same writer, device lock and first paint.
+    this.openingLoad=this.loadPage(true).finally(()=>{this.openingLoad=null;});
+    return this.openingLoad;
+  }
+  async loadPage(opening) {
+    if (opening) {
       try {
         await this.deleteUI?.beforeOpen(this.item);
+        if(this.detached)return false;
         this.store=await notebookStore({instance_id:this.bootstrap.instance_id,actor_id:this.bootstrap.actor,item_id:this.item});
       } catch(error) {
         // Another tab owns writing, or storage is unavailable: still let this
@@ -212,10 +220,14 @@ export class NotebookPage extends DeckPage {
         this.unavailable=error.message;
         this.store={get:async()=>null,put:async()=>{},close:()=>{}};
       }
+      if(this.detached){this.store.close();return false;}
       this.writing=new NotebookWriting({item:this.item,bootstrap:this.bootstrap,api:this.api,store:this.store,changed:()=>{if(!this.detached)this.writingChanged();this.deleteUI?.changed(this.writing);},
         reconcile:(base,mine,theirs)=>this.mergeIncoming(base,mine,theirs),localActive:()=>Boolean(this.editing&&this.boxChanged(this.editing))});
       if(this.unavailable)this.writing.readOnly=true;
-      await this.writing.open();await this.deleteUI?.register(this);
+      await this.writing.open();
+      if(this.detached)return false;
+      await this.deleteUI?.register(this);
+      if(this.detached)return false;
       globalThis.addEventListener('pagehide',()=>{this.writing.close();this.writing.serial.finally(()=>this.store.close());},{signal:this.listening.signal});
       globalThis.addEventListener('pageshow',event=>{if(event.persisted)globalThis.location.reload();},{signal:this.listening.signal});
     } else {
@@ -230,16 +242,20 @@ export class NotebookPage extends DeckPage {
         const notebook=(await this.read('memory_items',{owner_scope:this.writing.base.source.owner_scope,limit:1})).relevant_versions.notebook;
         if(notebook!==this.notebook && await this.writing.refresh())this.notebook=notebook;
       }
+      if(this.detached)return false;
       this.sync();
     }
     if(!this.writing.base)return false;
     if(this.writing.deleted){this.writingChanged();return true;}
     if(!this.images){
       this.sync(true); await this.paintHeader();
+      if(this.detached)return false;
       this.images=new NotebookImages(this.writing);this.images.resume();
       this.textImages=this.imagePicker(this.text,this.textInput,this.textPanel);
     } else if(!this.room?.agents.length) await this.readRoom();
-    await this.loadTalks(); this.writingChanged(); return Boolean(this.writing.base);
+    await this.loadTalks();
+    if(this.detached)return false;
+    this.writingChanged(); return Boolean(this.writing.base);
   }
   // Let go without a pagehide (an in-place move, another page in the composer, notebook-sheet.mjs): writing closes
   // as on pagehide, and the page's keys and listeners go with it.
