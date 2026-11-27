@@ -1135,6 +1135,7 @@ dialog.composer-home[open] .inline-composer>h2{align-self:center;margin:0}
 .notebook-images{display:grid;gap:.5rem}.notebook-images>button{justify-self:start}
 .notebook-image-rows{display:grid;gap:.4rem}.notebook-image{display:flex;align-items:center;gap:.65rem;min-width:0;flex-wrap:wrap}
 .notebook-image>span{flex:1;min-width:8rem;overflow-wrap:anywhere}.notebook-image .image-thumb{width:3rem;height:3rem;object-fit:contain}
+.notebook-image>.notebook-file-open{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:start}
 /* NotebookSheet keeps only its title and glyphs fixed (868). The page menu joins that title row (873); the existing scroller holds save status, notices, deck controls and cards. */
 dialog.notebook-sheet-dialog[open]{overflow:hidden;box-shadow:var(--stack-cover-inset);border-radius:var(--stack-r-sheet)}
 dialog.notebook-sheet-dialog:not([open]){display:none}

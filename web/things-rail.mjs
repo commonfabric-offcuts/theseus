@@ -1,5 +1,5 @@
 // The right rail of a topic or an outcome's Conversation (docs/rails.md).
-// Notebook, Pull requests and Images come first; Waiting for…, Previews and
+// Notebook, Pull requests and Files come first; Waiting for…, Previews and
 // Skills and tools show when present; Pipeline is last. A topic always lists
 // its own pages and references. There is no scope switch, name row or Starred
 // section. The Conversation is a topic too; the app resolves its old address
@@ -34,6 +34,8 @@ import { keyAction } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
 import { nearest } from './arrow-reach.mjs';
 import { glyph } from './glyphs.mjs';
+import { openAttachment } from './attachment-open.mjs';
+import { lineText } from './lines.mjs';
 
 // A Notebook page's first words: its body's lines without Markdown marks, joined, after its own title when it opens with
 // it as a heading. The rail clamps them to three lines; this keeps no more than it could show.
@@ -46,7 +48,7 @@ export function openingWords(body, title) {
 import { book, orderOf, placeIn, scopeOf } from './outline-order.mjs';
 
 export const SECTIONS = [
-  ['notebook', 'Notebook'], ['prs', 'Pull requests'], ['images', 'Images'],
+  ['notebook', 'Notebook'], ['prs', 'Pull requests'], ['images', 'Files'],
   ['waiting', 'Waiting for…'], ['previews', 'Links'], ['tools', 'Skills and tools'], ['pipeline', 'Pipeline'],
 ];
 // How far back the rail looks for links in the current topic.
@@ -160,6 +162,16 @@ const element = (doc, tag, props = {}, ...children) => {
 };
 const plainClick = event => event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 const settle = promise => promise.then(value => ({ value }), error => ({ error }));
+
+function fileGlyph(doc) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const icon = doc.createElementNS(ns, 'svg'), path = doc.createElementNS(ns, 'path');
+  for (const [key, value] of Object.entries({ viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor',
+    'stroke-width': '1.3', 'aria-hidden': 'true' })) icon.setAttribute(key, value);
+  path.setAttribute('d', 'M4 1.5h5.5L13 5v9.5H4z M9.5 1.5V5H13');
+  icon.append(path);
+  return icon;
+}
 
 export class ThingsRail {
   constructor({ host, backdrop, storage = null, doc = host.ownerDocument, win = doc.defaultView }) {
@@ -358,7 +370,8 @@ export class ThingsRail {
         if (Object.hasOwn(el.dataset, 'linkMenu')) continue;
         // Several images can share their message's link; the attachment
         // identity keeps each picture its own cursor place across refresh.
-        const identity = el.dataset.railImage ? 'image:' + el.dataset.railImage : el.getAttribute('href') ?? el.textContent.trim();
+        const identity = el.dataset.railImage ? 'image:' + el.dataset.railImage :
+          el.dataset.railFile ? 'file:' + el.dataset.railFile : el.getAttribute('href') ?? el.textContent.trim();
         rows.push({ el, level: 2, set: part.details, key: `section:${key}|${identity}`, parent: summary });
       }
     }
@@ -541,7 +554,7 @@ export class ThingsRail {
     if (kept && place.version !== undefined && kept.version === place.version && kept.limit === limit) return { ...kept.value, place };
     const [messages, images] = await Promise.allSettled([
       view('topic_messages', { topic_id: place.id, direction: 'before', limit: MESSAGES }),
-      view('topic_images', { topic_id: place.id, limit }),
+      view('topic_images', { topic_id: place.id, limit, include_pdfs: true }),
     ]);
     // The pass owns both reads even if one fails. A queued reload starts
     // only after the other has settled, and a partial pair never enters kept.
@@ -790,9 +803,36 @@ export class ThingsRail {
   }
   imageSection(images, reader) {
     if (!images.length) return null;
-    const doc = this.doc, { api, bootstrap, inTurn } = this.handles;
+    const doc = this.doc, handles = this.handles, { api, bootstrap, inTurn } = handles;
     return { sum: String(images.length), key: JSON.stringify(['img', images.map(image => [image.source_ref.id, image.attachment.id, image.attachment.sha256])]), node: () => element(doc, 'div', { className: 'things-thumbs' }, ...images.map(image => {
-      const label = `${image.attachment.name ?? 'Image'}, from ${image.author_id === reader ? 'you' : image.author_id}, ${datedTime(image.sent_ms)}`;
+      const attachment = image.attachment;
+      if (attachment.content_type === 'application/pdf') {
+        const name = attachment.name;
+        const link = element(doc, 'a', { className: 'thumb file-tile', title: name,
+          href: '?' + new URLSearchParams({ topic: image.topic_id, message: image.source_ref.id }) },
+          element(doc, 'span', { className: 'file-kind' }, fileGlyph(doc), 'PDF'),
+          element(doc, 'span', { className: 'file-name' }, name.replace(/\.pdf$/i, '')));
+        link.setAttribute('aria-label', name);
+        link.dataset.railFile = attachment.id;
+        const current = () => link.isConnected && this.handles === handles &&
+          handles.current?.() !== false && handles.readable?.() !== false;
+        let last;
+        const notice = failure => {
+          if (failure) {
+            last = lineText([`${name}:`, failure]);
+            setWords(this.message, last);
+            this.message.hidden = false;
+          } else if (last && this.message.textContent === last) this.message.hidden = true;
+        };
+        link.onclick = event => {
+          if (!plainClick(event)) return;
+          event.preventDefault();
+          const read = async () => (await api.media(bootstrap.instance_id, attachment, image.source_ref)).blob;
+          return openAttachment(link, { name, read, current, notice });
+        };
+        return link;
+      }
+      const label = `${attachment.name ?? 'Image'}, from ${image.author_id === reader ? 'you' : image.author_id}, ${datedTime(image.sent_ms)}`;
       const link = this.placeLink({ kind: 'topic', id: image.topic_id, message: image.source_ref.id }, '');
       link.className = 'thumb'; link.title = label; link.setAttribute('aria-label', label);
       link.dataset.railImage = image.attachment.id; link.railImage = image;

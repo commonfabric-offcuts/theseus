@@ -15,6 +15,8 @@ import { NotebookEditHistory } from './notebook-edit-history.mjs';
 import { NotebookWriting, notebookStore, mergeCardContent } from './notebook-writing.mjs';
 import { NotebookImages } from './notebook-images.mjs';
 import { ImagePick, paintThumb, readInTurn } from './image-pick.mjs';
+import { openAttachment } from './attachment-open.mjs';
+import { lineText } from './lines.mjs';
 import { DRAFT_TIP } from './topic-navigation.mjs';
 import { NotebookViews } from './notebook-view.mjs';
 import { watchNotebookCaret } from './notebook-caret.mjs';
@@ -999,11 +1001,11 @@ export class NotebookPage extends DeckPage {
     this.addImage.disabled=w.readOnly; this.addImage.hidden=w.reading;
     // An image a card shows is the card's: it is listed here only while it needs the person (Retry).
     const named=this.namedImages(w.value.body);
-    const attached=w.value.attachments.filter(ref=>!named.has(ref.id)).map(ref=>{
+    const attached=w.value.attachments.map(ref=>{
       const own=w.images.find(i=>i.ready?.media_id===ref.id),d=own?.ready;
       const descriptor=d?{...d,id:d.media_id}:w.base?.source.attachments.find(a=>a.id===ref.id);
-      return {id:own?.id??ref.id,name:descriptor?.name??'Image',descriptor,own};
-    });
+      return {id:own?.id??ref.id,mediaId:ref.id,name:descriptor?.name??'Image',descriptor,own};
+    }).filter(item=>!named.has(item.mediaId)||item.descriptor?.inline===false);
     const pending=w.images.filter(i=>!i.removed&&!i.associated&&(i.error||!named.has(i.media))).map(own=>({id:own.id,name:own.name,own}));
     const rows=[];
     for(const item of [...attached,...pending]) {
@@ -1011,10 +1013,22 @@ export class NotebookPage extends DeckPage {
       if(!row){
         row=this.node('div','notebook-image');this.imageNodes.set(item.id,row);
         row.words=this.node('span');row.removeButton=this.node('button','','Remove');row.retryButton=this.node('button','','Retry image');
+        row.openButton=this.node('button','notebook-file-open');row.openButton.type='button';
         row.removeButton.type=row.retryButton.type='button';
         row.removeButton.onclick=()=>this.images.remove(row.item.id).catch(error=>{this.imageError=error.message;this.writingChanged();});
         row.retryButton.onclick=()=>this.images.run(row.item.own);
-        row.append(row.words,row.removeButton,row.retryButton);
+        row.openButton.onclick=()=>{
+          const attachment=row.item.descriptor, ref=this.writing?.base?.source.source_ref, writing=this.writing;
+          if(!ref||attachment?.inline!==false)return;
+          const current=()=>row.isConnected&&!row.closest('[hidden]')&&this.writing===writing&&row.item.descriptor?.sha256===attachment.sha256&&
+            writing.base?.source.source_ref.id===ref.id&&writing.base.source.source_ref.revision===ref.revision;
+          const read=async()=>(await this.api.media(this.bootstrap.instance_id,attachment,ref)).blob;
+          return openAttachment(row.openButton,{name:attachment.name,read,current,notice:failure=>{
+            this.imageError=failure?lineText([`${attachment.name}:`,failure]):'';
+            this.writingChanged();
+          }});
+        };
+        row.append(row.words,row.openButton,row.removeButton,row.retryButton);
       }
       row.item=item;
       row.words.textContent=item.name+(item.own&&!item.own.ready?' · '+(item.own.error??'Uploading…'):'');
@@ -1022,6 +1036,9 @@ export class NotebookPage extends DeckPage {
       row.removeButton.hidden=w.reading;
       row.retryButton.hidden=!item.own?.error||w.reading;
       const descriptor=item.descriptor;
+      row.openButton.hidden=descriptor?.inline!==false;
+      row.words.hidden=!row.openButton.hidden;
+      row.openButton.textContent=`Open ${item.name}`;
       if(item.own?.bytes||descriptor?.inline)paintThumb(row,item.id,async()=>(item.own?.bytes?new Blob([item.own.bytes],{type:item.own.type}):null)??(await this.api.media(this.bootstrap.instance_id,descriptor,item.own?undefined:w.base.source.source_ref)).blob);
       rows.push(row);
     }
