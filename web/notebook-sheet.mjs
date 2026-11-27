@@ -286,6 +286,7 @@ export class NotebookSheet {
   show(page) {
     if (this.current && this.current !== page) { this.keep(this.current); this.current.more.remove(); }
     this.current = page;
+    panes.things?.setNotebookPage?.(page.item);
     this.title.replaceChildren(page.sheetTitle);
     page.more.classList.add('sheet-glyph'); this.actions.insertBefore(page.more, this.closer);
     this.status.replaceChildren(page.status);
@@ -450,6 +451,7 @@ export class NotebookSheet {
     const page = this.current;
     if (page) { this.keep(page); page.host.hidden = true; }
     this.root.hidden = true; this.showing = false;
+    panes.things?.setNotebookPage?.(null);
     if (this.aside) return;
     // Back where the person was reading: the modal, keys, wheel and finger keep the feed still, and
     // should anything else have moved it while the sheet was up (its scrollbar, say), it goes back; the focus goes
@@ -532,6 +534,7 @@ export class NotebookSheet {
   // writing closes as on pagehide.
   retire() {
     if (panes.notebook === this.pane) panes.notebook = null;
+    if (this.showing) panes.things?.setNotebookPage?.(null);
     this.listening.abort(); this.showing = false;
     this.wide?.removeEventListener('change', this.resized); this.still?.abort();
     this.docked = false; this.paintDock();

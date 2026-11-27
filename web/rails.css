@@ -38,8 +38,9 @@
 .ol-disclosure:hover{color:var(--ink);background:var(--soft)}
 .ol-disclosure[aria-expanded=true] svg{transform:rotate(90deg)}
 .ol-name{display:block;flex:1;min-width:0;min-height:2.75rem;padding:.45rem .55rem;border:1px solid transparent;border-radius:.5rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere;font-size:.9rem}
-.ol-name:hover{background:var(--soft)}
-.ol-name[aria-current=page]{background:var(--soft);border-color:var(--line)}
+.ol-name:not([aria-current=page]):hover{background:var(--rail-hover,var(--row-hover))}
+.ol-name[aria-current=page]{background:var(--row-current);border-color:var(--line);color:var(--ink)}
+.ol-name[aria-current=page]>.standing{color:var(--ink)}
 .ol-name-line{display:block;font-weight:600}
 .ol-name-line .topic-state{font-weight:500}
 .ol-outcome[data-fresh]:not([data-open])>.ol-row .ol-title,.ol-name:has(.unread-count) .ol-title{font-weight:700}
@@ -121,9 +122,10 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .things-list{list-style:none;margin:0;padding:0}
 .things-list li{margin:.1rem 0}
 .things-list a.row,.things-list span.row{display:block;padding:.4rem .5rem;border-radius:.45rem;color:var(--ink);text-decoration:none;overflow-wrap:anywhere;font-size:.88rem}
-.things-list a.row:hover{background:var(--soft)}
+.things-sec:not([data-key=notebook]) .things-list a.row:not([aria-current]):hover{background:var(--rail-hover,var(--row-hover))}
 /* A Build topic's row (item 297) carries what the outline's row would, and marks the topic being read as the outline does. */
-.things-list a.row[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:650}
+.things-list a.row[aria-current=page]{background:var(--row-current);color:var(--ink);font-weight:650}
+.things-list a.row[aria-current=page] :is(.sub,.wait-state){color:var(--ink)}
 .pipe-builds a.row .sub{font-weight:400}
 .things-list a.row:is(:hover,[aria-current=page]) .topic-state:not(.mine):not([data-state=review]){border-color:var(--muted);color:var(--ink)}
 @media(max-width:760px),(pointer:coarse){.pipe-builds .things-list a.row{min-height:2.75rem;padding-block:.6rem}}
@@ -257,13 +259,15 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
   .things-sec[data-key=notebook] .things-list li{margin:0}
   .things-sec[data-key=notebook] .things-list a.row{display:block;padding:.55rem .65rem .6rem;border:1px solid var(--things-hair);border-radius:.55rem;
     background:var(--things-tile);font-size:.82rem;font-weight:650;line-height:1.3;color:var(--ink)}
-  .things-sec[data-key=notebook] .things-list a.row:hover{border-color:color-mix(in srgb,var(--accent) 40%,var(--things-hair))}
+  .things-sec[data-key=notebook] .things-list a.row:not([aria-current]):hover{border-color:var(--tile-hover-ring,var(--muted));background:var(--row-hover)}
+  .things-sec[data-key=notebook] .things-list a.row[aria-current=page]{background:var(--things-tile);border-color:var(--focus);box-shadow:0 0 0 1px var(--focus);color:var(--ink)}
+  .things-sec[data-key=notebook] .things-list a.row[aria-current=page]:focus-visible{outline:none}
   .things-opening{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;margin-top:.3rem;
     font-family:"Iowan Old Style","Charter","Palatino Linotype",Georgia,serif;font-size:.74rem;font-weight:400;line-height:1.42;color:var(--things-quiet)}
   /* Images: three to a row. */
   .things-thumbs{grid-template-columns:repeat(3,minmax(0,1fr))}
   .things-thumbs a.thumb{border-radius:.5rem}
-  .things-thumbs a.thumb:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--line))}
+  .things-thumbs a.thumb:hover{border-color:var(--muted)}
 }
 /* A new disclosure keeps a finger-sized target in the narrow sheet. */
 @media (pointer:coarse), (max-width:760px){
