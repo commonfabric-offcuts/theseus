@@ -111,6 +111,20 @@ test('a previously measured disclosure keeps its space during redraw',()=>{
   assert.equal(collapsed.button.hidden,true,'a fresh measurement can remove a control no longer needed');
   f.abort.abort();
 });
+test('a measured disclosure keeps keyboard focus across redraws before the next measurement',()=>{
+  const f=fixture({count:1});
+  f.controller.mount();f.visible(0);f.flush();
+  let entry=f.entries[0];entry.button.focus();
+  for(let i=0;i<2;i++){
+    const focused=f.controller.focused();
+    f.controller.begin(f.cards);entry.row.remove();entry=f.attach(0);
+    f.doc.body.focus();
+    f.controller.mount(focused);
+    assert.equal(f.doc.activeElement,entry.button);
+  }
+  assert.equal(f.frames.size,0,'replacement focus did not need a geometry check');
+  f.abort.abort();
+});
 test('1113 deferred repaint restores the same control and respects a later focus choice',()=>{
   for(const moved of [false,true]){
     const f=fixture();f.controller.mount();f.visible(0);f.flush();f.entries[0].button.focus();

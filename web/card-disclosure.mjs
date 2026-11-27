@@ -143,12 +143,20 @@ export class CardDisclosure {
   refresh() {if(this.view())for(const entry of this.entries)this.measure(entry);}
   mount(focused=null) {
     if(!this.view())return;
-    this.pendingFocus=focused?{focused,active:this.doc.activeElement}:null;
+    const entry=focused&&this.entries.find(entry=>entry.record===focused.record);
+    const restoresFocus=Boolean(entry?.row.isConnected&&!entry.row.hidden);
+    if(restoresFocus&&(!focused.button||!entry.button.hidden)){
+      // The replacement already has a measured control or a focusable row.
+      // Carry focus through this draw even if another follows before measuring.
+      (focused.button?entry.button:entry.row).focus({preventScroll:true});
+      this.pendingFocus=null;
+    } else this.pendingFocus=restoresFocus?{focused,active:this.doc.activeElement}:null;
     for(const entry of this.entries)if(entry.words.isConnected){
       if(this.intersection)this.intersection.observe(entry.words);
       else this.resize?.observe(entry.words);
     }
     this.refresh();
+    return restoresFocus;
   }
   close() {
     this.closed=true;this.listening.abort();this.cancel();this.resize?.disconnect();this.intersection?.disconnect();
