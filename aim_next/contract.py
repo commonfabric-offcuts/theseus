@@ -22,6 +22,8 @@ LIMITS = {
 }
 
 # A reader can see a topic as its outcome's owner or member, its creator, or an active participant.
+ACTOR_SEAT_ENDED = "EXISTS (SELECT 1 FROM hosted_seats WHERE agent_id=a.id AND end_state='ended')"
+
 READABLE = ("(w.owner_id=:actor OR t.creator_id=:actor "
             "OR EXISTS (SELECT 1 FROM workspace_members m WHERE m.workspace_id=t.workspace_id AND m.actor_id=:actor) "
             "OR EXISTS (SELECT 1 FROM topic_participants p WHERE p.topic_id=t.id AND p.actor_id=:actor AND p.active=1))")

@@ -5,7 +5,7 @@ from . import reply_passages
 import json
 import uuid
 
-from .contract import LIMITS, Refusal, organises, _body, _identifier, _json, _page_size, _prefix, _revision
+from .contract import ACTOR_SEAT_ENDED, LIMITS, Refusal, organises, _body, _identifier, _json, _page_size, _prefix, _revision
 from .delivery import _now_ms
 from .responsibility import responsibility_note
 from .work import OTHER_MESSAGE, work_by_topic
@@ -625,10 +625,12 @@ class Conversation:
         topic = self._topic(db, actor, args.get("topic_id"))
         # Each participant's note on what they are responsible for, whole up to its bound.
         participants = []
-        for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(CAST(p.responsibility AS BLOB),1,1025) AS note_prefix,p.responsibility_revision,a.enabled,a.kind,substr(CAST(a.name AS BLOB),1,1025) AS name_prefix "
-                              "FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1 ORDER BY p.actor_id LIMIT ?",
+        for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(CAST(p.responsibility AS BLOB),1,1025) AS note_prefix,p.responsibility_revision,a.enabled,a.kind,substr(CAST(a.name AS BLOB),1,1025) AS name_prefix, "
+                              + ACTOR_SEAT_ENDED + " AS seat_ended FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1 ORDER BY p.actor_id LIMIT ?",
                               (topic["id"], LIMITS["workspace_members" if topic["kind"] == "conversation" else "topic_participants"])):
             item = dict(row, enabled=bool(row["enabled"]), receiving=bool(row["enabled"]))
+            if item.pop("seat_ended"):
+                item["seat_ended"] = True
             item["responsibility"], item["responsibility_truncated"] = _prefix(item.pop("note_prefix") or b"")
             # The name the page matches a leading @name against, as workspace_members gives it (addressing.py).
             item["name"], item["name_truncated"] = _prefix(item.pop("name_prefix") or b"")
