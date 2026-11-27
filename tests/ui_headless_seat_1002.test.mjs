@@ -73,6 +73,19 @@ test('seat settings and the single template stay bound across an unconfirmed Add
   assert.equal(next.owner.row.request, null);
 });
 
+test('a saved Add from before template pinning clears its matching form on confirmation', async () => {
+  const first = setup(() => { throw Error('lost reply'); });
+  await first.owner.load();
+  await first.owner.edit(form);
+  await assert.rejects(first.owner.add(), /unconfirmed/i);
+  const next = setup(committed, first.saved);
+  next.owner.templates = { available: true, items: [{ id: 'template-' + '1'.repeat(64) }] };
+  await next.owner.load();
+  await next.owner.again();
+  assert.deepEqual(next.sent[0], first.sent[0]);
+  assert.deepEqual(next.owner.row.form, { name: '', role: '' });
+});
+
 test('a confirmed operation lookup settles without issuing another Add', async () => {
   const state = setup(() => { throw Error('lost reply'); });
   await state.owner.load(); await state.owner.edit(form); await assert.rejects(state.owner.add());
