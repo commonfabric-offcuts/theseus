@@ -16,8 +16,9 @@ replacement with the existing muted strike. Both have accessible labels. Text
 splitting preserves source positions, so quotes and selection use current words
 only, even across Markdown boundaries.
 
-Eligible readers initially see marks and `Edited · hide changes`. Hiding redraws
-the cached current words without a fetch and changes the byline to `show changes`.
+Eligible readers initially see marks and an `Accept changes` check beside
+`Edited`. Pressing it redraws the cached current words and gives the pressed
+check the label `Show changes`.
 The choice is local to this device, keyed by actor, message and current revision;
 the next edit defaults to showing marks again. Without `struck`, only `Edited`
 appears. Core remains the authority for eligibility; a device preference cannot
