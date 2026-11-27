@@ -866,6 +866,31 @@ function tableNode(block, doc, meter, scrolling = true) {
   return wrap;
 }
 
+export function clipboardList(items, doc) {
+  const root = doc.createDocumentFragment(), entered = [];
+  // A partial selection may start in a nested item. Its first row is the
+  // highest visible level in this fragment.
+  const firstDepth = items.reduce((depth, item) => Math.min(depth, item.depth), items[0]?.depth ?? 0);
+  for (const { depth, marker, contents, task } of items) {
+    const level = Math.min(depth - firstDepth, entered.length);
+    entered.length = Math.min(entered.length, level + 1);
+    const number = /^(\d+)/.exec(marker);
+    const tag = number ? 'ol' : 'ul';
+    let parent = entered[level];
+    if (parent?.localName !== tag) {
+      parent = entered[level] = doc.createElement(tag);
+      if (number && Number(number[1]) !== 1) parent.start = Number(number[1]);
+      (entered[level - 1]?.lastElementChild ?? root).append(parent);
+    }
+    const row = doc.createElement('li');
+    if (task) row.append(task + ' ');
+    if (number && parent.lastElementChild) row.value = Number(number[1]);
+    row.append(...contents);
+    parent.append(row);
+  }
+  return root;
+}
+
 // Card blocks use spans so they can live inside the card's button. A paste
 // needs semantic elements because the destination does not have card CSS.
 export function clipboardNodes(text, { doc = globalThis.document, displayRules = [] } = {}) {
@@ -875,30 +900,17 @@ export function clipboardNodes(text, { doc = globalThis.document, displayRules =
     element.append(...contents);
     return element;
   };
-  const list = items => {
-    const root = doc.createDocumentFragment(), entered = [];
-    for (const item of items) {
-      const depth = Math.min(item.depth, entered.length);
-      entered.length = Math.min(entered.length, depth + 1);
-      const number = /^(\d+)/.exec(item.marker);
-      const tag = number ? 'ol' : 'ul';
-      let parent = entered[depth];
-      if (parent?.localName !== tag) {
-        parent = entered[depth] = node(tag);
-        if (number && Number(number[1]) !== 1) parent.start = Number(number[1]);
-        (entered[depth - 1]?.lastElementChild ?? root).append(parent);
-      }
-      const contents = item.paragraphs ? item.paragraphs.map(part => node('p', ...inline(part.words))) : inline(item.words);
-      parent.append(node('li', ...(item.task ? [MARKS[item.task] + ' '] : []), ...contents));
-    }
-    return root;
-  };
   const render = block => {
     if (block.kind === 'heading') return node(`h${block.level}`, ...inline(block.words));
     if (block.kind === 'rule') return node('hr');
     if (block.kind === 'code') return node('pre', node('code', block.words.text));
     if (block.kind === 'quote') return node('blockquote', ...(block.blocks ? block.blocks.map(render) : inline(block.words)));
-    if (block.kind === 'list') return list(block.items);
+    if (block.kind === 'list') return clipboardList(block.items.map(item => ({
+      depth: item.depth,
+      marker: item.marker,
+      contents: item.paragraphs ? item.paragraphs.map(part => node('p', ...inline(part.words))) : inline(item.words),
+      task: MARKS[item.task],
+    })), doc);
     if (block.kind === 'table') return tableNode(block, doc, undefined, false);
     return node('p', ...inline(block.words));
   };

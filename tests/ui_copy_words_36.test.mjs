@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { clipboardWords, copyWordsChoice, hasClipboardWords, notebookClipboard } from '../web/copy-words.mjs';
+import { coverSheet, copyOfCover } from '../web/dossier-cover.mjs';
 import { documentPort } from './fixtures/card_text_867.mjs';
 
 test('copy text preserves authored Markdown, drops attachment lines, and leaves literal fenced text', () => {
@@ -61,4 +62,13 @@ test('copy cannot write a whole source that arrives after its opening changes', 
   await attempt;
   assert.equal(written, false);
   assert.equal(said, false);
+});
+
+test('retaining a repainted cover takes the newest copy words', () => {
+  const doc = documentPort(), ctx = { viewer: 'reader', topicId: 'fixture-topic', rootId: 'fixture-root', nameOf: id => id };
+  const first = coverSheet(doc, { stands: 'Original cover.', waiting: [] }, ctx);
+  assert.equal(copyOfCover(first)(), 'Original cover.');
+  const repainted = coverSheet(doc, { stands: 'Refreshed cover.', waiting: [] }, ctx, first);
+  assert.equal(repainted, first);
+  assert.equal(copyOfCover(first)(), 'Refreshed cover.');
 });

@@ -2811,7 +2811,7 @@ function messageCopyChoice(item, { say, presentation, cover, selected, notice } 
   const revision = revisionOf(presentation?.source ?? item);
   const current = () => !retired && !topicUnavailable && shell.page === page && topic === shownTopic &&
     landingSerial === serial && !authorityReviewPending() &&
-    (!cover || cover.isConnected) && revisionOf(presentation?.source ?? item) === revision &&
+    (!cover || cover.isConnected && copyOfCover(cover) === coverWords) && revisionOf(presentation?.source ?? item) === revision &&
     (presentation ? registry.isSourceCurrent(presentation) && !presentation.availabilityUnconfirmed
       : feedMessages().get(item.id) === item);
   const known = coverWords ? coverWords() : presentation ? presentation.source.body

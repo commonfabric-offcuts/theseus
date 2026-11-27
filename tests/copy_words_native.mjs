@@ -27,7 +27,7 @@ try {
     assert.equal(receipt.status, 'committed', JSON.stringify(receipt));
     return ids[key] = receipt.result.message_id;
   };
-  const message = '> Earlier words\n\nAlpha **marked words** and [sample link](https://example.org/sample).\n\n- One\n- Two\n\n```js\nconst value = 1;\n```';
+  const message = '> Earlier words\n\nAlpha **marked words** and [sample link](https://example.org/sample).\n\nFirst memory line\nSecond memory line\n\n- One\n- Two\n\n```js\nconst value = 1;\n```';
   await put('message', message, { attachments: [{ name: 'omitted.txt', text: 'Omitted file contents.' }] });
   const long = 'First line of a long source.\n\n' + 'An additional line to read. '.repeat(51) + '\n\nLast words of the complete source.';
   await put('long', long);
@@ -115,15 +115,16 @@ try {
     await press(feedMore);
     await menu.waitFor();
   };
-  const select = async target => {
-    const rect = await locator(target).evaluate(el => {
+  const selectionRect = target => locator(target).evaluate(el => {
       const range = document.createRange(); range.selectNodeContents(el);
       const { x, y, width, height } = range.getBoundingClientRect();
       return { x, y, width, height };
     });
-    await page.mouse.move(rect.x + 1, rect.y + rect.height / 2);
+  const select = async (target, end = target) => {
+    const first = await selectionRect(target), last = await selectionRect(end);
+    await page.mouse.move(first.x + 1, first.y + first.height / 2);
     await page.mouse.down();
-    await page.mouse.move(rect.x + rect.width - 1, rect.y + rect.height / 2, { steps: 10 });
+    await page.mouse.move(last.x + last.width - 1, last.y + last.height / 2, { steps: 10 });
     await page.mouse.up();
     return page.evaluate(() => getSelection().toString());
   };
@@ -139,7 +140,7 @@ try {
     assert.equal(await menu.locator('.palette-rows button').first().getAttribute('data-menu-label'), 'Copy text');
     await screenshot('message-menu');
     await copyFrom(copy, feedMore, 'Text copied');
-    await expectClip(message, /<blockquote[\s\S]*<strong[^>]*>marked words<\/strong>[\s\S]*<a [^>]*href="https:\/\/example\.org\/sample"[\s\S]*<ul[\s\S]*<code/);
+    await expectClip(message, /<blockquote[\s\S]*<strong[^>]*>marked words<\/strong>[\s\S]*<a [^>]*href="https:\/\/example\.org\/sample"[\s\S]*First memory line<br>Second memory line[\s\S]*<ul[\s\S]*<code/);
   });
   await check('selection inside feed uses the selected words and native shortcut label', async () => {
     const selected = await select(words('message') + ' strong');
@@ -150,6 +151,15 @@ try {
     await screenshot('message-selected');
     await copyFrom(copy, feedMore, 'Selection copied');
     await expectClip(selected, /marked words/);
+  });
+  await check('selection spanning two list rows keeps list semantics on rich paste', async () => {
+    const list = words('message') + ' .md-item-words';
+    const selected = await select(list + ' >> nth=0', list + ' >> nth=1');
+    assert.match(selected, /One[\s\S]*Two/);
+    await press(feedMore);
+    assert.equal(await copy.getAttribute('data-menu-label'), 'Copy selected text');
+    await copyFrom(copy, feedMore, 'Selection copied');
+    await expectClip(selected, /<ul><li>One<\/li><li>Two<\/li><\/ul>/);
   });
   await check('right-click Copy text uses the status line', async () => {
     await press('#topic-title');
@@ -175,6 +185,7 @@ try {
     await feedMenu('attachment');
     assert.equal(await copy.isDisabled(), true);
     assert.equal(await copy.getAttribute('title'), 'No text to copy');
+    await screenshot('attachment-only-disabled');
     await page.keyboard.press('Escape');
   });
   await check('visible whisper uses the same clipboard path', async () => {
@@ -198,6 +209,32 @@ try {
     const entry = await plainAndHTML();
     assert.match(entry.plain, /^## Decision\n\nCover \*\*written words\*\*\.\n\nWaits on .+: Ready to decide\? \(default: Hold\)\n\nPayload: Sample result <https:\/\/example\.org\/result>$/);
     assert.match(entry.html, /<h2[^>]*>Decision<\/h2>[\s\S]*Waits on[\s\S]*Payload:[\s\S]*<a [^>]*href="https:\/\/example\.org\/result"/);
+  });
+  await check('cover overflow confirms on its own button and copies the refreshed cover', async () => {
+    const dossier = `#messages .reply-stack[data-stack="${ids.root}"]`, sheet = locator(dossier + ' > .dossier-cover');
+    const visible = await sheet.elementHandle();
+    const updated = { ...cover, stands: '## Decision\n\nRefreshed **dossier words**.' };
+    const receipt = await control({ method: 'stack_act', sender: 'aim-core', kind: 'stack.cover', message_id: ids.root,
+      operation_id: 'copy-cover-refresh', args: updated });
+    assert.equal(receipt.status, 'committed');
+    await sheet.getByText('Refreshed dossier words.').waitFor();
+    assert.equal(await visible.evaluate(node => node.isConnected), true);
+    const previousNotice = locator('#app-status button');
+    if (await previousNotice.isVisible()) await press(previousNotice);
+    await locator('#app-status').waitFor({ state: 'hidden' });
+    if (phone) await press(card('root') + ' .message-author');
+    else await locator(dossier).hover();
+    const more = dossier + ' .stack-tools [data-tool=menu]';
+    await press(more);
+    await copyFrom(copy, more, 'Text copied');
+    await clipboardStarts(updated.stands);
+    const entry = await plainAndHTML();
+    assert.match(entry.html, /Refreshed <strong>dossier words<\/strong>/);
+    assert.doesNotMatch(entry.plain, /Cover written words/);
+    const button = locator(more);
+    assert.ok(await button.evaluate(node => node.scrollWidth <= node.clientWidth && node.scrollHeight <= node.clientHeight));
+    await locator('#app-status').waitFor({ state: 'hidden' });
+    await screenshot('dossier-cover-overflow-feedback');
   });
   await check('Reader copies the full rendered message and reports refused permission', async () => {
     await readerFromPage({ page, cardSelector: card('message'), prefix: 'Alpha marked words', pressSource: () => press(words('message')) });
