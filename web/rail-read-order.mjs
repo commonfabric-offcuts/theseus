@@ -4,7 +4,6 @@ export class RailReadOrder {
   constructor() {
     this.visible = null;
     this.deferredTail = Promise.resolve();
-    this.inFlight = null;
   }
   async whileVisible(load) {
     if (!this.visible) {
@@ -14,12 +13,10 @@ export class RailReadOrder {
     }
     const pass = this.visible;
     pass.count++;
-    try {
-      // A secondary read already sent gets to finish. The rail's views
-      // still use the shell's existing serial transport queue.
-      if (this.inFlight) await this.inFlight;
-      return await load();
-    } finally {
+    // Already dispatched work cannot delay the visible pass. The shell
+    // still owns the transport queue for the rail itself.
+    try { return await load(); }
+    finally {
       if (--pass.count === 0) {
         this.visible = null;
         pass.finish();
@@ -31,10 +28,7 @@ export class RailReadOrder {
     // register visible work before either secondary reader starts.
     const answer = this.deferredTail.then(async () => {
       while (this.visible) await this.visible.done;
-      const flight = Promise.resolve().then(read);
-      this.inFlight = flight.catch(() => {});
-      try { return await flight; }
-      finally { this.inFlight = null; }
+      return read();
     });
     this.deferredTail = answer.catch(() => {});
     return answer;

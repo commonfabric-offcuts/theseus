@@ -30,7 +30,7 @@ export class DimmingSync {
       this.cacheKey = dimCacheKey(instance_id, actor, authority); this.confirmed = null; this.intents = []; this.prepared = [];
       this.legacyKey = dimmingKey(instance_id, actor); this.legacy = null; this.cursor = null; this.initialized = false; this.error = null; this.cacheKept = true; this.presented = null;
       try { const raw = this.storage?.getItem(this.legacyKey); if (raw) this.legacy = decodeDimming(raw); } catch { /* No valid legacy import. */ }
-      this.restore(); this.task = null;
+      this.restore(); this.task = null; this.queuedWake = null;
       this.choices.syncEdit = action => {
         this.intents.push({ id: this.id(), action: copy(action) }); this.error = null; this.transientError=false;
         if(this.retryTimer!==null)this.timers.clearTimeout(this.retryTimer);this.retryTimer=null;this.failures=0;
@@ -39,11 +39,11 @@ export class DimmingSync {
       this.paint();
     }
     this.liveOff = live?.listen(event => {
-      if (this.visible() && (event.kind === 'commit' || event.kind === 'state' && event.state === 'live')) this.wake();
+      if (this.visible() && (event.kind === 'commit' || event.kind === 'state' && event.state === 'live')) this.wakeBehindRail();
     }) ?? null;
     return this.wake();
   }
-  disconnect() { this.epoch++;if(this.retryTimer!==null)this.timers.clearTimeout(this.retryTimer);this.retryTimer=null; this.journal?.close(); this.journal = null; this.liveOff?.(); this.liveOff = null; this.choices.syncEdit = null; this.key = null; }
+  disconnect() { this.epoch++;if(this.retryTimer!==null)this.timers.clearTimeout(this.retryTimer);this.retryTimer=null; this.journal?.close(); this.journal = null; this.liveOff?.(); this.liveOff = null; this.choices.syncEdit = null; this.key = null; this.queuedWake = null; }
   restore() {
     try {
       const raw = this.storage?.getItem(this.cacheKey);
@@ -151,14 +151,20 @@ export class DimmingSync {
     this.legacy = null;
     try { this.storage?.removeItem(this.legacyKey); } catch { /* Core already wins; a later read can retry retirement. */ }
   }
-  readBehindRail(epoch, name, args) {
-    const read = () => epoch === this.epoch ? this.api.view(name, args, { readClass: 'background' }) : null;
-    return this.railReadOrder ? this.railReadOrder.defer(read) : read();
+  wakeBehindRail() {
+    if (!this.railReadOrder) return this.wake();
+    if (this.queuedWake) return this.queuedWake;
+    const epoch = this.epoch;
+    const queued = this.railReadOrder.defer(() => {
+      if (this.queuedWake === queued) this.queuedWake = null;
+      if (epoch === this.epoch && this.visible()) return this.wake();
+    });
+    this.queuedWake = queued;
+    return queued;
   }
   async readCurrent(epoch, {candidate = null, notify = true} = {}) {
-    const transport = await this.readBehindRail(epoch, 'rail_dimming', candidate ? { candidate } : {});
+    const answer = checkedView(await this.api.view('rail_dimming',candidate ? {candidate} : {}, {readClass:'background'}),this.bootstrap.instance_id);
     if (epoch !== this.epoch) return;
-    const answer = checkedView(transport, this.bootstrap.instance_id);
     this.accept(answer);
     if (answer.dim_revision > 0) {
       this.retireLegacy();
@@ -169,7 +175,7 @@ export class DimmingSync {
   }
   async changes(input, epoch) {
     const scope = {kind:'actor',id:this.bootstrap.actor};
-    const answer = await this.readBehindRail(epoch, 'changes', { scope, limit: 50, ...(input ? { cursor: input } : {}) });
+    const answer = await this.api.view('changes',{scope,limit:50,...(input?{cursor:input}:{})},{readClass:'background'});
     if (epoch !== this.epoch) return null;
     return scopedChangesPage(answer,this.bootstrap,scope,input);
   }

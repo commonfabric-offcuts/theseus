@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DimChoices, dimmingKey, freshDimming } from '../web/dim-choices.mjs';
 import { DimmingSync, dimCacheKey } from '../web/dimming-sync.mjs';
 import { openDimJournal } from '../web/dim-journal.mjs';
+import { RailReadOrder } from '../web/rail-read-order.mjs';
 
 const clone=structuredClone;
 const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
@@ -87,6 +88,28 @@ test('1004 an explicit saved Dim0 prevents a later stale device import',async()=
   assert.equal(core.states.get('reader').dim_revision,1);
   const s=storage(),legacy=new DimChoices(s);legacy.bind('scratch-1004','reader');legacy.select(2);
   const b=device(core,'reader',s);await b.ready;assert.equal(b.choices.selected,0);assert.equal(core.states.get('reader').dim_revision,1);
+});
+test('a visible rail pass holds passive Dim sync and a local edit still saves', async () => {
+  const core = server(), deviceState = device(core), gate = deferred();
+  const order = new RailReadOrder();
+  let committed;
+  await deviceState.ready;
+  await deviceState.sync.connect({ api: core.api('reader'), bootstrap: bootstrap('reader'), railReadOrder: order,
+    live: { listen(listener) { committed = listener; return () => {}; } } });
+  core.calls.length = 0;
+  const rail = order.whileVisible(() => gate.promise);
+  try {
+    for (const seq of [1, 2, 3]) committed({ kind: 'commit', seq });
+    await turn();
+    assert.deepEqual(core.calls, [], 'passive commit reads wait');
+    assert.equal(deviceState.choices.toggle('w', 'a'), true);
+    await turn();
+    assert.equal(core.calls.filter(call => call.envelope).length, 1, 'the local edit reaches Core while the rail waits');
+    await deviceState.sync.idle();
+    assert.equal(core.states.get('reader').dim_revision, 1);
+  } finally { gate.resolve(); await rail; }
+  await order.defer(() => {});
+  assert.equal(core.calls.filter(call => call.name === 'changes').length, 1, 'queued commits coalesce into one scan');
 });
 test('1004 conflict replays an absolute edit over another device without replacing its unrelated choice',async()=>{
   const core=server(),a=device(core);await a.ready;

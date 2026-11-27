@@ -33,16 +33,20 @@ test('visible pagination gaps retain priority while a pass is open', async () =>
   assert.deepEqual(calls, ['Links page 1', 'Links page 2', 'dimming']);
 });
 
-test('an in-flight read settles before the rail and a refusal releases the next reader', async () => {
-  const order = new RailReadOrder(), calls = [], first = pending();
+test('the rail starts with a secondary in flight and a refused rail pass releases queued work', async () => {
+  const order = new RailReadOrder(), calls = [], first = pending(), visible = pending();
   const deferred = order.defer(async () => { calls.push('recorded action'); await first.promise; });
   await turn();
   const second = order.defer(() => calls.push('dimming'));
-  const rail = order.whileVisible(() => { calls.push('Pipeline'); throw Error('unavailable'); });
+  const rail = order.whileVisible(async () => { calls.push('Pipeline'); await visible.promise; throw Error('unavailable'); });
   const refused = assert.rejects(rail, /unavailable/);
   await turn();
-  assert.deepEqual(calls, ['recorded action']);
+  assert.deepEqual(calls, ['recorded action', 'Pipeline']);
   first.resolve();
+  await deferred;
+  await turn();
+  assert.deepEqual(calls, ['recorded action', 'Pipeline']);
+  visible.resolve();
   await Promise.all([deferred, second, refused]);
   assert.deepEqual(calls, ['recorded action', 'Pipeline', 'dimming']);
 });
