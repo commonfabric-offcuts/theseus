@@ -906,7 +906,7 @@ export class DeckPage {
       anchor=this.list.querySelector(`.deck-card[data-index="${index}"]`)?.querySelector('.deck-menu')??anchor;
     }
     const ref=this.cardRef(index);if(!ref)return;
-    const menu=openNotebookMenu({anchor,at,items:this.cardMenuItems(ref,anchor),label:'This card',sheet:true,doc:this.doc});
+    const menu=openNotebookMenu({anchor,at,items:this.cardMenuItems(ref,anchor,at),label:'This card',sheet:true,doc:this.doc});
     this.listening?.signal.addEventListener('abort',()=>menu?.close(false),{once:true});
     return menu;
   }

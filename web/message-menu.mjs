@@ -637,6 +637,7 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', s
   const makeButton = (item, index) => {
     const button = element(doc, 'button', { type: 'button', textContent: item.label });
     button.disabled = Boolean(item.disabled);
+    if (item.tooltip) button.title = item.tooltip;
     button.setAttribute('role', item.checked === undefined ? 'menuitem' : 'menuitemcheckbox');
     if (item.checked !== undefined) button.setAttribute('aria-checked', String(item.checked));
     if (item.description) {
