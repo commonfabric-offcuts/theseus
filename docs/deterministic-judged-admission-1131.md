@@ -98,7 +98,9 @@ timing inferences. Other browser-suite failures/completeness never block.
 `audit` names a Core message and revision. The guard reads it through the same
 bound CLI as the pipeline, rejects removed/withheld/stale/private sources, and
 requires an entire affirmative decision, rather than a substring in a quotation
-or rejection. The message's full body is `(codex) auditor —1131 ` followed by
+or rejection. If the bound source records a Core reply prefix, the prefix must
+match the stored body byte for byte and the guard consumes it once. The
+auditor's own text is `(codex) auditor —1131 ` followed by
 one JSON object with exactly `decision: "accept"`, `evidence_sha256`,
 `approval_before_carry: true`, and `carry_started_at_ms`. The digest is SHA256
 of canonical JSON of the judgment without `audit`; it binds all source/run/raw/
@@ -109,6 +111,16 @@ ordering witness refuse. Supporting review prose and capture references remain
 in the dossier; the exact decision is a separate affirmative act. This is an
 attributed review of captured evidence, not attestation that a builder's
 machine cannot lie. Material environmental limits belong in that read.
+
+Use this wording when requesting the audit. Fill in the packet path.
+
+> Read the judgment packet at `<absolute packet path>` and verify its referenced
+> evidence and the approval-before-carry ordering. Compute the SHA-256 of the
+> canonical JSON with the `audit` field removed. If you accept, reply with
+> `(codex) auditor —1131 ` followed by one JSON object containing `decision`,
+> `evidence_sha256`, `approval_before_carry` and `carry_started_at_ms`. Use your
+> computed digest and independently verified carry start. Report any refusal
+> with the evidence that led to it.
 
 Optional Python comparison runs use the same file/case identity rules. Their
 new deterministic reds block. Verdict objects retain their run/check/conclusion

@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 import re
 
+from aim_next import reply_passages
 from tools import base_move, ci_known_reds, release_check
 
 
@@ -449,7 +450,19 @@ def audit(value, source, reviewer):
             not any(source.get(k) for k in ('withheld', 'removal', 'withdrawal', 'struck', 'whisper')),
             'audit message is unavailable, stale or not the independent reviewer')
     prefix = '(codex) ' + reviewer.replace('-', '_') + ' —1131 '
-    body = source.get('body') or ''
+    body = source.get('body')
+    require(isinstance(body, str), 'audit body is unreadable')
+    basis = source.get('reply_basis')
+    if basis is not None:
+        # Remove only the exact prefix attributed by Core to this reply.
+        error = 'audit needs its explicit1131 decision after the recorded reply prefix'
+        require(isinstance(basis, dict) and isinstance(basis.get('source'), dict)
+                and basis['source'].get('kind') == 'message'
+                and source.get('reply_to') and basis['source'].get('id') == source['reply_to']
+                and isinstance(basis.get('reason', basis.get('excerpt')), str), error)
+        quoted = reply_passages.prefix(basis)
+        require(body.startswith(quoted), error)
+        body = body[len(quoted):]
     require(body.startswith(prefix), 'audit needs its explicit1131 decision, not a quoted marker')
     try:
         decision = fields(base_move.loads(body[len(prefix):]),

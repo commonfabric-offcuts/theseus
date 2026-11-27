@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import unittest
 from unittest import mock
 
+from aim_next import reply_passages
 from tools import deploy, deterministic_admission as proof, train, releases
 
 
@@ -405,6 +406,29 @@ else:
                                                                            '"approval_before_carry": false')
         self.bind_audit(body=body)
         with self.assertRaisesRegex(deploy.Refused, 'approval-before-carry ordering'): self.admit()
+
+    def test_1131_bound_reply_prefix_keeps_the_auditors_own_decision(self):
+        body = json.loads((self.root/'audit.json').read_text())['body']
+        for words in ({'excerpt': 'Check the packet\nRead its evidence'}, {'reason': 'Audit the packet', 'reason_format': 2}):
+            with self.subTest(words=words):
+                basis = dict(words, source={'kind': 'message', 'id': 'm-'+'b'*32, 'revision': 1}, author_id='builder')
+                self.bind_audit(body=reply_passages.prefix(basis)+body, reply_basis=basis,
+                                reply_to=basis['source']['id'])
+                self.assertTrue(self.admit()['judged'])
+
+    def test_1131_quote_alone_or_unattributed_quote_cannot_admit(self):
+        body = json.loads((self.root/'audit.json').read_text())['body']
+        basis = {'excerpt': body, 'source': {'kind': 'message', 'id': 'm-'+'b'*32, 'revision': 1},
+                 'author_id': 'builder'}
+        source = basis['source']['id']
+        for quoted, recorded, parent in ((reply_passages.prefix(basis)+'I refuse.', basis, source),
+                                          ('> Review the packet\n\n'+body, None, source),
+                                          ('> A different passage\n\n'+body, basis, source),
+                                          (reply_passages.prefix(basis)+body, basis, 'm-'+'c'*32)):
+            with self.subTest(quoted=quoted, parent=parent):
+                self.bind_audit(body=quoted, reply_basis=recorded, reply_to=parent)
+                with self.assertRaisesRegex(deploy.Refused, 'audit needs its explicit1131 decision'):
+                    self.admit()
 
     def test_1131_second_boundary_reads_new_ordinary_approval(self):
         self.admit()
