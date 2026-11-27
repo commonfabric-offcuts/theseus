@@ -2856,7 +2856,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       for (const [name, text, said] of passages) {
         await readerTo(p, text);
         await until(() => p.evaluate(`[...document.querySelectorAll('#source-body .hover-quote')].map(s=>s.textContent).join('').trim() === ${JSON.stringify(said)}`), `${tone}: the ${name} passage lights in the Reader`);
-        reader[name] = await fieldOf(p, 'reader');
+        reader[name] = await fieldOf(p, 'reader', dark ? DARK_FIELD : FIELD);
         await shot(p, `reading-field-${width}-${tone}-reader-${name}`);
       }
       await closeReader(p, 'laptop');

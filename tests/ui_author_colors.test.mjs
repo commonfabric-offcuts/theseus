@@ -242,12 +242,12 @@ test('the picker and the names that open it paint no tap highlight, and keep the
 // page, never the green that is Fable's card. Every word on it keeps 4.5:1.
 test('the Reader shows an agent\'s message on its color, and anything else on the neutral page', () => {
   const message = (author, author_kind) => ({ source_ref: { kind: 'message', id: 'm' }, author, author_kind });
-  assert.equal(paneClass(message('fixture-notebook-agent', 'agent'), 'tony'), 'reading-pane agent-pane agent-olive');
-  assert.equal(paneClass(message('fable', 'agent'), 'tony', () => 'rose'), 'reading-pane agent-pane agent-rose', 'the reader\'s choice for the agent');
-  assert.equal(paneClass(message('tony', 'human'), 'tony'), 'reading-pane', 'your own message');
-  assert.equal(paneClass(message('fable', 'agent'), 'fable'), 'reading-pane', 'an agent reading its own message');
-  assert.equal(paneClass(message('dan', 'human'), 'tony'), 'reading-pane', 'another person');
-  assert.equal(paneClass(message('fable'), 'tony'), 'reading-pane', 'a source that does not say the kind');
+  assert.equal(paneClass(message('fixture-notebook-agent', 'agent'), 'tony'), 'reading-pane message-pane agent-pane agent-olive');
+  assert.equal(paneClass(message('fable', 'agent'), 'tony', () => 'rose'), 'reading-pane message-pane agent-pane agent-rose', 'the reader\'s choice for the agent');
+  assert.equal(paneClass(message('tony', 'human'), 'tony'), 'reading-pane message-pane own-message-pane', 'your own message');
+  assert.equal(paneClass(message('fable', 'agent'), 'fable'), 'reading-pane message-pane own-message-pane', 'an agent reading its own message');
+  assert.equal(paneClass(message('dan', 'human'), 'tony'), 'reading-pane message-pane', 'another person');
+  assert.equal(paneClass(message('fable'), 'tony'), 'reading-pane message-pane', 'a source that does not say the kind');
   assert.equal(paneClass({ source_ref: { kind: 'memory', id: 'n', revision: 1 }, author: 'fable', author_kind: 'agent' }, 'tony'), 'reading-pane', 'a Notebook page');
   assert.equal(paneClass(null, 'tony'), 'reading-pane');
 });
