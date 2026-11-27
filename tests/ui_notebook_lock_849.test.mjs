@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { NotebookPage } from '../web/notebook-page.mjs';
+import { NotebookSheet } from '../web/notebook-sheet.mjs';
 import { deckBody } from '../web/deck.mjs';
 import { miniDocument, matches } from './fixtures/mini_dom.mjs';
 
@@ -74,19 +75,138 @@ async function fixture(t,mode='cards') {
     owner_scope:{kind:'workspace',id:'fixture-workspace'},title:'Shared page',
     body:'## First\n\nFirst words\n\n## Second\n\nSecond words\n',
     attachments:[],references:[],reader_may_write:true,reader_may_delete:true};
-  const api={view:async(name)=>{assert.equal(name,'memory_current');return structuredClone(source);},
+  const api={view:async name=>{
+      if(name==='memory_items')return {relevant_versions:{notebook:source.source_ref.revision}};
+      assert.ok(name==='memory_current'||name==='memory_status',name);
+      return structuredClone(source);
+    },
     command:async envelope=>{commands.push(envelope);throw Error('Unexpected command');}};
-  const make=async(mode)=>{
+  const create=(mode,deleteUI)=>{
     const host=doc.createElement('section');doc.body.append(host);
     const page=new NotebookPage({doc,host,item:'page',mode,bootstrap:{instance_id:'fixture-instance',actor:'fixture-person',authority:{authority_id:'fixture-authority',authority_epoch:'fixture-epoch'}},
-      api,read:api.view,send:api.command,header:Object.fromEntries(['eyebrow','title','description'].map(k=>[k,doc.createElement('div')])),
+      api,read:api.view,send:api.command,deleteUI,header:Object.fromEntries(['eyebrow','title','description'].map(k=>[k,doc.createElement('div')])),
       place:async()=>({title:'Fixture',href:'/fixture'}),askIn:async()=>null,viewPreference:{get:()=>mode,set(){}}});
-    pages.push(page);assert.equal(await page.load(),true);return page;
+    pages.push(page);return page;
   };
-  t.after(async()=>{try{for(const p of pages)p.close();await Promise.all(pages.map(p=>p.writing.serial));await Promise.all(disk.lifetimes);}finally{restore();}});
+  const make=async mode=>{const page=create(mode);assert.equal(await page.load(),true);return page;};
+  t.after(async()=>{try{for(const p of pages)p.close();await Promise.all(pages.map(p=>p.writing?.serial));await Promise.all(disk.lifetimes);}finally{restore();}});
   const owner=await make('cards'),page=await make(mode);
-  return {doc,owner,page,source,commands,disk,make};
+  return {doc,owner,page,source,commands,disk,make,create};
 }
+
+test('concurrent Notebook loads share the whole first open',async t=>{
+  const f=await fixture(t);
+  f.owner.close();await f.disk.lifetimes[0];
+  const storage=Promise.withResolvers(), header=Promise.withResolvers(), headerEntered=Promise.withResolvers();
+  let opens=0, registrations=0, headers=0;
+  const page=f.create('cards',{
+    beforeOpen(){opens++;return storage.promise;},
+    register(){registrations++;},changed(){},release(){},retains(){return false;}
+  });
+  const paintHeader=page.paintHeader.bind(page);
+  page.paintHeader=async()=>{headers++;headerEntered.resolve();await header.promise;return paintHeader();};
+  const first=page.load();
+  const second=page.load();
+  const results=Promise.allSettled([first,second]);
+  assert.equal(page.writing,undefined);
+  storage.resolve();
+  await headerEntered.promise;
+  const third=page.load();
+  const late=Promise.allSettled([third]);
+  header.resolve();
+  const opened={status:'fulfilled',value:true};
+  assert.deepEqual(await results,[opened,opened]);
+  assert.deepEqual(await late,[opened]);
+  assert.deepEqual({opens,registrations,headers,locks:f.disk.requested.length},{opens:1,registrations:1,headers:1,locks:3});
+  assert.equal(page.writing.value.body,f.source.body);
+  assert.equal(page.readOnly,false);
+});
+
+test('closing during Notebook open releases the device lock without drawing the old page',async t=>{
+  const f=await fixture(t);
+  f.owner.close();await f.disk.lifetimes[0];
+  const storage=Promise.withResolvers();
+  let registrations=0;
+  const page=f.create('cards',{
+    beforeOpen:()=>storage.promise,register(){registrations++;},changed(){},release(){},retains(){return false;}
+  });
+  const first=page.load(), second=page.load();
+  const results=Promise.allSettled([first,second]);
+  page.close();
+  storage.resolve();
+  const closed={status:'fulfilled',value:false};
+  assert.deepEqual(await results,[closed,closed]);
+  assert.equal(registrations,0);
+  assert.equal(page.list.children.length,0);
+  const fresh=await f.make('cards');
+  assert.equal(fresh.readOnly,false);
+});
+
+test('closing after the device lock is acquired releases it when the store opens',async t=>{
+  const f=await fixture(t);
+  f.owner.close();await f.disk.lifetimes[0];
+  const storage=Promise.withResolvers(), requested=Promise.withResolvers();
+  const open=f.disk.indexedDB.open;
+  f.disk.indexedDB.open=()=>{
+    const request=open(), held={result:request.result};
+    request.onsuccess=()=>{requested.resolve();storage.promise.then(()=>held.onsuccess());};
+    return held;
+  };
+  const page=f.create('cards'), opening=page.load();
+  await requested.promise;
+  assert.equal(f.disk.held.size,1);
+  page.close();
+  f.disk.indexedDB.open=open;
+  storage.resolve();
+  assert.equal(await opening,false);
+  await f.disk.lifetimes[2];
+  assert.equal(f.disk.held.size,0);
+  assert.equal(page.writing,undefined);
+  assert.equal((await f.make('cards')).readOnly,false);
+});
+
+test('a commit during first paint refreshes the Notebook sheet after opening',async t=>{
+  const f=await fixture(t);
+  f.owner.close();await f.disk.lifetimes[0];
+  const page=f.create('cards'), sheet={current:page,showing:true};
+  const header=Promise.withResolvers(), headerEntered=Promise.withResolvers();
+  const paintHeader=page.paintHeader.bind(page);
+  page.paintHeader=async()=>{headerEntered.resolve();await header.promise;return paintHeader();};
+  const opening=page.load();
+  await headerEntered.promise;
+  assert.equal(page.writing.base.revision,1);
+  f.source.source_ref.revision=2;
+  f.source.body=f.source.body.replace('Second words','Incoming words');
+  const following=NotebookSheet.prototype.followed.call(sheet,page);
+  header.resolve();
+  assert.deepEqual(await Promise.all([opening,following]),[true,true]);
+  assert.equal(page.writing.base.revision,2);
+  assert.equal(deckBody(page.deck),f.source.body);
+  assert.equal(f.disk.requested.length,3,'follow refreshes the shared writer');
+});
+
+test('returning to a Notebook sheet during its first open uses the same writer',async t=>{
+  const f=await fixture(t);
+  f.owner.close();await f.disk.lifetimes[0];
+  const hold=Promise.withResolvers();
+  const page=f.create('cards',{
+    beforeOpen:()=>hold.promise,register(){},changed(){},release(){},retains(){return false;}
+  });
+  const first=page.load(), sheet={current:null,leaving:new Map(),keepWriting(){}};
+  NotebookSheet.prototype.letGo.call(sheet,page);
+  await Promise.resolve();await Promise.resolve();await Promise.resolve();
+  const retained=sheet.leaving.get(page.item);
+  if(retained!==page){
+    hold.resolve();await first;
+    assert.equal(retained,page);
+  }
+  const again=NotebookSheet.prototype.obtain.call(sheet,page.item).page;
+  hold.resolve();
+  assert.equal(again,page);
+  assert.deepEqual(await Promise.all([first,again.load()]),[true,true]);
+  assert.equal(page.readOnly,false);
+  assert.equal(f.disk.requested.length,3);
+});
 const key=(page,key,extra={})=>{const event={key,target:page.list,preventDefault(){this.defaultPrevented=true;},...extra};page.key(event);return event;};
 const notice=page=>{assert.match(page.status.text,/another tab/);assert.equal(page.status.children[0].dataset.save,'attention');};
 const unchanged=f=>{
