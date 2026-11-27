@@ -3,7 +3,6 @@
 export class RailReadOrder {
   constructor() {
     this.visible = null;
-    this.deferredTail = Promise.resolve();
   }
   async whileVisible(load) {
     if (!this.visible) {
@@ -23,15 +22,12 @@ export class RailReadOrder {
       }
     }
   }
-  defer(read) {
+  async defer(read) {
     // Starting in a microtask gives other listeners of a commit a chance to
     // register visible work before either secondary reader starts.
-    const answer = this.deferredTail.then(async () => {
-      while (this.visible) await this.visible.done;
-      return read();
-    });
-    this.deferredTail = answer.catch(() => {});
-    return answer;
+    await Promise.resolve();
+    while (this.visible) await this.visible.done;
+    return read();
   }
 }
 

@@ -108,7 +108,8 @@ test('a visible rail pass holds passive Dim sync and a local edit still saves', 
     await deviceState.sync.idle();
     assert.equal(core.states.get('reader').dim_revision, 1);
   } finally { gate.resolve(); await rail; }
-  await order.defer(() => {});
+  await turn();
+  await deviceState.sync.idle();
   assert.equal(core.calls.filter(call => call.name === 'changes').length, 1, 'queued commits coalesce into one scan');
 });
 test('1004 conflict replays an absolute edit over another device without replacing its unrelated choice',async()=>{

@@ -42,11 +42,9 @@ test('the rail starts with a secondary in flight and a refused rail pass release
   const refused = assert.rejects(rail, /unavailable/);
   await turn();
   assert.deepEqual(calls, ['recorded action', 'Pipeline']);
+  visible.resolve();
+  await Promise.all([second, refused]);
+  assert.deepEqual(calls, ['recorded action', 'Pipeline', 'dimming']);
   first.resolve();
   await deferred;
-  await turn();
-  assert.deepEqual(calls, ['recorded action', 'Pipeline']);
-  visible.resolve();
-  await Promise.all([deferred, second, refused]);
-  assert.deepEqual(calls, ['recorded action', 'Pipeline', 'dimming']);
 });
