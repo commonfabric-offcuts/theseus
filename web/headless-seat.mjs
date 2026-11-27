@@ -135,7 +135,8 @@ export class SeatAddition {
         this.notice = 'Seat request is unconfirmed: its seat identity did not match the request.'; throw Error(this.notice);
       }
       this.row.request = null; this.row.requestLabel = null; this.row.lastSeatId = result.seat_request_id;
-      if (!retry && (sameForm(this.row.form, request.args) || sameForm(this.formArgs(), request.args))) {
+      const form = this.row.form;
+      if (!retry && sameForm({ ...form, template_id: form.template_id ?? request.args.template_id }, request.args)) {
         this.row.form = { name: '', role: '' };
       }
       if (ending) this.followSeat(result.seat, result.agent.name);

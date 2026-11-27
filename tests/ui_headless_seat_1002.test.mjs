@@ -71,6 +71,7 @@ test('seat settings and the single template stay bound across an unconfirmed Add
   await next.owner.again();
   assert.deepEqual(next.sent[0], first.sent[0]);
   assert.equal(next.owner.row.request, null);
+  assert.deepEqual(next.owner.row.form, { name: '', role: '' });
 });
 
 test('a saved Add from before template pinning clears its matching form on confirmation', async () => {
