@@ -1943,7 +1943,11 @@ function feedOf() {
     redrawn: () => { paintReaderStar(); paintReaderAside(); paintReaderTitle(); paintMessageUpdates(); }, home: $('new-message-sheet'),
     // A title bar's ⋯ opens the menu a right-click on its first message opens (item 473).
     // On a phone its menu offers the title bar's Reply and Archive first, as the glyphs fold into it (first).
-    menu: (item, anchor, first = []) => openMessageMenu({ anchor, items: messageMenuItems(item, anchor, anchor, first, anchor.closest('.reply-stack')?.querySelector(':scope > .dossier-cover')), label: 'This message', sheet: true }),
+    menu: (item, anchor, first = []) => {
+      const cover = anchor.closest('.reply-stack')?.querySelector(':scope > .dossier-cover');
+      const copy = menu?.copyChoice?.(item, { say: anchor, cover });
+      openMessageMenu({ anchor, items: messageMenuItems(item, null, anchor, copy ? [...first, copy] : first), label: 'This message', sheet: true });
+    },
     // A dossier's folder wears its first poster's colour, as their cards do: an agent's, in the reader's colours (item 477).
     colorOf: item => (item.author_kind === 'agent' && item.author_id !== bootstrap.actor ? agentShown(item.author_id) : null) });
   return stackFeed;
@@ -2736,7 +2740,8 @@ async function toggleMark() {
 // On a phone it opens as a sheet from the bottom, as a long press does.
 function openMessageMore(item, more) {
   clearVisitNew(item.id);
-  openMessageMenu({ anchor: more, items: messageMenuItems(item, more, more), label: 'This message', sheet: true });
+  const copy = menu?.copyChoice?.(item, { say: more });
+  openMessageMenu({ anchor: more, items: messageMenuItems(item, more, more, copy ? [copy] : []), label: 'This message', sheet: true });
 }
 // Capture before any menu callback mutates pending acts, folds or content.
 // Include the title bar's phone-only items and the second Move or join sheet.
@@ -2753,13 +2758,13 @@ function cardMenuActs(item, items, anchor) {
 // say: the ⋯ that says "Link copied", or null where none shows. anchor: what
 // the menu opened from, where a phone's "Move or join…" sheet opens too.
 // What the message's stack offers comes first, its moves and joins last (stack-feed.mjs).
-function messageMenuItems(item, say, anchor = say, first = [], cover = null, sayCopy = say) {
-  const items = sharedMessageMenuItems(item, { say, anchor, cover, sayCopy }), shared = new Set(items.map(item => item.label));
+function messageMenuItems(item, say, anchor = say, first = []) {
+  const items = sharedMessageMenuItems(item, { say, anchor }), shared = new Set(items.map(item => item.label));
   return cardMenuActs(item, [...first.filter(item => !shared.has(item.label)), ...items], anchor);
 }
 // Every message menu consumes this list. Only arrangement and clipped-card
 // expansion belong to the feed; the Reader adds its selection and layout.
-function sharedMessageMenuItems(item, { say, anchor = say, presentation = null, remote = null, cover = null, sayCopy = say, selected = null } = {}) {
+function sharedMessageMenuItems(item, { say, anchor = say, presentation = null, remote = null } = {}) {
   const inReader = Boolean(presentation), phone = Boolean(window.matchMedia?.('(max-width: 760px)').matches);
   const available = remote ? Boolean(item.stack_position) : !topicUnavailable, ended = remote ? false : outcomeReached;
   const rights = remote ? { ...editRights(), unavailable: !available, reached: false } : editRights();
@@ -2769,7 +2774,6 @@ function sharedMessageMenuItems(item, { say, anchor = say, presentation = null, 
   const move = item.stack_position?.can_move || item.dossier?.can_move
     ? [{ label: 'Move to topic…', glyph: 'movetopic', act: () => moveDossier(item.id, anchor) }] : [];
   const items = [...stack.first, ...move, { label: 'Copy Link', glyph: 'link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
-  if (!remote) items.push(messageCopyChoice(item, { say: sayCopy, presentation, cover, selected, notice: presentation ? words => reader.notice(words) : status }));
   if (!inReader && !remote) {
     const card = cardIn(messageEntries.get(item.id));
     if (cardScroll?.clipped(card, item)) items.push({ label: 'Show full message', glyph: 'full', act: () => run(() => cardScroll.showFull(card, item)) });
@@ -2802,7 +2806,7 @@ function sharedMessageMenuItems(item, { say, anchor = say, presentation = null, 
   return [...items, ...stack.last].map(choice => ({ ...choice, key: choice.key ?? choice.label,
     ...(remote ? { act: () => remote.choose(choice.key ?? choice.label, choice.label) } : {}) }));
 }
-function messageCopyChoice(item, { say, presentation, cover, selected, notice } = {}) {
+function messageCopyChoice(item, { say, presentation, cover, selected, notice = status } = {}) {
   const entry = messageEntries.get(item.id);
   const host = cover ?? (presentation ? reader.sourceBody : cardIn(entry)?.querySelector(':scope > .message-preview'));
   const selection = selected ?? clipboardSelection(host, () => presentation ? reader.selectedPassage() : menu?.passages.selected(entry)?.text);
@@ -2820,6 +2824,19 @@ function messageCopyChoice(item, { say, presentation, cover, selected, notice } 
   return copyWordsChoice({ selection, empty: !selection && known !== undefined && !hasClipboardWords(known),
     contents: () => known !== undefined ? render(known) : cardScroll.whole(item.id, 'foreground').then(render),
     say, current, status: notice });
+}
+
+function readerCopyChoice(p, { say, cover, selected }) {
+  const source = p?.source, ref = source?.source_ref;
+  if (!source || p.sourceUnavailable) return null;
+  const notice = words => reader.notice(words);
+  if (ref?.kind === 'message') {
+    return topic ? messageCopyChoice({ ...source, id: ref.id }, { say, cover, selected, presentation: p, notice }) : null;
+  }
+  if (ref?.kind !== 'memory' || !source.owner_scope) return null;
+  const copied = copyWordsChoice({ empty: !hasClipboardWords(source.body), contents: () => notebookClipboard(source.body, 'text'),
+    say, status: notice, current: () => registry.isSourceCurrent(p) && reader.source === source });
+  return { ...copied, key: 'copy-text' };
 }
 
 // A rail menu already holds its scoped message, including a preview when long.
@@ -2881,11 +2898,11 @@ function moveDossier(id, anchor) {
 // The rail reads one source; it does not open it to construct this list.
 function railDossierMenu(item, anchor, choose, notice) {
   const loaded = item.topic_id === topic?.id && views?.messages.get(item.id);
-  const copy = railMessageCopyChoice(loaded ?? item, anchor, notice);
-  if (loaded && !topicUnavailable) return messageMenuItems(loaded, null, anchor).map(choice => choice.key === copy.key ? copy : { ...choice,
-    act: () => choose(choice.key ?? choice.label, choice.label) });
+  const copy = notice ? [railMessageCopyChoice(loaded ?? item, anchor, notice)] : [];
+  if (loaded && !topicUnavailable) return [...copy, ...messageMenuItems(loaded, null, anchor).map(choice => ({ ...choice,
+    act: () => choose(choice.key ?? choice.label, choice.label) }))];
   const acts = item.acts ?? {}, position = item.stack_position;
-  return [copy, ...sharedMessageMenuItems(item, { anchor, remote: { choose, stack: {
+  return [...copy, ...sharedMessageMenuItems(item, { anchor, remote: { choose, stack: {
     cover: firstCoverMenuItem(document, { id: item.id, dossier: item.id, head: item, replies: [] }),
     starred: Boolean(acts.starred) || position.starred?.length > 0, folded: Boolean(acts.folded), head: true, hasReplies: true,
     position: true, below: position.below, found: true, reader: false,
@@ -2924,7 +2941,7 @@ function openDossierMenuRoute(id, route) {
 function messageContextMenu(event) {
   if (retired || event.defaultPrevented) return;
   if (event.target.closest('#reader')) return;
-  if (event.target.closest('a, input, textarea, select, [contenteditable]')) return;
+  if (event.target.closest('a, input, textarea, select, [contenteditable]') || window.getSelection()?.isCollapsed === false) return;
   // A message on its own or in a reply stack (reply-stacks.mjs).
   const section = event.target.closest('.reply-stack');
   const cover = event.target.closest('.dossier-cover');
@@ -2935,7 +2952,8 @@ function messageContextMenu(event) {
   event.preventDefault();
   const card = cardIn(entry), shown = !card.hidden, anchor = cover ?? (shown ? card : entry.querySelector('.fold-line') ?? entry);
   const at = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : null;
-  openMessageMenu({ anchor, at, items: messageMenuItems(item, menu?.moreFor(entry) ?? null, anchor, [], cover, null), label: 'This message', sheet: true });
+  const copy = menu?.copyChoice?.(item, { cover });
+  openMessageMenu({ anchor, at, items: messageMenuItems(item, menu?.moreFor(entry) ?? null, anchor, copy ? [copy] : []), label: 'This message', sheet: true });
 }
 async function copyOutcomeLink(id) {
   const link = new URL(routeHref({ kind: 'workspace', id }), location.href).href;
@@ -2996,10 +3014,10 @@ async function copyPageLink(source, revision, say) {
 // menu opens as a sheet from the bottom.
 // The Reader's message descriptors also own a body double-click's Edit:
 // ending that edit keeps the Reader open and returns focus to its own More.
-function readerMessageMenuItems(p, { say = $('reader-menu'), cover = null, selected = null } = {}) {
+function readerMessageMenuItems(p) {
   const ref = p?.source?.source_ref, button = $('reader-menu');
   if (!p || p.sourceUnavailable || ref?.kind !== 'message' || !topic) return [];
-  const items = sharedMessageMenuItems({ ...p.source, ...readerFeedItem(), id: ref.id, author_id: p.source.author }, { say, anchor: button, presentation: p, cover, selected });
+  const items = sharedMessageMenuItems({ ...p.source, ...readerFeedItem(), id: ref.id, author_id: p.source.author }, { say: button, anchor: button, presentation: p });
   const current = topicState?.topic;
   // Explicit topic labels keep these separate from the message's Archive.
   // The normal departure guard retains Reader writing before it closes.
@@ -3017,13 +3035,18 @@ function readerTextEdit(event) {
       target === body || !body.contains(target) || target.closest('a, button, input, textarea, select, [contenteditable], [role="button"], img, svg')) return null;
   return readerMessageMenuItems(registry.current).find(item => item.label === 'Edit');
 }
+function openReaderMenu() {
+  openReaderMenuAt();
+}
 let readerCopyHeld = null;
-function openReaderMenu(at = null, host = null) {
+function openReaderMenuAt(at = null, host = null) {
   const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu');
   const cover = host?.closest('.dossier-cover') ?? null;
   const held = readerCopyHeld; readerCopyHeld = null;
   const selected = !host && held && held.presentation === p && held?.source === p?.source ? held.selection : null;
-  const items = readerMessageMenuItems(p, { say: at ? null : button, cover, selected });
+  const items = readerMessageMenuItems(p);
+  const copy = reader.copyMenuWords?.(p, { say: at ? null : button, cover, selected });
+  if (ref?.kind === 'message' && copy) items.push(copy);
 
   if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
     const source=p.source;
@@ -3038,9 +3061,7 @@ function openReaderMenu(at = null, host = null) {
         page.menuItems({rail:true}).find(item=>item.key===key&&!item.disabled)?.act();
       }
     });
-    const copied = copyWordsChoice({ empty: !hasClipboardWords(source.body), contents: () => notebookClipboard(source.body, 'text'),
-      say: at ? null : button, status: words => reader.notice(words), current: () => registry.isSourceCurrent(p) && reader.source === source });
-    items.push(...notebookReaderMenuItems(source,act,{...copied,key:'copy-text'}));
+    items.push(...notebookReaderMenuItems(source,act,copy));
   }
   if (reader.quotable) items.push({ label: 'Quote selection', glyph: 'quote', act: () => reader.quote() });
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, glyph: 'layout', act: () => reader.toggleLayout() });
@@ -4314,6 +4335,8 @@ async function initialize() {
   } });
   $('mark-unread').onclick = () => run(toggleMark);
   $('add-to-pipeline').onclick = () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true));
+  menu.copyChoice = messageCopyChoice;
+  reader.copyMenuWords = readerCopyChoice;
   const readerMore = $('reader-menu');
   // A touch press can clear the Reader's browser selection before click.
   readerMore.addEventListener('pointerdown', () => {
@@ -4327,12 +4350,12 @@ async function initialize() {
   readerMore.onclick = () => openReaderMenu();
   const readerDoor = $('reader');
   const readerMenuHost = target => target.closest('a, button, input, textarea, select, [contenteditable]') ? null : target.closest('.dossier-cover, #source-body');
-  const cancelReaderHold = menuDoor(readerDoor, readerMenuHost, (host, at) => openReaderMenu(at, host), { context: false });
+  const cancelReaderHold = menuDoor(readerDoor, readerMenuHost, (host, at) => openReaderMenuAt(at, host), { context: false });
   readerDoor.addEventListener('contextmenu', event => {
     const host = readerMenuHost(event.target);
-    if (!host || event.defaultPrevented) return;
+    if (!host || event.defaultPrevented || window.getSelection()?.isCollapsed === false) return;
     event.preventDefault();
-    openReaderMenu({ x: event.clientX, y: event.clientY }, host);
+    openReaderMenuAt({ x: event.clientX, y: event.clientY }, host);
   });
   window.addEventListener('pagehide', cancelReaderHold);
   $('source-body').addEventListener('mousedown', event => {

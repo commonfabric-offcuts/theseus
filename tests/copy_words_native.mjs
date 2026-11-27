@@ -153,6 +153,11 @@ try {
   await check('selection inside feed uses the selected words and native shortcut label', async () => {
     const selected = await select(words('message') + ' strong');
     assert.equal(selected, 'marked words');
+    if (!phone) {
+      await locator(words('message') + ' strong').click({ button: 'right' });
+      assert.equal(await menu.count(), 0);
+      assert.equal(await page.evaluate(() => getSelection().toString()), selected);
+    }
     await press(feedMore);
     assert.equal(await copy.getAttribute('data-menu-label'), 'Copy selected text');
     assert.ok(['⌘C', 'Ctrl+C'].includes(await copy.getAttribute('data-menu-keys')));
@@ -171,6 +176,8 @@ try {
   });
   await check('right-click Copy text uses the status line', async () => {
     await press('#topic-title');
+    await page.keyboard.press('ArrowRight');
+    assert.ok(await page.evaluate(() => getSelection().isCollapsed));
     await locator(words('message') + ' strong').click({ button: 'right' });
     assert.equal(await copy.getAttribute('data-menu-label'), 'Copy text');
     await copyFrom(copy, '#app-status', 'Text copied.');
@@ -293,10 +300,10 @@ try {
     if (phone) await press(row.locator('.deck-menu'));
     else await row.click({ button: 'right' });
     const cardCopy = page.getByRole('menu', { name: 'This card', exact: true }).locator('[data-notebook-action=copy-text]');
-    assert.equal(await cardCopy.textContent(), 'Copy selected cards');
+    assert.equal(await cardCopy.textContent(), 'Copy text');
     await screenshot('notebook-card-menu');
-    await copyFrom(cardCopy, phone ? '#deck-page .deck-menu.said' : '#deck-page .deck-status', 'Cards copied');
-    await expectClip('## Two\n\nText in two.', /<h2[^>]*>Two<\/h2>/);
+    await copyFrom(cardCopy, phone ? '#deck-page .deck-menu.said' : '#deck-page .notebook-page-notice', phone ? 'Text copied' : 'Card text copied.');
+    await expectClip('Two\n\nText in two.', /<h2[^>]*>Two<\/h2>[\s\S]*Text in two/);
   });
   await check('several Notebook cards copy in page order', async () => {
     const picked = locator('#deck-page .deck-card[aria-current=true]');

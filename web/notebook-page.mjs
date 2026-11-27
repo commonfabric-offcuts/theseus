@@ -771,21 +771,16 @@ export class NotebookPage extends DeckPage {
     this.revisionShown();
     putBack();
   }
-  copyWordsItem({say, selected = this.selected, at = null, notice = words => this.say(words)} = {}) {
+  copyWordsItem({say, selected = this.selected, notice = words => this.say(words)} = {}) {
     const w = this.writing, mode = this.mode;
     const body = mode === 'cards' ? this.previewBody() : w?.value?.body ?? '';
-    const cards = mode === 'cards' && (selected?.size || at !== null);
-    const picks = selected?.size ? new Set(selected) : at === null ? null : new Set([at]);
+    const cards = mode === 'cards' && Boolean(selected?.size);
+    const picks = cards ? new Set(selected) : null;
     const current = () => this.writing === w && !w?.closed && !w?.deleted && !this.unavailable && !this.detached &&
       !this.listening.signal.aborted && this.menuCurrent?.() !== false;
     const choice = copyWordsChoice({ cards, empty: !hasClipboardWords(body), contents: () => notebookClipboard(body, mode, picks, this.doc),
       say, current, doc: this.doc, status: notice });
     return { ...choice, key: 'copy-text' };
-  }
-  cardMenuItems(ref, anchor, at = null) {
-    const index = this.cardAt(ref);
-    const copy = this.copyWordsItem({say:at ? null : anchor, at:index});
-    return super.cardMenuItems(ref, anchor).map(item => item.key === copy.key ? copy : item);
   }
   menuItems(options) { return notebookMenuItems(this,options); }
 

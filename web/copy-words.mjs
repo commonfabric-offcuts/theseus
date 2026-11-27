@@ -53,7 +53,7 @@ function pasteHTML(rendered) {
 
 export function clipboardSelection(host, projected, doc = globalThis.document) {
   if (!host) return null;
-  const selection = doc.getSelection();
+  const selection = doc?.getSelection?.();
   if (!selection?.rangeCount || selection.isCollapsed) return null;
   const range = selection.getRangeAt(0);
   if (!host.contains(range.startContainer) || !host.contains(range.endContainer)) return null;
@@ -72,8 +72,35 @@ export function notebookClipboard(body, mode, selected, doc = globalThis.documen
   return { plain: entries.map(entry => entry.plain).join('\n\n'), html: entries.map(entry => entry.html).join('<hr>') };
 }
 
+export async function writeClipboardWords(contents, doc, current = () => true) {
+  const win = doc?.defaultView, nav = win?.navigator ?? globalThis.navigator;
+  const ready = Promise.resolve(contents()).then(words => {
+    if (!current() || !words.plain.trim()) throw Error(COPY_REFUSED);
+    return words;
+  });
+  // Promise-valued blobs preserve the press's activation while the full
+  // authorized source arrives. Only build HTML for a clipboard that accepts it.
+  try {
+    const Item = win?.ClipboardItem;
+    if (Item && nav?.clipboard?.write) {
+      const blob = (type, value) => {
+        const pending = ready.then(words => new Blob([value(words)], { type }));
+        pending.catch(() => {}); // A constructor can refuse before consuming its promises.
+        return pending;
+      };
+      await nav.clipboard.write([new Item({
+        'text/plain': blob('text/plain', words => words.plain),
+        'text/html': blob('text/html', words => typeof words.html === 'function' ? words.html() : words.html),
+      })]);
+      return true;
+    }
+  } catch { /* The plain clipboard path also works when the browser refuses rich copy. */ }
+  const { plain } = await ready;
+  return current() && copyText(plain, nav);
+}
+
 export function copyWordsChoice({ selection, cards = false, empty = false, contents, say, status, current = () => true, doc = globalThis.document }) {
-  const mac = /Mac|iPhone|iPad/.test(doc?.defaultView?.navigator.platform ?? '');
+  const mac = /Mac|iPhone|iPad/.test(doc?.defaultView?.navigator?.platform ?? '');
   return {
     key: 'Copy text',
     label: selection ? 'Copy selected text' : cards ? 'Copy selected cards' : 'Copy text',
@@ -83,45 +110,15 @@ export function copyWordsChoice({ selection, cards = false, empty = false, conte
     tooltip: empty ? 'No text to copy' : undefined,
     act: async () => {
       if (!current()) return;
-      const nav = doc.defaultView?.navigator;
+      let copied = false;
       try {
-        if (selection) {
-          if (!await copyText(selection, nav)) throw Error(COPY_REFUSED);
-          if (current()) confirm();
-          return;
-        }
-        const ready = Promise.resolve(contents()).then(words => {
-          if (!current() || !words.plain.trim()) throw Error(COPY_REFUSED);
-          return words;
-        });
-        // Promise-valued blobs let the explicit gesture own the clipboard
-        // write even when the authorized full source still has to arrive.
-        try {
-          const Item = doc.defaultView?.ClipboardItem;
-          if (!Item || !nav?.clipboard?.write) await ready;
-          else {
-            const blob = (type, key) => {
-              const pending = ready.then(words => new Blob([words[key]], { type }));
-              pending.catch(() => {}); // An unsupported constructor may refuse before it consumes the promises.
-              return pending;
-            };
-            await nav.clipboard.write([new Item({ 'text/plain': blob('text/plain', 'plain'), 'text/html': blob('text/html', 'html') })]);
-            if (current()) confirm();
-            return;
-          }
-        } catch { /* The existing plain clipboard path also works in older browsers. */ }
-        const { plain } = await ready;
-        if (!current()) return;
-        if (!await copyText(plain, nav)) throw Error(COPY_REFUSED);
-        if (current()) confirm();
-      } catch {
-        if (current()) status(COPY_REFUSED);
-      }
-      function confirm() {
-        const words = selection ? 'Selection copied' : cards ? 'Cards copied' : 'Text copied';
-        if (say?.getClientRects().length) sayOn(say, words, doc);
-        else status(words + '.');
-      }
+        copied = selection ? await copyText(selection, doc?.defaultView?.navigator) : await writeClipboardWords(contents, doc, current);
+      } catch { /* A refused source read also leaves the clipboard untouched. */ }
+      if (!current()) return;
+      if (!copied) { status(COPY_REFUSED); return; }
+      const words = selection ? 'Selection copied' : cards ? 'Cards copied' : 'Text copied';
+      if (say?.getClientRects().length) sayOn(say, words, doc);
+      else status(words + '.');
     },
   };
 }
