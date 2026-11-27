@@ -71,6 +71,32 @@ class TopicImagesCase(ReaderCase):
         for limit in (0, 51, True, "3"):
             self.assertEqual(self.images(limit=limit)["error"]["code"], "INVALID_ARGUMENT", limit)
 
+    def test_pdfs_are_opt_in_and_use_the_verified_source_of_the_newest_attachment(self):
+        self.ready("png", "one.png")
+        self.ready("plan", "Project plan.pdf", content_type="application/pdf", data=b"%PDF-1.4\n%%EOF\n")
+        self.post("Earlier plan", attachments=[{"id": "plan"}])
+        self.post("Reference image", attachments=[{"id": "png"}])
+        newest = self.post("Newest plan", attachments=[{"id": "plan"}])
+        self.assertEqual([item["attachment"]["id"] for item in self.images()["items"]], ["png"])
+        files = self.images(include_pdfs=True)["items"]
+        self.assertEqual([item["attachment"]["id"] for item in files], ["plan", "png"])
+        self.assertEqual(files[0]["source_ref"], {"kind": "message", "id": newest})
+        self.assertEqual([item["attachment"]["id"] for item in self.images(include_pdfs=True, limit=1)["items"]], ["plan"])
+        with self.store.open_media("agent-b", {"media_id": "plan", "source_ref": files[0]["source_ref"]}) as opened:
+            self.assertEqual(opened.descriptor["name"], "Project plan.pdf")
+        self.assertEqual(self.images(include_pdfs="yes")["error"]["code"], "INVALID_ARGUMENT")
+
+    def test_a_newer_conversation_pdf_cannot_spend_the_viewed_topics_file_limit(self):
+        self.ready("seen-image", "one.png")
+        self.ready("conversation-pdf", "Conversation.pdf", content_type="application/pdf", data=b"%PDF-1.4\n%%EOF\n")
+        self.post("An image on this topic", attachments=[{"id": "seen-image"}])
+        conversation_id = self.sql("SELECT id FROM topics WHERE workspace_id='w1' AND kind='conversation'")[0][0]
+        self.committed(self.command("message.post", {"body": "A later Conversation file",
+            "attachments": [{"id": "conversation-pdf"}]}, target={"topic_id": conversation_id}))
+        self.assertEqual([item["attachment"]["id"] for item in self.images(limit=1, include_pdfs=True)["items"]], ["seen-image"])
+        direct = self.store.view("owner", "topic_images", {"topic_id": conversation_id, "limit": 1, "include_pdfs": True})
+        self.assertEqual([item["attachment"]["id"] for item in direct["items"]], ["conversation-pdf"])
+
 
 if __name__ == "__main__":
     unittest.main()

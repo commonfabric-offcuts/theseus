@@ -73,7 +73,7 @@ test('788 revised topic reads only its Notebook and links, retaining exact bound
   assert.deepEqual(f.calls, [
     ['pipeline', { workspace_id: 'w788', section: 'now', limit: 100 }],
     ['topic_tools', { topic_id: 't788' }], ['memory_items', { owner_scope: scope, limit: 20 }],
-    ['topic_messages', { topic_id: 't788', direction: 'before', limit: 50 }], ['topic_images', { topic_id: 't788', limit: 24 }],
+    ['topic_messages', { topic_id: 't788', direction: 'before', limit: 50 }], ['topic_images', { topic_id: 't788', limit: 24, include_pdfs: true }],
   ]);
   assert.deepEqual(visible(f.r), ['notebook']);
 });
@@ -170,7 +170,7 @@ test('788 real Shell resolves the legacy Conversation address before ready and s
     ['conversation', { workspace_id: 'w788' }],
     ['pipeline', { workspace_id: 'w788', section: 'now', limit: 100 }],
     ['topic_tools', { topic_id: 'c788' }], ['memory_items', { owner_scope: { kind: 'topic', id: 'c788' }, limit: 20 }],
-    ['topic_messages', { topic_id: 'c788', direction: 'before', limit: 50 }], ['topic_images', { topic_id: 'c788', limit: 24 }],
+    ['topic_messages', { topic_id: 'c788', direction: 'before', limit: 50 }], ['topic_images', { topic_id: 'c788', limit: 24, include_pdfs: true }],
   ]);
   assert.equal(f.host.querySelector('.things-scope') === null, true);
   assert.equal(f.host.querySelector('.things-name') === null, true);

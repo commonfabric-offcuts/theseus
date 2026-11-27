@@ -177,7 +177,7 @@ VIEWS = {
     "outcome_light": {"workspace_id"},
     "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done", "build"}, "topic": {"topic_id"},
     "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction", "items", "message_ids", "position_format"}, "source": {"source_ref", "kind", "id", "revision"},
-    "topic_images": {"topic_id", "limit"},
+    "topic_images": {"topic_id", "limit", "include_pdfs"},
     "memory_stars": {"topic_id", "cursor", "limit"},
     "memory_items": {"owner_scope", "cursor", "limit"}, "memory_current": {"item_id"}, "memory_status": {"item_id"},
     "media": {"media_id", "source_ref"},
