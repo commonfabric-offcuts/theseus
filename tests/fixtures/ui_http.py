@@ -709,7 +709,7 @@ def main():
             return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", head) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
 
         def published(operation, items, sender):
-            # Attachments, each published by sender as an agent's CLI publishes one: {"name", "text"},
+            # Attachments, each published by sender as an agent's CLI publishes one: {"name", "text"}, {"name", "pdf"},
             # {"name", "image"}, an image from tests/fixtures/media by its file name, or {"name", "png": [width,
             # height]}, a PNG of that size drawn here. Each is OPERATION-media-N.
             attached = []
@@ -720,6 +720,8 @@ def main():
                 elif "image" in item:
                     data = (Path(__file__).parent / "media" / item["image"]).read_bytes()
                     kind = {".png": "image/png", ".jpg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}[Path(item["image"]).suffix]
+                elif "pdf" in item:
+                    data, kind = item["pdf"].encode("ascii"), "application/pdf"
                 else:
                     data, kind = item["text"].encode(), "text/plain"
                 command("media.begin", "%s-media-begin-%d" % (operation, number), {

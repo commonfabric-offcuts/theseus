@@ -141,6 +141,17 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .things-thumbs a.thumb img{width:100%;height:100%;object-fit:cover;display:block}
 /* Grid keys focus the picture; its tile clips the picture's own outer ring. */
 .things-thumbs a.thumb:has(>.image-thumb:focus-visible){outline:2px solid var(--focus);outline-offset:1px}
+#things .things-thumbs{grid-template-columns:repeat(3,minmax(0,1fr))}
+:root:not([data-look=paper]) #things{--file-tile:#101010;--file-line:#242525}
+:root[data-look=paper] #things{--file-tile:#1b1f20;--file-line:#2e3333}
+@media(prefers-color-scheme:light){:root[data-look=paper] #things{--file-tile:#d9d9d5;--file-line:#c7c8c5}}
+:root:root #things .things-thumbs a.thumb{background:var(--file-tile);border-color:var(--file-line)}
+:root:root #things .things-thumbs a.thumb:hover{border-color:var(--muted)}
+:root:root #things .things-thumbs a.thumb:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+#things .things-thumbs a.thumb.file-tile{display:flex;flex-direction:column;justify-content:space-between;padding:.4rem .42rem .38rem;color:var(--ink);text-decoration:none}
+#things .file-tile .file-kind{display:flex;align-items:center;gap:.25rem;font-size:.62rem;font-weight:600;letter-spacing:.06em;line-height:1}
+#things .file-tile .file-kind svg{width:14px;height:14px;flex:none;color:var(--muted)}
+#things .file-tile .file-name{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;font-size:.68rem;line-height:1.25;overflow-wrap:anywhere}
 
 /* Outcome Links keep the compact icon/title form of archived dossiers. */
 .things-sec[data-key=previews] .links-grid{grid-template-columns:repeat(auto-fill,minmax(4.5rem,1fr));gap:.55rem .35rem}

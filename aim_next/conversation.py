@@ -792,6 +792,9 @@ class Conversation:
         limit = args.get("limit", 24)
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
             raise Refusal("INVALID_ARGUMENT", "Invalid image count")
+        include_pdfs = args.get("include_pdfs", False)
+        if type(include_pdfs) is not bool:
+            raise Refusal("INVALID_ARGUMENT", "include_pdfs is true or false")
         topics = [topic]
         if topic["kind"] != "conversation":
             conversation = db.execute("SELECT id FROM topics WHERE workspace_id=? AND kind='conversation'", (topic["workspace_id"],)).fetchone()
@@ -802,6 +805,9 @@ class Conversation:
                     pass
         found = []
         for place in topics:
+            # The Files rail only paints the requested topic. PDFs in another
+            # scope must not spend that topic's share of the result limit.
+            pdfs_here = include_pdfs and place["id"] == topic["id"]
             # Each topic's newest messages only, through the (topic_id, seq)
             # index: the window bounds the read however long the topic is.
             rows = db.execute("SELECT m.seq,m.id,m.topic_id,m.author_id,m.sent_ms,m.attachments FROM "
@@ -813,10 +819,12 @@ class Conversation:
                 if withheld(row["id"]):
                     continue
                 for attachment in json.loads(row["attachments"]):
-                    if attachment.get("inline") is True and attachment.get("content_type") in IMAGE_TYPES:
+                    content_type = attachment.get("content_type")
+                    if ((attachment.get("inline") is True and content_type in IMAGE_TYPES)
+                            or (pdfs_here and content_type == "application/pdf")):
                         found.append((row["seq"], {"source_ref": {"kind": "message", "id": row["id"]}, "topic_id": row["topic_id"],
                                                    "author_id": row["author_id"], "sent_ms": row["sent_ms"], "attachment": attachment}))
-        # One entry per image: the newest message that carries it.
+        # One entry per file: the newest message that carries it.
         items, seen = [], set()
         for _, item in sorted(found, key=lambda pair: -pair[0]):
             if item["attachment"]["id"] in seen:
