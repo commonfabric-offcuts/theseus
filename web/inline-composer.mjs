@@ -16,6 +16,8 @@ import { reach } from './arrow-reach.mjs';
 import { departing, landingIn, land, rowAppears, settle } from './paper-flight.mjs';
 import { pencilKey, PencilInput } from './pencil-keys.mjs';
 
+const containsPoint = ({ left, right, top, bottom }, { clientX, clientY }) =>
+  clientX >= left && clientX < right && clientY >= top && clientY < bottom;
 
 // The inline DOM adapter shares the existing registry/session/upload owners.
 // It has no source body, note editor, storage or retry scheduler of its own.
@@ -92,6 +94,7 @@ export class InlineComposer {
     let outside = false;
     this.sheet?.addEventListener('pointerdown', event => { outside = event.target === this.sheet; });
     this.sheet?.addEventListener('click', event => { if (outside && event.target === this.sheet) putBack(); outside = false; });
+    this.sheet?.addEventListener('wheel', event => this.scrollRail(event), { passive: false });
     if (!cardReply) this.pencilInput = new PencilInput(this);
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),readOnly:()=>this.state().readOnly,
       members:()=>this.members(),mentions:()=>this.kind==='message',
@@ -333,6 +336,21 @@ export class InlineComposer {
       this.layoutInstance = instanceId;
       this.layout = new ReaderLayout(instanceId);
     }
+  }
+  scrollRail(event) {
+    const sheet = this.sheet;
+    if (this.disposed || !this.popped || !sheet.open || sheet.classList.contains('notebook-mode')
+        || event.target !== sheet || event.ctrlKey || event.shiftKey) return;
+    const doc = sheet.ownerDocument;
+    if (!doc.defaultView.matchMedia('(min-width: 761px)').matches
+        || containsPoint(sheet.getBoundingClientRect(), event)) return;
+    const rail = doc.getElementById('rail');
+    if (!rail || rail.scrollHeight <= rail.clientHeight || !containsPoint(rail.getBoundingClientRect(), event)) return;
+    // The modal keeps the rail inert. Forward only vertical wheel movement over its visible backdrop.
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rail.clientHeight : 1;
+    if (!event.deltaY) return;
+    event.preventDefault();
+    rail.scrollBy({ top: event.deltaY * unit, behavior: 'instant' });
   }
   pop() {
     if (!this.sheet || this.sheet.open || this.root.hidden) return;
