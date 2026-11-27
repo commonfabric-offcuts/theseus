@@ -26,8 +26,13 @@ page or actor starts with no cached titles from the previous one.
 
 Rows join the outline's single Tab stop and native arrow navigation as children
 of their topic. Return, a click or a phone tap opens the canonical root in its
-actual topic. The topic opens, the dossier is revealed for this visit, scrolled into view
-and selected as by the arrows. No Reader or reply box opens (item 780;
+actual topic. This landing reads at most 30 messages, including the root and
+the newest visible members of its dossier. Core follows indexed reply and join
+links within the dossier. The feed retains its separate topic paging ranges.
+A filled marker names a starred dossier when a reply carries the star, and
+the first message's toggle keeps its own meaning. The dossier is revealed
+for this visit, scrolled into view and selected as by the arrows.
+No Reader or reply box opens (item 780;
 [landing contract](starred-dossier-landing.md)). Leaving the topic uses the
 existing writing guard. An already-open same-topic Reader retains its source
 and writing; landing opens no additional presentation. Children never reorder their

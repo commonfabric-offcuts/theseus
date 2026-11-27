@@ -23,7 +23,7 @@ const REVISION = /^[1-9][0-9]{0,17}$/;
 export function routeKey(route) {
   const fields = {root:[],health:[],image:['id','message'],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],tool:['id','tool'],cards:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
   const optional = (OPTIONAL[route?.kind] ?? []).filter(key=>key in route);
-  if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>key === 'land' ? route[key] === true : validId(route[key]))) badRoute();
+  if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>key === 'land' ? [true, 'dossier'].includes(route[key]) : validId(route[key]))) badRoute();
   // Landing-only links name a message, and never imply opening its Reader.
   if ('land' in route && !('message' in route)) badRoute();
   if (!menuRouteValid(route)) badRoute();
@@ -40,7 +40,7 @@ export function routeHref(route) {
   routeKey(route);
   const page = route.page ? {page:route.page,...(route.revision?{revision:route.revision}:{})} : {};
   if (route.kind === 'image') return '?' + new URLSearchParams({ image: route.id, message: route.message });
-  const params = route.kind === 'root' ? null : route.kind === 'health' ? {health:''} : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...(route.land?{land:'only'}:{}),...(route.at?{at:route.at}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
+  const params = route.kind === 'root' ? null : route.kind === 'health' ? {health:''} : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...(route.land?{land:route.land === 'dossier' ? 'dossier' : 'only'}:{}),...(route.at?{at:route.at}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
     route.kind === 'workspace' ? {workspace:route.id,...page} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} : route.kind === 'tool' ? {workspace:route.id,tool:route.tool} : route.kind === 'cards' ? {cards:route.id,...(route.write?{write:route.write}:{}),...(route.view?{view:route.view}:{}),...(route.card?{card:route.card}:{})} :
     route.kind === 'item' ? {pipeline:route.id,item:route.item} : route.kind === 'phone-check' ? {'phone-check':route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
       {workspace:route.workspace,opening:route.opening,opening_topic:route.topic,...(route.from?{opening_from:route.from}:{})};
@@ -61,7 +61,8 @@ export function parseRoute(url) {
   else if (keys.length===1 && p.get('health')==='') route={kind:'health'};
   else if (keys.length===1 && p.has('topic')) route={kind:'topic',id:p.get('topic')};
   else if (keys.length===2 && p.has('topic') && p.has('message')) route={kind:'topic',id:p.get('topic'),message:p.get('message')};
-  else if (keys.length===3 && p.has('topic') && p.has('message') && p.get('land')==='only') route={kind:'topic',id:p.get('topic'),message:p.get('message'),land:true};
+  else if (keys.length===3 && p.has('topic') && p.has('message') && ['only', 'dossier'].includes(p.get('land')))
+    route={kind:'topic',id:p.get('topic'),message:p.get('message'),land:p.get('land') === 'dossier' ? 'dossier' : true};
   // A topic opened at its oldest unread message: what its unread count leads to (item 613).
   else if (keys.length===2 && p.has('topic') && p.has('at')) route={kind:'topic',id:p.get('topic'),at:p.get('at')};
   // A Notebook page's link: its topic's or its outcome's, the page, and perhaps its revision.

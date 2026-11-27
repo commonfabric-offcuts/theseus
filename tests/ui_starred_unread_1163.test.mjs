@@ -10,10 +10,10 @@ test('1163 a dossier count and Return use its oldest unread through the existing
   assert.equal(badge.title, 'Show the oldest unread message');
   assert.equal(link.tabIndex, -1); assert.equal(badge.getAttribute('tabindex'), null);
   assert.match(link.getAttribute('aria-label'), /Starred dossier: Orchard plan, 2 unread/);
-  assert.equal(link.href, '?topic=topic&message=root&land=only');
+  assert.equal(link.href, '?topic=topic&message=root&land=dossier');
   press1163(link); press1163(link, badge); press1163(link, link, { detail: 0 });
   assert.deepEqual(f.calls.map(c => c.target), [
-    { kind: 'topic', id: 'topic', message: 'root', land: true },
+    { kind: 'topic', id: 'topic', message: 'root', land: 'dossier' },
     { kind: 'topic', id: 'topic', message: 'oldest', land: true },
     { kind: 'topic', id: 'topic', message: 'oldest', land: true },
   ]);
@@ -47,7 +47,7 @@ test('1163 modified pointers keep the ordinary root href and invoke no outline n
   for (const extra of [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }]) {
     assert.equal(press1163(link, badge, extra).defaultPrevented, false);
   }
-  assert.deepEqual(f.calls, []); assert.equal(link.href, '?topic=topic&message=root&land=only');
+  assert.deepEqual(f.calls, []); assert.equal(link.href, '?topic=topic&message=root&land=dossier');
 });
 
 test('1163 a newly arrived count replaces its oldest target and never adds a second badge', t => {
