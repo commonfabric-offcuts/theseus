@@ -1,5 +1,5 @@
 import { COPY_REFUSED, copyText, sayOn } from './message-menu.mjs';
-import { clipboardNodes, hasTextDisplayRules } from './message-format.mjs';
+import { clipboardList, clipboardNodes, hasTextDisplayRules } from './message-format.mjs';
 import { stripDetails } from './card-details.mjs';
 import { deckBody, parseDeck } from './deck.mjs';
 import { fenceEnd, fenceOpen } from './fences.mjs';
@@ -51,13 +51,82 @@ function pasteHTML(rendered) {
   return rendered.innerHTML;
 }
 
+const elementOf = node => node.nodeType === 1 ? node : node.parentElement;
+const listMarker = row => row?.querySelector(':scope > .md-marker')?.textContent ?? '';
+
+function selectionHTML(range, host, doc, plain) {
+  const startRow = elementOf(range.startContainer)?.closest('.md-item');
+  const endRow = elementOf(range.endContainer)?.closest('.md-item');
+  let fragment = range.cloneContents();
+  // cloneContents omits ancestors shared by both endpoints. They can carry
+  // the only formatting, such as the code block or a single list row.
+  for (let node = elementOf(range.commonAncestorContainer); node && node !== host; node = node.parentElement) {
+    const parent = node.cloneNode(false);
+    parent.append(fragment);
+    fragment = parent;
+  }
+  const root = doc.createElement('div');
+  root.append(fragment);
+  const clippedRows = root.querySelectorAll('.md-item');
+  const firstRow = startRow && clippedRows[0];
+  const lastRow = endRow && clippedRows[clippedRows.length - 1];
+  for (const control of root.querySelectorAll('button, input, iframe, img, .message-attachments, .fence-copy-unavailable, .source-end-line')) control.remove();
+  for (const wrapper of root.querySelectorAll('.md-fence, .md-table-wrap')) wrapper.replaceWith(...wrapper.childNodes);
+
+  // A Reader passage is a row, even when several rows belong to one list.
+  let list, continues = false;
+  for (const passage of root.querySelectorAll('.md-list-passage')) {
+    if (continues && list.nextSibling === passage) {
+      list.append(...passage.childNodes);
+      passage.remove();
+    } else list = passage;
+    continues = passage.matches('.md-list-more');
+  }
+  const blocks = [...root.querySelectorAll('.md-list, .md-pre, .md-p, .md-heading, .md-quote, .md-rule')].reverse();
+  for (const block of blocks) {
+    if (block.matches('.md-list')) {
+      const rows = [...block.querySelectorAll(':scope > .md-item')].flatMap(row => {
+        const words = row.querySelector(':scope > .md-item-words');
+        const original = row === firstRow ? startRow : row === lastRow ? endRow : row;
+        const glyph = listMarker(original), selectedGlyph = listMarker(row);
+        // A clipped edge can contain an empty text node at a caret boundary.
+        if (!words?.textContent && !(selectedGlyph && selectedGlyph === glyph)) return [];
+        const marker = original.dataset.mdNumber ?? glyph;
+        return [{ marker, depth: Number(row.style.getPropertyValue('--md-depth')) || 0,
+          task: /^[☐☑]$/.test(glyph) ? glyph : null, contents: [...(words?.childNodes ?? [])] }];
+      });
+      block.replaceWith(clipboardList(rows, doc));
+      continue;
+    }
+    const heading = /\bmd-h([1-6])\b/.exec(block.className);
+    const tag = heading ? `h${heading[1]}` : block.matches('.md-quote') ? 'blockquote'
+      : block.matches('.md-rule') ? 'hr' : block.matches('.md-pre') ? 'pre' : 'p';
+    const replacement = doc.createElement(tag);
+    if (tag === 'pre') {
+      const code = doc.createElement('code');
+      code.append(block.textContent);
+      replacement.append(code);
+    } else if (tag !== 'hr') replacement.append(...block.childNodes);
+    block.replaceWith(replacement);
+  }
+  if (!root.textContent) root.textContent = plain;
+  for (const node of root.querySelectorAll('*')) {
+    for (const { name } of [...node.attributes]) {
+      if (!['href', 'start', 'value', 'colspan', 'rowspan'].includes(name)) node.removeAttribute(name);
+    }
+  }
+  return pasteHTML(root);
+}
+
 export function clipboardSelection(host, projected, doc = globalThis.document) {
   if (!host) return null;
   const selection = doc?.getSelection?.();
   if (!selection?.rangeCount || selection.isCollapsed) return null;
   const range = selection.getRangeAt(0);
   if (!host.contains(range.startContainer) || !host.contains(range.endContainer)) return null;
-  return (hasTextDisplayRules(host) ? projected() : selection.toString()) || null;
+  const plain = hasTextDisplayRules(host) ? projected() : selection.toString();
+  if (!plain) return null;
+  return { plain, html: selectionHTML(range, host, doc, plain) };
 }
 
 export function notebookClipboard(body, mode, selected, doc = globalThis.document) {
@@ -72,10 +141,10 @@ export function notebookClipboard(body, mode, selected, doc = globalThis.documen
   return { plain: entries.map(entry => entry.plain).join('\n\n'), html: entries.map(entry => entry.html).join('<hr>') };
 }
 
-export async function writeClipboardWords(contents, doc, current = () => true) {
+export async function writeClipboardWords(contents, doc, current = () => true, allowWhitespace = false) {
   const win = doc?.defaultView, nav = win?.navigator ?? globalThis.navigator;
   const ready = Promise.resolve(contents()).then(words => {
-    if (!current() || !words.plain.trim()) throw Error(COPY_REFUSED);
+    if (!current() || !(allowWhitespace ? words.plain : words.plain.trim())) throw Error(COPY_REFUSED);
     return words;
   });
   // Promise-valued blobs preserve the press's activation while the full
@@ -112,7 +181,7 @@ export function copyWordsChoice({ selection, cards = false, empty = false, conte
       if (!current()) return;
       let copied = false;
       try {
-        copied = selection ? await copyText(selection, doc?.defaultView?.navigator) : await writeClipboardWords(contents, doc, current);
+        copied = await writeClipboardWords(() => selection ?? contents(), doc, current, Boolean(selection));
       } catch { /* A refused source read also leaves the clipboard untouched. */ }
       if (!current()) return;
       if (!copied) { status(COPY_REFUSED); return; }
