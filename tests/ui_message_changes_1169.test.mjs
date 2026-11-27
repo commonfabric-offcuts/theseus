@@ -63,9 +63,15 @@ test('1169 byline switch is keyboard-operable and stops enclosing card and quote
   const mark = editChangeMark(doc, true, { struck: source.struck, shown: () => choice.shown('m', 2), toggle: () => choice.toggle('m', 2) });
   host.append(mark);
   const button = byClass(host, 'message-changes-toggle')[0];
-  assert.equal(button.textContent, 'hide changes'); assert.equal(button.attributes.role, 'button');
+  assert.equal(byClass(button, 'message-changes-glyph')[0].textContent, '✓');
+  assert.equal(button.attributes.role, 'button');
+  assert.equal(button.title, 'Accept changes');
+  assert.equal(button.attributes['aria-label'], 'Accept changes');
+  assert.equal(button.attributes['aria-pressed'], 'false');
   button.onkeydown(event);
-  assert.equal(button.textContent, 'show changes'); assert.equal(button.attributes['aria-pressed'], 'false');
+  assert.equal(button.title, 'Show changes');
+  assert.equal(button.attributes['aria-label'], 'Show changes');
+  assert.equal(button.attributes['aria-pressed'], 'true');
   assert.deepEqual([event.prevented, event.stopped], [1, 1]);
   assert.equal(byClass(editChangeMark(doc, true), 'message-changes-toggle').length, 0);
   assert.equal(editChangeMark(doc, false), null);
