@@ -27,12 +27,13 @@ import { inlineStops, focusStop } from './message-controls.mjs';
 import { cardIn } from './fold.mjs';
 import { pageItself, writing, readingMovement, plainReturn, returnIntent } from './pane-keys.mjs';
 import { copyKey, onMac } from './writing-input.mjs';
-import { paintReactions, paintThumbPending, mayThumb, mayAnswer, reactionsOf, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
+import { paintReactions, paintThumbPending, mayThumb, mayAnswer, currentThumbs, thumbed, answerOf, ANSWER_WORDS } from './reactions.mjs';
 import { entries, entryOf, navigationStops, shownSelected, stopAt, onEarlierRow } from './reply-stacks.mjs';
 import { revealSelection } from './reveal.mjs';
 import { showGlyph } from './glyphs.mjs';
 import { FeedPassages } from './feed-passages.mjs';
-import { hasTextDisplayRules } from './message-format.mjs';
+import { drawnRevision, hasTextDisplayRules } from './message-format.mjs';
+import { revisionOf } from './message-edit-writing.mjs';
 import { noteAt } from './press-note.mjs';
 import { reach } from './arrow-reach.mjs';
 import { glyph } from './glyphs.mjs';
@@ -136,7 +137,7 @@ export class MessageMenu {
       if (react && cardIn(entry).contains(react)) {
         event.preventDefault(); event.stopPropagation();
         this.light(entry);
-        if (!(this.touch && react.classList.contains('reaction-count'))) this.act(react.dataset.react);
+        if (!(this.touch && react.dataset.react === 'thumb' && react.classList.contains('reaction-count'))) this.act(react.dataset.react);
         return;
       }
       // An earlier message's row shows whole at the first tap (reply-stacks.mjs, item 476); its tab, and the card
@@ -317,7 +318,7 @@ export class MessageMenu {
     if (!this.buttons.edit.hidden) showGlyph(this.buttons.edit, 'pencil', this.doc);
     const { thumb, yes, no } = this.buttons;
     thumb.hidden = !mayThumb(item, this.viewer);
-    const count = reactionsOf(item).thumbs.length, ownThumb = thumbed(item, this.viewer);
+    const count = currentThumbs(item).length, ownThumb = thumbed(item, this.viewer);
     const label = count ? `👍 ${count}` : '👍';
     if (thumb.textContent !== label) thumb.textContent = label;
     thumb.setAttribute('aria-pressed', String(ownThumb));
@@ -428,7 +429,13 @@ export class MessageMenu {
     if (name === 'more') return this.more(item, this.buttons.more);
     if (name === 'full') return Promise.resolve(this.showFull(card, item)).then(() => { if (this.lit === entry) this.paintBar(); });
     if (name === 'fold') return this.fold(item);
-    if (name === 'thumb' && mayThumb(item, this.viewer)) return this.thumb(item, !thumbed(item, this.viewer));
+    if ((name === 'thumb' || name === 'thumb-again') && mayThumb(item, this.viewer)) {
+      const on = name === 'thumb-again' || !thumbed(item, this.viewer);
+      const visible = drawnRevision(card.querySelector(':scope > .message-preview'));
+      // An offered update or a held selection can keep the previous words on screen.
+      if (on && visible !== undefined && visible !== revisionOf(item)) return;
+      return this.thumb(item, on);
+    }
     if ((name === 'yes' || name === 'no') && mayAnswer(item, this.viewer, this.kind) && name in ANSWER_WORDS) return this.answer(item, name);
   }
   // Return consumes only the visible promise, before native activation or a

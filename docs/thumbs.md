@@ -11,15 +11,24 @@ keeps both on the message (`aim_next/reactions.py`).
 
 | Command | Target | Expected | Args |
 | --- | --- | --- | --- |
-| `message.thumb` | `{message_id}` | `{thumb_revision}` | `{thumbed: bool}` |
+| `message.thumb` | `{message_id}` | `{thumb_revision, message_revision?}` | `{thumbed: bool}` |
 | `message.answer` | `{message_id}` | `{answer_revision}` | `{answer: "yes" \| "no"}` |
 
 A thumb's revision is its whole state, as a mark's is: odd is thumbed, even is
-taken back, no row is 0. An answer's revision counts its changes. Every
-change adds one, rows are never deleted, and a request fenced on another
+taken back, no row is 0. An answer's revision counts its changes. A toggle
+adds one, rows are never deleted, and a request fenced on another
 revision is refused with `REVISION_CONFLICT` and the current one, so a late
 request never undoes a newer act. Thumbing what is thumbed, or answering the
 answer already given, changes nothing (`changed: false`).
+
+A thumb whose saved time precedes the latest edit appears in a separate chip.
+To give it to the current words, send `thumbed: true` with both the thumb
+revision and the message revision you saw. Core updates the same row and
+advances its revision by two, keeping it odd and preserving any answer it
+already gave, including its original answer delivery. The edit check uses
+the existing message read in the command.
+The page groups thumbs from the timestamps in its existing responses. Equal
+timestamps count as current.
 
 Both reach a message the way reading it does (a topic the actor reads, or a
 message sent to them by name; a whisper only its two people). A thumb is for

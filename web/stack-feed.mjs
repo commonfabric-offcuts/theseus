@@ -25,7 +25,7 @@ import { moveOf, keyOf, joinShown, joinOf, foldStep, laterActs, positionOf, plac
 import { keyAction, writing } from './pane-keys.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { revealSelection } from './reveal.mjs';
-import { mayThumb, thumbed, reactionsOf, paintThumbPending } from './reactions.mjs';
+import { mayThumb, thumbed, currentThumbs, paintThumbPending } from './reactions.mjs';
 import { contact, heard, notTaken, NOT_TAKEN } from './api.mjs';
 import { CoordinationChoice } from './coordination-choice.mjs';
 import { firstCoverMenuItem } from './cover-refresh.mjs';
@@ -382,7 +382,7 @@ export class StackFeed {
       button.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); press(); } };
       row.insertBefore(button, row.querySelector(':scope > .folded-cue'));
     }
-    const on = thumbed(item, this.viewer), count = reactionsOf(item).thumbs.length, words = on ? 'Remove thumbs up' : 'Thumbs up';
+    const on = thumbed(item, this.viewer), count = currentThumbs(item).length, words = on ? 'Remove thumbs up' : 'Thumbs up';
     const shown = count ? `👍 ${count}` : '👍';
     if (button.textContent !== shown) button.textContent = shown;
     button.setAttribute('aria-pressed', String(on)); button.setAttribute('aria-label', count ? `${words} (${count})` : words); button.title = words;

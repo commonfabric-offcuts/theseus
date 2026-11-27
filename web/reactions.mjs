@@ -1,5 +1,6 @@
 import { timingCall } from './action-timing.mjs';
 import { questionOf, terminalQuestion } from './question-state.mjs';
+import { revisionOf } from './message-edit-writing.mjs';
 // Thumbs-up and go-ahead answers on a message (docs/thumbs.md).
 //
 // A thumbs-up says "I read it and I understand", never "do it". An Ask an
@@ -30,8 +31,37 @@ export const mayThumb = (item, viewer) => Boolean(item) && item.author_id !== vi
 // Whether the reader may answer it: a person it asks for a go-ahead.
 export const mayAnswer = (item, viewer, kind) => item?.go_ahead === true && !item.withdrawal && !item.removal && !terminalQuestion(questionOf(item)) && kind === 'human' &&
   Array.isArray(item.addressees) && item.addressees.includes(viewer);
-export const thumbed = (item, viewer) => reactionsOf(item).thumbs.some(thumb => thumb.actor_id === viewer);
+const beforeEdit = (item, thumb) => integer(item?.edited_ms) && integer(thumb.at_ms) && thumb.at_ms < item.edited_ms;
+export const currentThumbs = item => reactionsOf(item).thumbs.filter(thumb => !beforeEdit(item, thumb));
+const earlierThumbs = item => reactionsOf(item).thumbs.filter(thumb => beforeEdit(item, thumb));
+export const thumbed = (item, viewer) => currentThumbs(item).some(thumb => thumb.actor_id === viewer);
 export const answerOf = (item, viewer) => reactionsOf(item).answers.find(answer => answer.actor_id === viewer)?.answer ?? null;
+const thumbNames = (thumbs, viewer) => thumbs.map(thumb => thumb.actor_id === viewer ? 'you' : thumb.actor_id);
+
+function earlierThumbChip(doc, item, thumbs, viewer, { repeat = null, busy = false } = {}) {
+  const mine = mayThumb(item, viewer) && thumbs.some(thumb => thumb.actor_id === viewer);
+  const chip = node(doc, mine && repeat ? 'button' : 'span', undefined, 'reaction-count reaction-stale');
+  chip.append(node(doc, 'span', '👍', 'reaction-stale-emoji'), doc.createTextNode(' ' + thumbs.length));
+  chip.title = 'Thumbed before the latest edit: ' + thumbNames(thumbs, viewer).join(', ');
+  chip.setAttribute('aria-label', chip.title);
+  if (mine) {
+    chip.setAttribute('aria-pressed', 'false');
+    if (repeat) {
+      chip.type = 'button'; chip.disabled = busy; chip.onclick = repeat;
+    } else {
+      chip.setAttribute('role', 'button'); chip.tabIndex = 0;
+      chip.dataset.react = 'thumb-again';
+      // Lighting the card widens its current thumb count on touch. Keep the
+      // pointer press on this chip until the click chooses its action.
+      chip.onmousedown = event => event.preventDefault();
+      chip.onkeydown = event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault(); event.stopPropagation(); chip.click();
+      };
+    }
+  }
+  return chip;
+}
 
 // The card's own line: a count of thumbs-up with their names on hover (where
 // nothing hovers, a phone, the lit card's count reads the names instead), and
@@ -41,22 +71,24 @@ export const answerOf = (item, viewer) => reactionsOf(item).answers.find(answer 
 // offers every act as a real button in the bar over the lit card.
 export function paintReactions(card, item, viewer, kind, doc = card.ownerDocument, pending = null) {
   const value = reactionsOf(item), answerable = mayAnswer(item, viewer, kind);
-  const key = JSON.stringify([value.version, item.go_ahead === true, Boolean(item.withdrawal), Boolean(item.removal), questionOf(item)?.state, answerable, value.thumbs.map(t => t.actor_id), pending]);
+  const key = JSON.stringify([value.version, item.edited_ms, item.go_ahead === true, Boolean(item.withdrawal), Boolean(item.removal), questionOf(item)?.state, answerable, value.thumbs.map(t => t.actor_id), pending]);
   let line = card.querySelector(':scope > .message-reactions');
   if (line?.dataset.key === key) return;
   const empty = !value.thumbs.length && !item.go_ahead && pending === null;
   if (empty) { line?.remove(); return; }
   if (!line) { line = node(doc, 'span', undefined, 'message-reactions'); card.insertBefore(line, card.querySelector(':scope > .note-corner')); }
   line.dataset.key = key; line.replaceChildren();
-  if (value.thumbs.length) {
-    const names = value.thumbs.map(thumb => thumb.actor_id === viewer ? 'you' : thumb.actor_id);
+  const current = currentThumbs(item), earlier = earlierThumbs(item);
+  if (current.length) {
+    const names = thumbNames(current, viewer);
     const count = node(doc, 'span', '👍 ', 'reaction-count');
-    count.append(node(doc, 'span', String(value.thumbs.length), 'reaction-number'), node(doc, 'span', names.join(', '), 'reaction-who'));
+    count.append(node(doc, 'span', String(current.length), 'reaction-number'), node(doc, 'span', names.join(', '), 'reaction-who'));
     count.title = `👍 ${names.join(', ')}: read and understood`;
     if (mayThumb(item, viewer)) count.dataset.react = 'thumb';
     count.classList.toggle('mine', thumbed(item, viewer));
     line.append(count);
   }
+  if (earlier.length) line.append(earlierThumbChip(doc, item, earlier, viewer));
   line.append(...answerParts(doc, item, viewer, kind));
   if (pending !== null) {
     const saving = node(doc, 'span', pending ? '👍 Saving…' : '👍 Removing…', 'reaction-pending');
@@ -114,13 +146,14 @@ export function paintReaderThumb(button, item, viewer, busy = false, pending = n
 
 // The Reader's line below the message shares its card's decisions. The
 // separate 👍 beside Send remains the reader's own thumbs-up action.
-export function paintReaderReactions(line, item, viewer, kind, { busy = false, answer = () => {} } = {}) {
-  const doc = line.ownerDocument, thumbs = item ? reactionsOf(item).thumbs : [], parts = [];
+export function paintReaderReactions(line, item, viewer, kind, { busy = false, answer = () => {}, repeat = null } = {}) {
+  const doc = line.ownerDocument, thumbs = currentThumbs(item), earlier = earlierThumbs(item), parts = [];
   if (thumbs.length) {
-    const names = thumbs.map(thumb => thumb.actor_id === viewer ? 'you' : thumb.actor_id).join(', ');
+    const names = thumbNames(thumbs, viewer).join(', ');
     parts.push(node(doc, 'span', `👍 ${thumbs.length} ${names}`));
     line.title = `👍 ${names}: read and understood`;
   } else line.removeAttribute('title');
+  if (earlier.length) parts.push(earlierThumbChip(doc, item, earlier, viewer, { busy, repeat }));
   parts.push(...answerParts(doc, item, viewer, kind, { buttons: true, busy, answer, prior: [...line.children] }));
   // Reuse a decision button while it still answers this exact source. A
   // result or an unrelated repaint must not replace a control under a press.
@@ -148,8 +181,8 @@ export function learnReactions(messages, answer) {
 // reading(id): a read of the message's reactions begins; the function it
 // returns is called once it has landed (stack-feed.mjs reading).
 export class Reactions {
-  constructor({ api, instanceId, authority, learned = () => {}, recorded = () => {}, cleared = () => {}, reading = () => () => {}, changed = () => {}, current = () => true }) {
-    Object.assign(this, { api, instanceId, authority, learned, recorded, cleared, reading, changed, current });
+  constructor({ api, instanceId, viewer, authority, learned = () => {}, recorded = () => {}, cleared = () => {}, reading = () => () => {}, changed = () => {}, current = () => true }) {
+    Object.assign(this, { api, instanceId, viewer, authority, learned, recorded, cleared, reading, changed, current });
     this.busy = new Set(); this.pending = new Map();
   }
   async read(id, timing) {
@@ -199,7 +232,9 @@ export class Reactions {
     }
   }
   thumb(item, on, said = null, timing = null) {
-    return this.send('message.thumb', item, { thumbed: on }, { thumb_revision: reactionsOf(item).thumb_revision }, said, timing);
+    const expected = { thumb_revision: reactionsOf(item).thumb_revision };
+    if (on && earlierThumbs(item).some(thumb => thumb.actor_id === this.viewer)) expected.message_revision = revisionOf(item);
+    return this.send('message.thumb', item, { thumbed: on }, expected, said, timing);
   }
   answer(item, answer, said = null) {
     if (!(answer in ANSWER_WORDS)) throw Error('A go-ahead is answered yes or no.');

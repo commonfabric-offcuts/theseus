@@ -44,6 +44,16 @@ ANSWER_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM answer_receipts)"
 
 class AnswerDelivery:
     def _answer_stands(self, db, receipt):
+        if receipt['kind'] == 'thumb':
+            # Renewing for an edit advances an active thumb without creating
+            # another receipt. Giving it again after taking it back does.
+            row = db.execute(
+                "SELECT r.value,r.revision,(SELECT MAX(a.revision) FROM answer_receipts a "
+                "WHERE a.message_id=r.message_id AND a.actor_id=r.actor_id AND a.kind=r.kind) AS answer_revision "
+                "FROM message_reactions r WHERE r.actor_id=? AND r.message_id=? AND r.kind='thumb'",
+                (receipt['actor_id'], receipt['message_id'])).fetchone()
+            return (row is not None and row['value'] == receipt['value']
+                    and row['revision'] >= receipt['revision'] == row['answer_revision'])
         row = self._reaction_row(db, receipt['actor_id'], receipt['message_id'], receipt['kind'])
         return row is not None and row['revision'] == receipt['revision'] and row['value'] == receipt['value']
 

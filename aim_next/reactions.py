@@ -12,9 +12,10 @@ A reaction belongs to one actor, one message and one kind:
   that asks them for a go-ahead (`messages.go_ahead`, an Ask an agent marks
   with --go-ahead). Its value is the answer; its revision counts the changes.
 
-Every change adds to the row's revision and rows are never deleted, so a
+Every change advances the row's revision and rows are never deleted, so a
 revision is never reused, and the sum of a message's revisions (its reaction
-version) only grows. A thumb given and an answer read the message for the
+version) only grows. Renewing a thumb for edited words advances its odd revision
+by two and leaves any answer it gave in place. A thumb given and an answer read the message for the
 reactor, as opening it does: they settle the reactor's own pending delivery
 of it and clear their mark on it (marks.py), in the same act; neither changes
 topic state or order, and only a thumb that answers an ask, or is taken back
@@ -41,8 +42,9 @@ unknown key.
 import json
 
 from .whispers import visible
-from .contract import READABLE, Refusal, _identifier
+from .contract import READABLE, Refusal, _identifier, _revision
 from .delivery import _now_ms
+from .message_edit import edited, revision
 from .outcome_asks import held_ask, record_ask
 from .standing_conversation import is_conversation
 from .removal import value as removal_value
@@ -83,17 +85,19 @@ def go_ahead_flag(args):
 
 class Reactions:
     def _reaction_row(self, db, actor, message_id, kind):
-        return db.execute("SELECT value,revision FROM message_reactions WHERE actor_id=? AND message_id=? AND kind=?",
+        return db.execute("SELECT value,revision,at_ms FROM message_reactions WHERE actor_id=? AND message_id=? AND kind=?",
                           (actor, message_id, kind)).fetchone()
 
-    def _reacted_message(self, db, actor, target):
+    def _reacted_message(self, db, actor, target, *, with_revision=False):
         if set(target) != {"message_id"}:
             raise Refusal("INVALID_ARGUMENT", "Name one message")
         message_id = _identifier(target["message_id"], "message_id")
         # The same reach as reading it: a topic the actor reads, or a message
         # sent to them by name; a whisper they are not in is refused as unknown.
         self._message_access(db, actor, message_id)
-        return db.execute("SELECT id,topic_id,seq,author_id,private_to,addressees,go_ahead,intent,sent_ms FROM messages WHERE id=?",
+        edit = ", " + revision() + " AS message_revision, " + edited() + " AS edited_ms" if with_revision else ""
+        return db.execute("SELECT id,topic_id,seq,author_id,private_to,addressees,go_ahead,intent,sent_ms" + edit +
+                          " FROM messages m WHERE id=?",
                           (message_id,)).fetchone()
 
     def _react(self, db, actor, message, kind, value, revision, now, reads):
@@ -152,22 +156,37 @@ class Reactions:
         target, args = envelope["target"], envelope["args"]
         if set(args) != {"thumbed"} or not isinstance(args["thumbed"], bool):
             raise Refusal("INVALID_ARGUMENT", "Name one message and whether it is thumbed up")
-        message = self._reacted_message(db, actor, target)
+        thumbed, expected = args["thumbed"], envelope["expected"]
+        renew = "message_revision" in expected
+        if renew and not thumbed:
+            raise Refusal("INVALID_ARGUMENT", "A message revision is for giving a thumbs-up to edited words")
+        message = self._reacted_message(db, actor, target, with_revision=renew)
         if message["author_id"] == actor:
             raise Refusal("INVALID_ARGUMENT", "A thumbs-up is for someone else's message")
         row = self._reaction_row(db, actor, message["id"], "thumb")
         current = row["revision"] if row else 0
         # Fenced on the revision its sender saw, so a late request never undoes a newer act.
-        if envelope["expected"]["thumb_revision"] != current:
+        if expected["thumb_revision"] != current:
             raise Refusal("REVISION_CONFLICT", "This thumbs-up changed since it was read; nothing was changed", {"thumb_revision": current})
-        thumbed = args["thumbed"]
+        if renew:
+            _revision(expected, "message_revision", message["message_revision"])
         result = {"message_id": message["id"], "topic_id": message["topic_id"], "seq": message["seq"]}
         if thumbed == (current % 2 == 1):
+            if renew and message["edited_ms"] is not None and row["at_ms"] < message["edited_ms"]:
+                # Renew the same thumb and keep its answer and odd revision.
+                current += 2
+                now = max(_now_ms(), message["edited_ms"])
+                version, settled, cleared = self._react(db, actor, message, "thumb", row["value"], current, now, True)
+                return self._read_by(dict(result, thumbed=True, thumb_revision=current, reaction_version=version,
+                                          answered=answered_yes(row) and removal_value(db, message['id']) is None,
+                                          changed=True, settled=settled),
+                                     [{"kind": "reaction", "id": message["id"], "version": version}], message, cleared)
             # Unchanged, it reports what the thumb on the message does: a 👍 that answered an ask holds `yes`, a taken-back one nothing.
             return dict(result, thumbed=thumbed, thumb_revision=current, answered=answered_yes(row) and removal_value(db, message['id']) is None, changed=False, settled=False), []
         value, waits = self._thumb_answer(db, actor, message, thumbed, answered_yes(row))
         # A thumb given reads the message; one taken back reads and clears nothing.
-        version, settled, cleared = self._react(db, actor, message, "thumb", value, current + 1, _now_ms(), thumbed)
+        now = max(_now_ms(), message["edited_ms"] or 0) if renew else _now_ms()
+        version, settled, cleared = self._react(db, actor, message, "thumb", value, current + 1, now, thumbed)
         if value == 'yes':
             self._record_answer_receipt(db, actor, message, 'thumb', current + 1, value)
         # A thumb reads/answers the message, leaving the person's fold choice
