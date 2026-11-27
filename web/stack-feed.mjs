@@ -1297,7 +1297,9 @@ export class StackFeed {
     const stack = found?.stack, level = stack && levelOf(this.state, stack.id);
     const line = () => at ?? lineOf(this.entryFor(item.id) && cardIn(this.entryFor(item.id)));
     const dossierStarred = found?.head && positionOf(stack)?.starred?.length > 0;
-    return stackMenuItems({ starred: dossierStarred || Boolean(this.actsOf(item.id, item).starred), folded: this.foldState(item) === 'unfold',
+    const acts = this.actsOf(item.id, item);
+    const folded = acts.folded && (acts.starred || !this.hasOpenCardReply(item.id));
+    return stackMenuItems({ starred: dossierStarred || Boolean(acts.starred), folded,
       head: found?.head, hasReplies: Boolean(stack?.replies.length), position: stack && positionOf(stack), below: stack && positionOf(stack)?.below,
       found: Boolean(found), reader, phone, open: level === 'open', joined: stack?.joins.has(item.id), placed: stack?.placed != null,
       splitSources: Boolean(found && this.readNamed),

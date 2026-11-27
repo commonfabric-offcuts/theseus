@@ -98,6 +98,16 @@ test('a saved fold closes a visible reply without sending another fold', async (
   assert.equal(f.records.get(item.id).fold_revision,7);
 });
 
+test('the Reader menu can unfold a saved fold even when the message is open alone', () => {
+  const f=fixture({records:new Map([['m2',{folded:true,fold_revision:7,starred:false}]])});
+  const item=f.messages.get('m2');
+  f.entries.get(item.id).remove();f.entries.delete(item.id);f.draw();
+  const choice=f.feed.menuItems(item,{reader:true}).first.find(entry=>entry.key==='fold');
+  assert.equal(choice.label,'Unfold');
+  choice.act();
+  assert.deepEqual(f.commands.map(({id,args})=>({id,args})),[{id:item.id,args:{folded:false}}]);
+});
+
 test('1167 singleton and Only new headers keep their prior presentation across redraws', () => {
   for (const options of [{ count: 1 }, { only: true }]) {
     const f = fixture(options);

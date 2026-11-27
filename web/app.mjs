@@ -4238,7 +4238,9 @@ async function initialize() {
       sent: (result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current) }, offer: offerAuthor, discover, say: status,
     changed: id => {
       const feed = stackFeed;
-      if (feed?.state.writing.has(id)) queueMicrotask(() => {
+      // The Fold action arranges immediately after keeping its draft. Other
+      // composer closes reapply the saved fold before the next paint.
+      if (feed?.state.writing.has(id)) requestAnimationFrame(() => {
         if (!retired && feed === stackFeed && feed.state.writing.has(id)) feed.arrange();
       });
     } });
