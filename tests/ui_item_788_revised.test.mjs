@@ -137,8 +137,13 @@ test('788 revised More pages retains paging owner and readable-denial clears the
 });
 test('788 revised a stale rail read cannot repaint the next topic', async t => {
   const f = fixture(t); let release; const view = f.handles.view;
-  f.handles.view = (name, args) => name === 'memory_items' ? new Promise(resolve => { release = resolve; }) : view(name, args);
-  const pending = f.r.load(); await Promise.resolve(); f.r.serial++; f.r.clear();
+  let started;
+  const notebookStarted = new Promise(resolve => { started = resolve; });
+  f.handles.view = (name, args) => {
+    if (name !== 'memory_items') return view(name, args);
+    return new Promise(resolve => { release = resolve; started(); });
+  };
+  const pending = f.r.load(); await notebookStarted; f.r.serial++; f.r.clear();
   release({ items: [page()], reader_may_write: true }); await pending;
   assert.deepEqual(visible(f.r), []); assert.equal(f.r.creators.get('topic').button.hidden, true);
 });

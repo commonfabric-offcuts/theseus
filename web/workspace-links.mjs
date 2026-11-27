@@ -110,11 +110,11 @@ export class WorkspaceLinks {
     this.feedback.hidden = true;
   }
   current(handles) { return this.rail.handles === handles && handles?.readable?.() !== false; }
-  async read(handles) {
+  async read(handles, view = (name, args) => handles.view(name, args)) {
     const items = [], seen = new Set(), max = handles.bootstrap.limits?.workspace_links ?? 500;
     let cursor;
     do {
-      const answer = await handles.view('workspace_links', { workspace_id: handles.workspaceId, limit: Math.min(100, handles.bootstrap.limits?.page_max ?? 100),
+      const answer = await view('workspace_links', { workspace_id: handles.workspaceId, limit: Math.min(100, handles.bootstrap.limits?.page_max ?? 100),
         ...(cursor === undefined ? {} : { cursor }) });
       if (answer.error) throw Object.assign(Error(answer.error.message), answer.error);
       if (answer.instance_id !== handles.bootstrap.instance_id || answer.workspace_id !== handles.workspaceId || !Array.isArray(answer.items)) throw Error('The outcome Links could not be confirmed.');
