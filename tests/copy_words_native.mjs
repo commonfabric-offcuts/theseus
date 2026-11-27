@@ -103,6 +103,14 @@ try {
     if (html) assert.match(entry.html, html);
     assert.doesNotMatch(entry.html, /omitted\.txt|Omitted file contents|fence-copy/);
   };
+  const expectPlainSelection = async selected => {
+    await clipboardStarts(selected);
+    const entry = await page.evaluate(async () => {
+      const [item] = await navigator.clipboard.read();
+      return { types: item.types, plain: await (await item.getType('text/plain')).text() };
+    });
+    assert.deepEqual(entry, { types: ['text/plain'], plain: selected });
+  };
   const copyFrom = async (row, status, said) => {
     await press(row);
     await locator(status).filter({ hasText: said }).waitFor();
@@ -150,16 +158,16 @@ try {
     assert.ok(['⌘C', 'Ctrl+C'].includes(await copy.getAttribute('data-menu-keys')));
     await screenshot('message-selected');
     await copyFrom(copy, feedMore, 'Selection copied');
-    await expectClip(selected, /marked words/);
+    await expectPlainSelection(selected);
   });
-  await check('selection spanning two list rows keeps list semantics on rich paste', async () => {
+  await check('selection spanning two list rows preserves exact plain text', async () => {
     const list = words('message') + ' .md-item-words';
     const selected = await select(list + ' >> nth=0', list + ' >> nth=1');
     assert.match(selected, /One[\s\S]*Two/);
     await press(feedMore);
     assert.equal(await copy.getAttribute('data-menu-label'), 'Copy selected text');
     await copyFrom(copy, feedMore, 'Selection copied');
-    await expectClip(selected, /<ul><li>One<\/li><li>Two<\/li><\/ul>/);
+    await expectPlainSelection(selected);
   });
   await check('right-click Copy text uses the status line', async () => {
     await press('#topic-title');
@@ -248,7 +256,7 @@ try {
     assert.equal(await copy.getAttribute('data-menu-label'), 'Copy selected text');
     await screenshot('reader-selected');
     await copyFrom(copy, '#reader-menu', 'Selection copied');
-    await expectClip(selected, /<strong>marked words<\/strong>/);
+    await expectPlainSelection(selected);
     const devtools = await context.newCDPSession(page);
     const { targetInfo } = await devtools.send('Target.getTargetInfo');
     for (const allowWithoutSanitization of [false, true]) {

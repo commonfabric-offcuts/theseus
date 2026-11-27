@@ -37,17 +37,31 @@ test('copy writes both types once, falls back to plain, and says when both fail'
     },
   };
   const doc = { defaultView: { ClipboardItem, navigator: { platform: 'MacIntel', clipboard } } };
-  const selection = { plain: 'words', html: '<b>words</b>' };
-  const choose = copyWordsChoice({ doc, selection, status: words => notices.push(words) });
-  assert.equal(choose.label, 'Copy selected text');
-  assert.equal(choose.keys, '⌘C');
+  const contents = () => ({ plain: 'words', html: '<b>words</b>' });
+  const choose = copyWordsChoice({ doc, contents, status: words => notices.push(words) });
+  assert.equal(choose.label, 'Copy text');
   await choose.act();
   richRefused = true;
   await choose.act();
   plainRefused = true;
   await choose.act();
   assert.deepEqual(writes, [[['text/plain', 'words'], ['text/html', '<b>words</b>']], 'words']);
-  assert.deepEqual(notices, ['Selection copied.', 'Selection copied.', 'Could not copy. Select the text and use Copy.']);
+  assert.deepEqual(notices, ['Text copied.', 'Text copied.', 'Could not copy. Select the text and use Copy.']);
+});
+
+test('copy selected text preserves the exact plain words and never writes a rich item', async () => {
+  const writes = [], notices = [];
+  const clipboard = {
+    write() { assert.fail('A selection never writes a rich item'); },
+    writeText(text) { writes.push(text); },
+  };
+  const doc = { defaultView: { navigator: { platform: 'MacIntel', clipboard } } };
+  const choice = copyWordsChoice({ doc, selection: 'exact\n  selected words', status: text => notices.push(text) });
+  assert.equal(choice.label, 'Copy selected text');
+  assert.equal(choice.keys, '⌘C');
+  await choice.act();
+  assert.deepEqual(writes, ['exact\n  selected words']);
+  assert.deepEqual(notices, ['Selection copied.']);
 });
 
 test('copy cannot write a whole source that arrives after its opening changes', async () => {

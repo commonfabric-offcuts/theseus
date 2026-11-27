@@ -866,10 +866,8 @@ function tableNode(block, doc, meter, scrolling = true) {
   return wrap;
 }
 
-export function clipboardList(items, doc) {
+function clipboardList(items, doc) {
   const root = doc.createDocumentFragment(), entered = [];
-  // A partial selection may start in a nested item. Its first row is the
-  // highest visible level in this fragment.
   const firstDepth = items.reduce((depth, item) => Math.min(depth, item.depth), items[0]?.depth ?? 0);
   for (const { depth, marker, contents, task } of items) {
     const level = Math.min(depth - firstDepth, entered.length);

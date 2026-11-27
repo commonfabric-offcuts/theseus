@@ -1,5 +1,5 @@
 import { COPY_REFUSED, copyText, sayOn } from './message-menu.mjs';
-import { clipboardList, clipboardNodes, hasTextDisplayRules } from './message-format.mjs';
+import { clipboardNodes, hasTextDisplayRules } from './message-format.mjs';
 import { stripDetails } from './card-details.mjs';
 import { deckBody, parseDeck } from './deck.mjs';
 import { fenceEnd, fenceOpen } from './fences.mjs';
@@ -51,62 +51,13 @@ function pasteHTML(rendered) {
   return rendered.innerHTML;
 }
 
-function semanticSelection(root, doc) {
-  // Theseus uses spans for the card's blocks. A document or mail composer
-  // needs ordinary block elements to render the same selection.
-  const blocks = [...root.querySelectorAll('.md-p, .md-heading, .md-rule, .md-pre, .md-quote, .md-list')].reverse();
-  for (const block of blocks) {
-    const has = name => block.classList.contains(name);
-    if (has('md-list')) {
-      const rows = [...block.querySelectorAll(':scope > .md-item')].map(row => {
-        const mark = row.querySelector(':scope > .md-marker')?.textContent ?? '';
-        const words = row.querySelector(':scope > .md-item-words') ?? row;
-        return {
-          marker: mark, depth: Number(row.style.getPropertyValue('--md-depth')) || 0,
-          contents: [...words.childNodes], task: /^[☐☑]$/.test(mark) ? mark : null,
-        };
-      });
-      const ordered = rows.findIndex(row => /^\d/.test(row.marker));
-      if (ordered > 0 && !rows[0].marker) {
-        const first = Number.parseInt(rows[ordered].marker, 10) - ordered;
-        for (let index = 0; index < ordered; index++) rows[index].marker = String(first + index);
-      }
-      block.replaceWith(clipboardList(rows, doc));
-      continue;
-    }
-    const heading = /\bmd-h([1-6])\b/.exec(block.className);
-    const tag = heading ? 'h' + heading[1] : has('md-quote') ? 'blockquote' : has('md-rule') ? 'hr' : has('md-pre') ? 'pre' : 'p';
-    const replacement = doc.createElement(tag);
-    if (tag === 'pre') {
-      const code = doc.createElement('code');
-      code.append(...block.childNodes);
-      replacement.append(code);
-    } else replacement.append(...block.childNodes);
-    block.replaceWith(replacement);
-  }
-}
-
 export function clipboardSelection(host, projected, doc = globalThis.document) {
   if (!host) return null;
   const selection = doc.getSelection();
   if (!selection?.rangeCount || selection.isCollapsed) return null;
   const range = selection.getRangeAt(0);
   if (!host.contains(range.startContainer) || !host.contains(range.endContainer)) return null;
-  const plain = hasTextDisplayRules(host) ? projected() : selection.toString();
-  if (!plain) return null;
-  const rendered = doc.createElement('div');
-  let fragment = range.cloneContents();
-  const common = range.commonAncestorContainer;
-  for (let parent = common.nodeType === 1 ? common : common.parentElement; parent && parent !== host; parent = parent.parentElement) {
-    if (!parent.matches('a, b, strong, em, i, code, s, del, .md-list, .md-quote')) continue;
-    const wrapper = parent.cloneNode(false);
-    wrapper.append(fragment);
-    fragment = wrapper;
-  }
-  rendered.append(fragment);
-  for (const control of rendered.querySelectorAll('button, input, iframe, img, .message-attachments, .fence-copy-unavailable, .source-end-line')) control.remove();
-  semanticSelection(rendered, doc);
-  return { plain, html: pasteHTML(rendered) };
+  return (hasTextDisplayRules(host) ? projected() : selection.toString()) || null;
 }
 
 export function notebookClipboard(body, mode, selected, doc = globalThis.document) {
@@ -134,7 +85,12 @@ export function copyWordsChoice({ selection, cards = false, empty = false, conte
       if (!current()) return;
       const nav = doc.defaultView?.navigator;
       try {
-        const ready = Promise.resolve(selection ?? contents()).then(words => {
+        if (selection) {
+          if (!await copyText(selection, nav)) throw Error(COPY_REFUSED);
+          if (current()) confirm();
+          return;
+        }
+        const ready = Promise.resolve(contents()).then(words => {
           if (!current() || !words.plain.trim()) throw Error(COPY_REFUSED);
           return words;
         });
