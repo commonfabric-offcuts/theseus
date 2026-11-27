@@ -371,13 +371,17 @@ export function newestNew(stack, unread) {
 // tab too; where the page holds that message, its own acts say it. Null for a
 // dossier with none, and for a message on its own unless alone: true asks for
 // the cover its pills show (dossier-cover.mjs).
-export function stackCover(stack, { alone = false } = {}) {
-  if (stack.sourceStack) return stackCover(stack.sourceStack, { alone });
-  const position = positionOf(stack);
-  if (position && position.root_id !== stack.head.id) return currentQuestionCover(position.cover ?? null);
-  const acts = actsOf(stack.head);
-  if (position?.cover_read_seq !== undefined && compareCoverReads(position.cover_read_seq, acts.cover_read_seq) >= 0 && position.cover_revision >= (acts.cover_revision ?? 0)) return stack.replies.length || alone ? currentQuestionCover(position.cover ?? null) : null;
-  return stack.replies.length || alone ? currentQuestionCover(actsOf(stack.head).cover ?? null) : null;
+export function stackCover(stack, { alone = false, provenance = false } = {}) {
+  if (stack.sourceStack) return stackCover(stack.sourceStack, { alone, provenance });
+  const position = positionOf(stack), acts = actsOf(stack.head);
+  const shown = (value, revision) => {
+    const cover = currentQuestionCover(value ?? null);
+    return provenance && cover ? { ...cover, revision } : cover;
+  };
+  if (position && position.root_id !== stack.head.id) return shown(position.cover, position.cover_revision);
+  if (!stack.replies.length && !alone) return null;
+  if (position?.cover_read_seq !== undefined && compareCoverReads(position.cover_read_seq, acts.cover_read_seq) >= 0 && position.cover_revision >= (acts.cover_revision ?? 0)) return shown(position.cover, position.cover_revision);
+  return shown(acts.cover, acts.cover_revision);
 }
 
 // The index, in the stacks as shown, of the lowest one holding anything new

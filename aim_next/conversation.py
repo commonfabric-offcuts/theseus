@@ -386,7 +386,11 @@ class Conversation:
         for quote in snapshot["quotes"]:
             if not isinstance(quote, dict):
                 raise Refusal("INVALID_ARGUMENT", "Invalid quote reference")
-            source = self._source(db, actor, quote.get("source"))
+            ref = quote.get("source")
+            if isinstance(ref, dict) and ref.get("kind") == "cover":
+                self._validate_cover_quote(db, actor, topic_id, snapshot.get("reply_to"), quote, private)
+                continue
+            source = self._source(db, actor, ref)
             excerpt = _body(quote.get("excerpt", ""))
             if not excerpt:
                 raise Refusal("INVALID_QUOTE", "The excerpt must preserve the referenced source's words")
@@ -604,7 +608,7 @@ class Conversation:
         for kept, quote in zip(stored, whispers.redact_quotes(db, actor, stored)):
             source = kept.get("source") if isinstance(kept, dict) else None
             from .removal import unsent
-            if isinstance(source, dict) and source.get('kind') == 'message' and unsent(db, source.get('id')):
+            if isinstance(source, dict) and source.get('kind') in ('message', 'cover') and unsent(db, source.get('id')):
                 continue
             if not isinstance(quote, dict) or not isinstance(source, dict) or source.get("kind") != "message":
                 quotes.append(quote)
@@ -666,7 +670,11 @@ class Conversation:
         # beginning of the message a reply answers is cut and marked by the helper.
         columns = ("m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind," + words("m", plain=True) + " AS body,"
                    + revision("m") + " AS revision," + edited("m") + " AS edited_ms,m.reply_to,m.exchange_id,m.addressees,m.attachments,m.sent_ms,m.intent,m.private_to,"
-                   "p.author_id AS reply_to_author," + words("p", chars=120) + " AS reply_to_excerpt,p.private_to AS reply_to_private")
+                   "p.author_id AS reply_to_author," + words("p", chars=120) + " AS reply_to_excerpt,p.private_to AS reply_to_private,"
+                   "CASE WHEN m.reply_to IS NOT NULL AND m.quotes<>'[]' THEN "
+                   "(SELECT json_extract(q.value,'$.section') FROM json_each(m.quotes) q "
+                   "WHERE json_extract(q.value,'$.source.kind')='cover' AND json_extract(q.value,'$.source.id')=m.reply_to "
+                   "AND json_type(q.value,'$.section')='text' LIMIT 1) END AS reply_cover_section")
         parent = " JOIN actors w ON w.id=m.author_id LEFT JOIN messages p ON p.id=m.reply_to"
         # Every form reads only what the reader may see (whispers.VISIBLE), so a
         # page never stalls on, counts or folds a whisper between others.
@@ -704,6 +712,10 @@ class Conversation:
                 item["reply_to_excerpt"] = None
             item['reply_to_removal'] = (removal_value(db, item['reply_to'])
                                         if item['reply_to'] and not hidden and not item['reply_to_withheld'] else None)
+            cover_section = item.pop("reply_cover_section")
+            if cover_section and not (hidden or item["withheld"] or item["reply_to_withheld"]
+                                      or (item["reply_to_removal"] or {}).get("kind") == "unsent"):
+                item["reply_cover_section"] = cover_section
             item.update(whispers.whisper_fields(row))
             if not item["whisper"]:
                 item.pop("private_to")

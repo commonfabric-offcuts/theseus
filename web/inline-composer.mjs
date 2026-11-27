@@ -25,6 +25,12 @@ export class InlineComposer {
   constructor(callbacks, { root = document.querySelector('#inline-composer'), prefix = 'inline-', cardReply = false } = {}) {
     this.callbacks = callbacks; this.root = root; this.prefix = prefix; this.cardReply = cardReply;
     this.field = this.$('writing-body');
+    if (cardReply) {
+      this.coverQuoteLabel = root.ownerDocument.createElement('div');
+      this.coverQuoteLabel.className = 'cover-quote-attribution';
+      this.coverQuoteLabel.hidden = true;
+      this.field.before(this.coverQuoteLabel);
+    }
     this.kind = this.defaultKind(); this.notebookJobs = new WeakMap();
     this.noteTarget = ''; this.notePages = [];
     this.$('note-page')?.addEventListener('change', () => {
@@ -387,10 +393,32 @@ export class InlineComposer {
     this.$('save-state').textContent = 'Writing is disabled until this composer can load.';
     this.$('retry').textContent = 'Retry composer'; this.$('retry').hidden = false;
   }
+  appendQuote(quote, p) {
+    const editor = this.editor;
+    if (!this.cardReply || this.presentation !== p || !this.admits(p, editor) || this.state().readOnly) return false;
+    const body = editor.draft.body;
+    const gap = !body || body.endsWith('\n\n') ? '' : body.endsWith('\n') ? '\n' : '\n\n';
+    const block = quote.excerpt.split('\n').map(line => '> ' + line).join('\n');
+    const next = `${body}${gap}${block}\n\n`;
+    editor.edit({ body: next, quotes: [...editor.draft.quotes, quote],
+      caret: { start: next.length, end: next.length, direction: 'none' } });
+    this.callbacks.edit(editor, p);
+    this.drawEditor(); this.bar.fit();
+    this.field.focus({ preventScroll: true });
+    this.field.scrollTop = body ? this.field.scrollHeight : 0;
+    this.paintStatus(); this.paintChoice();
+    return true;
+  }
+
   drawEditor() {
     this.input?.mentions?.close();
     this.images?.close();
     this.field.value = this.editor.draft.body;
+    if (this.coverQuoteLabel) {
+      const section = this.editor.draft.quotes.find(quote => quote.source?.kind === 'cover')?.section;
+      this.coverQuoteLabel.hidden = !section;
+      this.coverQuoteLabel.textContent = section ? `From the cover · ${section}` : '';
+    }
     const caret = this.editor.draft.caret; this.field.setSelectionRange(caret.start, caret.end);
   }
   // A failure goes to the notice as the error itself (lines.mjs).
