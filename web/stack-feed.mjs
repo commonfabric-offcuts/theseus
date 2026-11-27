@@ -36,6 +36,7 @@ import { ArchiveShelf } from './archive-shelf.mjs';
 // first message, else who wrote it, else its folded or earlier row.
 const LINES = [':scope > .stack-head', ':scope > .message-author', ':scope > .message-folded', ':scope > .message-earlier'];
 const lineOf = card => LINES.map(selector => card?.querySelector(selector)).find(line => line?.getClientRects().length) ?? card;
+const NOTE_FOLD = 'Fold saved; your private note keeps this message whole';
 const FIELD = { 'stack.level': 'level', 'stack.aside': 'aside', 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'message.fold_through': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
 // Feed and rail commands share the same revision fence and envelope.
 export function stackActEnvelope({ instanceId, authority, kind, item, args, operationId = crypto.randomUUID() }) {
@@ -176,8 +177,8 @@ export class StackFeed {
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
     newest = () => {}, refreshPositions = async () => {}, acted = () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), navigate = () => {}, press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
-    colorOf = () => null, readNamed = null, captureArchive = () => null, captureEmptyReply = null, clock = () => Date.now(), thumbPending = () => null, doc = document }) {
-    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, captureArchive, captureEmptyReply, clock, doc });
+    colorOf = () => null, readNamed = null, captureArchive = () => null, captureEmptyReply = null, closeReplyToFold = null, clock = () => Date.now(), thumbPending = () => null, doc = document }) {
+    Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, captureArchive, captureEmptyReply, closeReplyToFold, clock, doc });
     this.archiveReads = new Map();
     this.thumbPending = thumbPending;
     this.readNamed = readNamed; this.headerStars = new Set();
@@ -930,12 +931,20 @@ export class StackFeed {
   // takes the focus, so ⌘Z is at hand (not on a phone's swipe).
   setFold(item, on, { focus = true, undoable = true } = {}) {
     const acts = item && this.actsOf(item.id, item);
-    if (on && acts?.folded && !acts.starred && this.state.peeked.has(item.id)) {
-      this.captureEmptyReply?.(item.id)?.();
-      this.state.peeked.delete(item.id);
-      foldInMotion(this.list.ownerDocument, () => this.entryFor(item.id), () => this.arrange(), true);
-      if (focus) this.focusOn(item.id);
-      return true;
+    if (on && acts?.folded && !acts.starred) {
+      if (this.hasOpenCardReply(item.id) && this.closeReplyToFold) {
+        const doc = this.list.ownerDocument, active = doc.activeElement;
+        return Promise.resolve(this.closeReplyToFold(item.id)).then(closed => {
+          if (!closed) return false;
+          const current = this.actsOf(item.id, item);
+          if (!current.folded || current.starred) return false;
+          return this.applySavedFold(item, focus && (doc.activeElement === active || doc.activeElement === doc.body));
+        }, error => this.refuseFold(error.message));
+      }
+      if (this.state.peeked.has(item.id)) {
+        this.captureEmptyReply?.(item.id)?.();
+        return this.applySavedFold(item, focus);
+      }
     }
     const reason = this.foldReason(item, on);
     if (reason) return this.refuseFold(reason);
@@ -949,13 +958,24 @@ export class StackFeed {
     // In motion (fold-motion.mjs): the message closes to its row, or opens out of it.
     foldInMotion(this.list.ownerDocument, () => this.entryFor(item.id), () => this.arrange(), on);
     if (focus) this.focusOn(item.id);
-    this.say(on ? item.yours?.note === true ? 'Fold saved; your private note keeps this message whole' : 'Folded to one line, for you only' : 'Unfolded');
+    this.say(on ? item.yours?.note === true ? NOTE_FOLD : 'Folded to one line, for you only' : 'Unfolded');
     return sent;
+  }
+  hasOpenCardReply(id) { return cardIn(this.entryFor(id))?.getAttribute('data-card-reply') != null; }
+  applySavedFold(item, focus) {
+    this.state.peeked.delete(item.id);
+    foldInMotion(this.list.ownerDocument, () => this.entryFor(item.id), () => this.arrange(), true);
+    if (focus) this.focusOn(item.id);
+    if (item.yours?.note === true) this.say(NOTE_FOLD);
+    return true;
   }
   foldReason(item, on) {
     if (!item) return 'Nothing to fold here';
+    if (!on) return null;
     const acts = this.actsOf(item.id, item);
-    return on ? acts.starred ? STARRED_FOLD_REASON : acts.folded ? 'Already folded.' : null : null;
+    if (acts.starred) return STARRED_FOLD_REASON;
+    if (!acts.folded) return null;
+    return item.yours?.note === true ? NOTE_FOLD : 'Already folded.';
   }
   refuseFold(reason) {
     this.status(reason); this.say(reason); return false;
@@ -966,7 +986,8 @@ export class StackFeed {
   foldState(item) {
     if (!stackOf(this.list, this.entryFor(item.id))) return null;
     const acts = this.actsOf(item.id, item);
-    return acts.folded ? 'unfold' : acts.starred ? null : 'fold';
+    if (acts.starred) return acts.folded ? 'unfold' : null;
+    return acts.folded && !this.hasOpenCardReply(item.id) ? 'unfold' : 'fold';
   }
   toggleFold(item) {
     const state = this.foldState(item);
@@ -1265,7 +1286,7 @@ export class StackFeed {
     const acts = this.actsOf(item.id, item), found = stackOf(this.list, entry);
     if (found?.head && found.stack.replies.length && found.section?.dataset.headOpen === 'false') return;
     event.preventDefault();
-    this.setFold(item, !acts.folded);
+    this.setFold(item, !acts.folded || (!acts.starred && this.hasOpenCardReply(item.id)));
   }
   // What ⋯ offers for the stack a message is in, with the keys that do the
   // same and each item's glyph (glyphs.mjs, items 602 and 601); on a phone,
@@ -1276,7 +1297,7 @@ export class StackFeed {
     const stack = found?.stack, level = stack && levelOf(this.state, stack.id);
     const line = () => at ?? lineOf(this.entryFor(item.id) && cardIn(this.entryFor(item.id)));
     const dossierStarred = found?.head && positionOf(stack)?.starred?.length > 0;
-    return stackMenuItems({ starred: dossierStarred || Boolean(this.actsOf(item.id, item).starred), folded: this.actsOf(item.id, item).folded,
+    return stackMenuItems({ starred: dossierStarred || Boolean(this.actsOf(item.id, item).starred), folded: this.foldState(item) === 'unfold',
       head: found?.head, hasReplies: Boolean(stack?.replies.length), position: stack && positionOf(stack), below: stack && positionOf(stack)?.below,
       found: Boolean(found), reader, phone, open: level === 'open', joined: stack?.joins.has(item.id), placed: stack?.placed != null,
       splitSources: Boolean(found && this.readNamed),

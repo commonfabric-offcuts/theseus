@@ -486,7 +486,11 @@ async function handoffReaderSend(p, editor, item, current, owns) {
   if (!current() || !available() || !pendingSendCard(item.id)) return false;
   // close keeps both registered editors locally; its predicate fences input
   // and Reader state that could change during that keep. No command is awaited.
-  if (!await registry.close(p, { current: () => owns() && available() })) return false;
+  const finish = cardReplies?.trackReaderHandoff(p, editor, item);
+  let handed = false;
+  try { handed = await registry.close(p, { current: () => owns() && available() }); }
+  finally { finish?.(handed); }
+  if (!handed) return false;
   if (!registry.current && !registry.pendingOpen && available() && owns(false)) focusPendingSend(item);
   return true;
 }
@@ -1936,6 +1940,7 @@ function feedOf() {
     quiet: item => agentTalk(item, bootstrap.actor, bootstrap.actor_kind, whisperPeople().kindOf), filterHost: $('agent-coordination-show'),
     keep: newOnPage, unread: newOnPage, acted: clearVisitNew, captureArchive: captureArchiveReading,
     captureEmptyReply: id => cardReplies?.captureEmpty(id),
+    closeReplyToFold: id => cardReplies?.close(id, { focus: false }),
     nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     newest: (stack, mark) => run(() => openDossierNew(stack, mark)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), arranged: stacksRedrawn,
@@ -4230,7 +4235,13 @@ async function initialize() {
     authority: () => registry.runtime.current, current: () => !retired && !registry.disposed && !authorityReviewPending() });
   cardReplies = new CardReplies({ template: $('inline-composer'), registry, topic: () => topic,
     callbacks: { ...inline.callbacks, notebook: null, recipientsPainted: null, retry: retryCard,
-      sent: (result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current) }, offer: offerAuthor, discover, say: status });
+      sent: (result, current) => landOnMessage(result.receipt.result.message_id, ++landingSerial, current) }, offer: offerAuthor, discover, say: status,
+    changed: id => {
+      const feed = stackFeed;
+      if (feed?.state.writing.has(id)) queueMicrotask(() => {
+        if (!retired && feed === stackFeed && feed.state.writing.has(id)) feed.arrange();
+      });
+    } });
   registry.cleanup.resumeListeners.add(rechecked);
   // After any recorded answer to a mark, this page shows what Core now holds,
   // with or without the live stream.
