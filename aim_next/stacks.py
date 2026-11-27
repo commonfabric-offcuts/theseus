@@ -291,7 +291,7 @@ def current_acts(db, actor, message_ids, *, source_items=True, context=None):
             # still overtakes the admitted snapshot even if its rows disappear.
             if (acts['cover'] or {}).get('items') or member_sequence:
                 if mid not in dossiers:
-                    dossiers[mid] = _dossier(db, actor, mid)
+                    dossiers[mid] = _dossier(db, actor, mid, archive_roots=roots if acts['aside'] is not None else None)
                 latest = dossiers[mid][0] or 0
         acts['cover_read_seq'] = [snapshots[topic], sequence, latest]
     for message_id, acts in found.items():
@@ -445,17 +445,38 @@ MEMBERS = """
         )"""
 
 
-def _dossier(db, actor, root):
+def _dossier(db, actor, root, *, archive_roots=None):
     """(the newest message, the newest by someone else) the reader can see in root's dossier, as sequences or None."""
     topic = db.execute("SELECT topic_id FROM messages WHERE id=?", (root,)).fetchone()[0]
     probe = db.execute("SELECT m.id,m.seq,m.author_id FROM messages m INDEXED BY topic_messages "
                             "WHERE m.topic_id=:topic AND " + VISIBLE + " ORDER BY m.seq DESC LIMIT 32",
                             {'topic': topic, 'actor': actor})
     latest = probe.fetchone()
-    roots = StackRoots(db, actor)
-    # Older dossiers cannot use this certificate. Do not consume an unrelated
-    # topic window before their exact fallback, even when later history grows.
+    roots = archive_roots if archive_roots is not None else StackRoots(db, actor)
+    # The original certificate applies when the global newest message is
+    # in this dossier. Only archived reads look behind an unrelated head.
     candidates = [latest] + probe.fetchall() if latest is not None and roots.root(latest['id']) == root else []
+    if archive_roots is not None and latest is not None and not candidates:
+        # An archived dossier may sit just behind a newer, unrelated reply.
+        # Within the descending visible topic window its first member and
+        # first member by someone else still certify both dossier maxima.
+        newest = None
+        for candidate in probe:
+            try:
+                candidate_root = roots.root(candidate['id'])
+            except Refusal as exc:
+                if exc.code != "STACK_CHANGED":
+                    raise
+                # Unrelated ancestry can be too deep even when the requested
+                # archive can still be read by the exact recursive walk.
+                break
+            if candidate_root != root:
+                continue
+            if newest is None:
+                newest = candidate['seq']
+            if candidate['author_id'] != actor:
+                probe.close()
+                return newest, candidate['seq']
     probe.close()
     if candidates:
         other = next((row for row in candidates if row['author_id'] != actor), None)
@@ -646,7 +667,7 @@ def stack_positions(db, actor, items, *, context=None):
             acts = root_acts.get(root, EMPTY)
             through, starred = acts["aside"], stars[topic].get(root, [])
             if through is not None and root not in aggregates:
-                aggregates[root] = _dossier(db, actor, root)
+                aggregates[root] = _dossier(db, actor, root, archive_roots=roots)
             latest, others = aggregates[root] if through is not None else (0, None)
             # The dossier's name and its cover (items 470, 624) ride with its place, so a page holding only its
             # replies shows them; read as this reader reads its first message, the root they can see.
