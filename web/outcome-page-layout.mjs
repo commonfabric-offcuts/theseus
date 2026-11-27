@@ -1,5 +1,6 @@
 import { arrange } from './topic-navigation.mjs';
 import { waitsOn } from './topic-state.mjs';
+import { markSeatEnded } from './people.mjs';
 
 // Composition only: members and topics come from their existing owners. The
 // bench applies at every width (985); without a media API the page keeps its
@@ -103,7 +104,8 @@ export class OutcomePageLayout {
       row.button.setAttribute('aria-pressed', String(this.selected === id));
       row.name.textContent = `${person.name || id}${own ? ' (you)' : ''}`;
       row.line.textContent = waiting ? `${waiting} ${waiting === 1 ? 'topic waits' : 'topics wait'} on ${own ? 'you' : 'them'}` : `Nothing waits on ${own ? 'you' : 'them'}`;
-      row.button.title = waiting ? `Show the topics waiting on ${own ? 'you' : person.name || id}` : row.line.textContent;
+      markSeatEnded(row.button, person.seat_ended,
+        waiting ? `Show the topics waiting on ${own ? 'you' : person.name || id}` : row.line.textContent);
       rows.push(row.li);
     }
     for (const [id, row] of this.rows) if (!this.people.some(person => person.actor_id === id)) { row.li.remove(); this.rows.delete(id); }

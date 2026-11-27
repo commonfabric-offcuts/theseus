@@ -13,6 +13,11 @@ const PAGE = 100;
 const actorName = person => person.name || person.id || person.actor_id;
 const actorId = person => person.id ?? person.actor_id;
 const folded = value => String(value ?? '').toLowerCase();
+export function markSeatEnded(node, ended, title = '') {
+  if (ended) node.setAttribute('data-seat-ended', '');
+  else if (node.hasAttribute?.('data-seat-ended')) node.removeAttribute('data-seat-ended');
+  if (ended || title || node.title) node.title = ended ? 'seat ended' : title;
+}
 function distinctName(person, people) {
   const name = actorName(person), id = actorId(person);
   return people.some(other => other && actorId(other) !== id && folded(actorName(other)) === folded(name))
@@ -161,7 +166,7 @@ function placeChips(host, chips) {
 // phone (docs/reader.md): everyone named, each with only a ×, and opener
 // (+ Someone) for the rest. It never lists anyone not named, so it is the
 // same size however big the team.
-export function paintAddress(host, field, { people, named, toggle, remove, reach, summary = null, nameOf = id => id }) {
+export function paintAddress(host, field, { people, named, toggle, remove, reach, summary = null, nameOf = id => id, seatEnded = () => false }) {
   const at = document.activeElement, holder = [...host.children].find(chip => chip === at || [...chip.children ?? []].includes(at));
   const held = holder ? { name: holder.dataset.name, inner: holder !== at ? at.textContent : null } : null;
   const was = new Map([...host.children].map(chip => [chip.dataset.name, chip]));
@@ -175,6 +180,7 @@ export function paintAddress(host, field, { people, named, toggle, remove, reach
   const chips = offered.map(id => {
     const chip = kept(id, 'choice', () => element('button', { type: 'button', className: 'choice-chip', textContent: id }));
     if (chip.textContent !== nameOf(id)) chip.textContent = nameOf(id);
+    markSeatEnded(chip, seatEnded(id));
     chip.setAttribute('aria-pressed', named.includes(id) ? 'true' : 'false');
     chip.onclick = () => toggle(id, !named.includes(id));
     return chip;
@@ -189,6 +195,7 @@ export function paintAddress(host, field, { people, named, toggle, remove, reach
       fresh.append(fresh.nameNode, out); markReach(fresh, name, reach, answer, nameOf); return fresh;
     });
     chip.nameNode.textContent = nameOf(name);
+    markSeatEnded(chip.nameNode, seatEnded(name));
     chip.out.setAttribute('aria-label', `Remove ${nameOf(name)}`);
     if (answer && !answer.reachable) chip.title = answer.disabled
       ? `${nameOf(name)} is switched off, so a message to them is refused.`
@@ -197,7 +204,7 @@ export function paintAddress(host, field, { people, named, toggle, remove, reach
     chips.push(chip);
   }
   placeChips(host, chips);
-  if (summary) paintNamed(summary, named, remove, answers, nameOf);
+  if (summary) paintNamed(summary, named, remove, answers, nameOf, seatEnded);
   if (!held) return;
   const next = chips.find(chip => chip.dataset.name === held.name);
   // The same button on the new chip (its words say which), or the chip itself.
@@ -209,7 +216,7 @@ export function paintAddress(host, field, { people, named, toggle, remove, reach
 // (its offer to add them is in the naming sheet). A chip is kept while it
 // shows the same, so a press held across a repaint still clicks, and a ×
 // that held the focus as its chip went hands it to opener.
-function paintNamed({ host, opener }, named, remove, answers, nameOf) {
+function paintNamed({ host, opener }, named, remove, answers, nameOf, seatEnded) {
   const held = [...host.children].some(chip => chip.contains(document.activeElement));
   const was = new Map([...host.children].map(chip => [chip.dataset.name, chip]));
   const chips = [...new Set(named)].map(name => {
@@ -222,6 +229,7 @@ function paintNamed({ host, opener }, named, remove, answers, nameOf) {
       chip.append(chip.nameNode, out); Object.assign(chip, { out, away }); chip.dataset.name = name;
     }
     chip.nameNode.textContent = nameOf(name);
+    markSeatEnded(chip.nameNode, seatEnded(name));
     chip.out.setAttribute('aria-label', `Remove ${nameOf(name)}`);
     if (away) chip.title = `${nameOf(name)} is not in this topic, so a message to them is refused. + Someone says more.`;
     chip.out.onclick = () => remove(name);
@@ -332,7 +340,8 @@ export class PeoplePanel {
       }
       const label = distinctName(person, this.candidates());
       if (chip.textContent !== label) chip.textContent = label;
-      chip.title = person.name && person.name !== person.id ? person.name : ''; chip.disabled = this.busy;
+      markSeatEnded(chip, person.seat_ended, person.name && person.name !== person.id ? person.name : '');
+      chip.disabled = this.busy;
       return chip;
     });
     if (this.manage && !addable.length) {
@@ -355,7 +364,7 @@ export class PeoplePanel {
     // through, when they are not.
     const shown = people.map(person => ({ id: person.actor_id, label: distinctName(person, people), named: this.named(person, distinctName(person, people)),
       className: this.pill ? ['person-pill', this.pill(person)].filter(Boolean).join(' ') : 'chip',
-      light: this.light(person), removable: manage && !fixed.has(person.actor_id) }));
+      ended: person.seat_ended, light: this.light(person), removable: manage && !fixed.has(person.actor_id) }));
     this.paintChips(shown);
     // "+ Add" stays the same node after the pills, so a repaint never takes its focus.
     if (manage || this.beforeChoice && !this.beforeChoice.hidden) { if (this.opener.parentNode !== this.chips) this.chips.append(this.opener); }
@@ -376,11 +385,12 @@ export class PeoplePanel {
     const heldName = [...this.namers].find(([, name]) => name === at)?.[0];
     const was = this.pills;
     this.pills = new Map(); this.removers = new Map(); this.namers = new Map();
-    const pills = shown.map(({ id, label, named, className, light, removable }) => {
+    const pills = shown.map(({ id, label, named, className, ended, light, removable }) => {
       const key = JSON.stringify([className, light, removable]);
       let pill = was.get(id);
       if (pill?.key !== key || pill.named !== named) pill = { key, named, chip: this.drawPill(id, named, className, light, removable) };
       if (!named && pill.chip.nameNode.textContent !== label) pill.chip.nameNode.textContent = label;
+      markSeatEnded(pill.chip, ended);
       pill.out = pill.chip.out;
       if (pill.out) { pill.out.setAttribute('aria-label', `Remove ${label}`); pill.out.disabled = this.busy; this.removers.set(id, pill.out); }
       if (named) this.namers.set(id, named);

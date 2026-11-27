@@ -6,9 +6,14 @@ export const recordedReads = () => new Set(['pipeline', 'topics', 'conversation'
 
 export function recordedInvalidation(windows) {
   const dirty = new Set(), add = (...names) => names.forEach(name => dirty.add(name));
+  const all = () => {
+    const names = recordedReads();
+    if (windows.some(({ items }) => items.some(item => item.resource_kind === 'hosted_seat'))) names.add('seatPeople');
+    return names;
+  };
   for (const { scope, items } of windows) for (const { resource_kind: kind } of items) {
     if (scope.kind === 'actor') {
-      if (['workspace', 'participation'].includes(kind)) return recordedReads();
+      if (['workspace', 'participation'].includes(kind)) return all();
       if (['draft', 'submission', 'note', 'edit_session', 'yours', 'media', 'opening', 'color', 'assessment', 'rail_dimming', 'reaction', 'edit'].includes(kind)) continue;
       if (kind === 'memory_read') add('read', 'shown');
       else if (kind === 'memory_star' || kind === 'outcome_order' || kind === 'outcome_color') continue; // Shell owns these projections.
@@ -16,16 +21,17 @@ export function recordedInvalidation(windows) {
       else if (kind === 'mark') add('marks', 'unread', 'read', 'topics', 'conversation');
       else if (['delivery', 'waiting', 'whisper'].includes(kind)) add('marks', 'unread', 'read', 'topics', 'conversation', 'wakes');
       else if (['acts', 'dossier_move', 'source_cover', 'source_cover_read', 'question', 'withdrawal', 'removal'].includes(kind)) add('topics', 'conversation', 'unread', 'read', 'marks');
-      else if (['hosted_seat', 'agent_execution'].includes(kind)) add('wakes', 'participants');
-      else return recordedReads();
+      else if (kind === 'hosted_seat') add('wakes', 'participants', 'seatPeople');
+      else if (kind === 'agent_execution') add('wakes', 'participants');
+      else return all();
     } else {
-      if (kind === 'workspace') return recordedReads();
+      if (kind === 'workspace') return all();
       if (kind === 'topic') add('pipeline', 'topics', 'conversation', 'unread', 'read', 'participants', 'wakes');
       else if (kind === 'memory') add('read', 'shown');
       else if (kind === 'pipeline' || kind === 'checks') add('pipeline', 'topics');
-      else if (kind === 'hosted_seat') add('participants', 'wakes', 'topics');
+      else if (kind === 'hosted_seat') add('participants', 'seatPeople', 'wakes', 'topics');
       else if (kind === 'workspace_link' || kind.startsWith('tool_')) continue;
-      else return recordedReads();
+      else return all();
     }
   }
   return dirty;
@@ -90,7 +96,8 @@ export function recordedActionRefresh({ follow, bootstrap, workspaceId, topicId,
     if (selected.has('pipeline') || selected.has('topics')) results.push(await owners.sections(dirty));
     for (const name of ['conversation', 'marks', 'unread', 'read', 'shown', 'wakes', 'participants']) {
       if (!current()) return false;
-      if (selected.has(name)) results.push(await owners[name]());
+      if (selected.has(name)) results.push(await (name === 'participants'
+        ? owners.participants(!dirty || selected.has('seatPeople')) : owners[name]()));
     }
     return current() && results.every(value => value !== false);
   }, changes, before);
