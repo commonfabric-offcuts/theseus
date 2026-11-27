@@ -462,7 +462,15 @@ def _dossier(db, actor, root, *, archive_roots=None):
         # first member by someone else still certify both dossier maxima.
         newest = None
         for candidate in probe:
-            if roots.root(candidate['id']) != root:
+            try:
+                candidate_root = roots.root(candidate['id'])
+            except Refusal as exc:
+                if exc.code != "STACK_CHANGED":
+                    raise
+                # Unrelated ancestry can be too deep even when the requested
+                # archive can still be read by the exact recursive walk.
+                break
+            if candidate_root != root:
                 continue
             if newest is None:
                 newest = candidate['seq']
