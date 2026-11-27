@@ -8,6 +8,7 @@ import { NotebookPage } from '../web/notebook-page.mjs';
 import { NotebookRailMenu } from '../web/notebook-rail-menu.mjs';
 import { notebookSheetMenuItems } from '../web/notebook-sheet.mjs';
 import { RailMenuCommands } from '../web/rail-menu-commands.mjs';
+import { railReadOrder } from '../web/rail-read-order.mjs';
 import { topicMenuItems } from '../web/topic-menu-items.mjs';
 import { readTopicList, TopicPages, TopicRail } from '../web/topic-navigation.mjs';
 import { TopicStatePanel, topicUpdateEnvelope } from '../web/topic-state.mjs';
@@ -343,12 +344,12 @@ test('862 actual loaded topic menu invokes TopicStatePanel and existing settings
 });
 test('862 actual rail wiring provides shared Notebook owners and topic arrivals consume their address first', () => {
   const f=fixture('page'), calls=[], closing=[], shell={ready:handles=>calls.push(handles)}, menu={items:(source,choose)=>[source,choose],act:(...args)=>calls.push(args)};
-  // readyRails closes over this module-level service in the real app. Supply
-  // its owner explicitly, so this extracted-function check has no global/order dependency.
+  // Supply the module dependencies explicitly when extracting readyRails.
   const topicClosing={start(){assert.equal(calls.length,1,'rails are ready before recovery starts');closing.push(['start']);},send(...args){closing.push(['send',...args]);return 'kept';}};
-  const env={shell,topicClosing,api:{},bootstrap:{},live:{},$:()=>({textContent:'Outcome'}),pageMax:()=>20,checkedView(){},openDestination(){},notebookCreator(){},railDossierMenu(){},runDossierMenuChoice(){},runTopicMenuAction(){},notebookRailMenu:()=>menu,markFromRail(){},freshness:null};
+  const env={shell,topicClosing,railReadOrder,api:{},bootstrap:{},live:{},$:()=>({textContent:'Outcome'}),pageMax:()=>20,checkedView(){},openDestination(){},notebookCreator(){},railDossierMenu(){},runDossierMenuChoice(){},runTopicMenuAction(){},notebookRailMenu:()=>menu,markFromRail(){},freshness:null};
   appFunction('function readyRails(', '// A notification opens',env,'readyRails')('w');
   const ports=calls[0],choose=()=>{};assert.deepEqual(ports.notebookMenu(f.record,f.row,choose),[f.record,choose]);assert.equal(ports.topicMenuAction,env.runTopicMenuAction);
+  assert.equal(ports.railReadOrder,railReadOrder);
   assert.deepEqual(closing,[['start']]);
   const current={id:'t',workspace_id:'w'},envelope={operation_id:'kept-topic-close'};
   assert.equal(ports.closeTopic(current,envelope),'kept');
