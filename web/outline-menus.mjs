@@ -96,7 +96,7 @@ export class OutlineMenus {
         if (!current()) return;
         if (answer.instance_id !== handles.bootstrap.instance_id || answer.source_ref?.kind !== 'memory' || answer.source_ref.id !== pageId ||
             !['topic','workspace'].includes(scope.kind) || answer.owner_scope?.kind !== scope.kind || answer.owner_scope.id !== scope.id) throw Error('The Notebook page could not be confirmed.');
-        items = handles.notebookMenu(answer, row, (key, label) => current() && this.perform(handles, () => handles.notebookMenuAction(answer, key, label, row, this.commands)));
+        items = handles.notebookMenu(answer, row, (key, label) => current() && this.perform(handles, () => handles.notebookMenuAction(answer, key, label, row, this.commands, words => this.notice(words))));
       } else {
         if (target?.kind !== 'topic' || target.message !== row.dataset.dossierId) return;
         const answer = await handles.view('topic_messages', { topic_id: target.id, message_ids: [target.message] }, 'foreground');
@@ -104,7 +104,7 @@ export class OutlineMenus {
         const item = answer.items?.[0];
         if (answer.instance_id !== handles.bootstrap.instance_id || answer.items?.length !== 1 || item.id !== target.message ||
             item.topic_id !== target.id || item.stack_position?.root_id !== target.message) throw Error('The dossier could not be confirmed.');
-        items = handles.dossierMenu(item, row, (key, label) => this.perform(handles, () => this.dossierAction(item, key, label, row, handles)));
+        items = handles.dossierMenu(item, row, (key, label) => this.perform(handles, () => this.dossierAction(item, key, label, row, handles)), words => this.notice(words));
       }
       if (workspaceId || topicId) {
         const dimmed = outline.dimming?.dimmed(row);

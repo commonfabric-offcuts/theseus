@@ -1,9 +1,10 @@
-import { copyText } from './message-menu.mjs';
+import { copyText, sayOn } from './message-menu.mjs';
 import { openNotebookMenu } from './notebook-menu.mjs';
 import { copyPrompt } from './onboarding.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { AGENT_PALETTE } from './author-colors.mjs';
 import { plainCardText } from './card-menu.mjs';
+import { clipboardWords, writeClipboardWords } from './copy-words.mjs';
 import { cardDetails } from './card-details.mjs';
 import { CardDisclosure } from './card-disclosure.mjs';
 import { applyAct, boxText, cardImages, cardStacks, cardText, deckBody, findCard, groupAct, groupEnd, imageStandIns, parseDeck, placeNew, stackLine, textCard, writtenAt } from './deck.mjs';
@@ -815,26 +816,31 @@ export class DeckPage {
       }
       return placeLink({kind:'cards',id:this.item,card:id,view:'cards'});
   }
-  async copyCard(ref, link=false) {
-    let at=this.cardAt(ref);if(at<0)return false;
-    let words;
+  async copyCard(ref, link=false, menu=null) {
+    const at=this.cardAt(ref);if(at<0)return false;
     if(link){
       const text=this.savedCardLink(ref);
       // Start the clipboard write before yielding the click's activation.
       const copying=copyPrompt(text);
+      let words;
       try{words=await text;}catch(error){await copying;this.cardNotice(error.message);return;}
       const copied=await copying;
       this.cardNotice(copied?'Card link copied.':`Could not copy. Select this text and use Copy: ${words}`);
       return copied;
-    }else{
-      const card=this.deck.cards[at],written=this.written(card);
-      words=plainCardText(card.title,written.words,this.doc);
     }
-    const copied=await copyText(words);
-    this.cardNotice(copied?(link?'Card link copied.':'Card text copied.'):`Could not copy. Select this text and use Copy: ${words}`);
+    const card=this.deck.cards[at],written=this.written(card);
+    const words=plainCardText(card.title,written.words,this.doc);
+    const html=()=>{
+      const heading=this.doc.createElement('h2');
+      heading.textContent=card.title;
+      return heading.outerHTML+clipboardWords(written.words,this.doc).html;
+    };
+    const copied=menu&&words ? await writeClipboardWords(()=>({plain:words,html}),this.doc) : await copyText(words);
+    if(copied&&menu?.say?.getClientRects().length)sayOn(menu.say,'Text copied',this.doc);
+    else this.cardNotice(copied?'Card text copied.':`Could not copy. Select this text and use Copy: ${words}`);
     return copied;
   }
-  cardMenuItems(ref,anchor) {
+  cardMenuItems(ref,anchor,point=null) {
     const at=this.cardAt(ref);if(at<0)return [];
     const hasId=Boolean(cardDetails(this.deck.cards[at].words).id);
     const chatWhy=this.readOnly?'You cannot write this Notebook page.':
@@ -851,7 +857,7 @@ export class DeckPage {
         catch(error){this.cardNotice(error.message);}
       }})),
       {key:'copy',place:'mark',label:'Copy link',glyph:'link',disabled:!hasId&&!writable(),act:()=>this.copyCard(ref,true)},
-      {key:'copy-text',label:'Copy text',glyph:'copy',act:()=>this.copyCard(ref)},
+      {key:'copy-text',label:'Copy text',glyph:'copy',act:()=>this.copyCard(ref,false,{say:!point&&anchor.matches?.('.deck-menu')?anchor:null})},
       {key:'chat',label:'Chat about this…',glyph:'topic',disabled:Boolean(chatWhy),description:chatWhy,act:()=>{
         const at=this.cardAt(ref);if(at>=0)this.ask(at);
       }},
@@ -906,7 +912,7 @@ export class DeckPage {
       anchor=this.list.querySelector(`.deck-card[data-index="${index}"]`)?.querySelector('.deck-menu')??anchor;
     }
     const ref=this.cardRef(index);if(!ref)return;
-    const menu=openNotebookMenu({anchor,at,items:this.cardMenuItems(ref,anchor),label:'This card',sheet:true,doc:this.doc});
+    const menu=openNotebookMenu({anchor,at,items:this.cardMenuItems(ref,anchor,at),label:'This card',sheet:true,doc:this.doc});
     this.listening?.signal.addEventListener('abort',()=>menu?.close(false),{once:true});
     return menu;
   }

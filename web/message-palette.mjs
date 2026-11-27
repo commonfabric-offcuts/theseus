@@ -3,7 +3,7 @@ import {glyph} from './glyphs.mjs';
 const keyOf=item=>item.key??item.label;
 const pressed=new Set(['Unstar','Mark read','Bring back']);
 const keyItems=new Set(['fold','fold-stack','open-stack','level','move-up','move-down','join-up','join-down','undo','reset','moves']);
-const rowOrder=['Ask for update','cover-refresh','Edit','Start a topic from this','Start a new dossier','Add to pipeline','Move to topic…','Withdraw question','Show full message','split'];
+const rowOrder=['Copy text','Ask for update','cover-refresh','Edit','Start a topic from this','Start a new dossier','Add to pipeline','Move to topic…','Withdraw question','Show full message','split'];
 const families=[['fold',['fold','fold-stack','open-stack','level']],['move',['move-up','move-down']],['join',['join-up','join-down']],['',['undo','reset','moves']]];
 const short={reset:'reset place',moves:'move or join…'};
 
@@ -33,7 +33,7 @@ export function renderMessagePalette({doc,root,items,makeButton,glyphFor}) {
   const buttonFor=item=>{
     const button=makeButton(item,items.indexOf(item));button.dataset.menuKey=keyOf(item);
     button.dataset.menuLabel=item.label;button.dataset.menuKeys=item.keys??'';
-    button.setAttribute('aria-label',item.label);button.title=item.label;return button;
+    button.setAttribute('aria-label',item.label);button.title=item.tooltip??item.label;return button;
   };
   const separator=()=>{const node=element('div','palette-sep');node.setAttribute('role','separator');return node;};
   const marksRow=element('div','palette-marks'),markButtons=parts.marks.map(item=>{

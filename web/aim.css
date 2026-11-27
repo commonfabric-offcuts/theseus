@@ -1601,3 +1601,6 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 /* Submitted writing stays in the topic while its authoritative message is pending. */
 .pending-send-state{font-size:.8rem;font-weight:400;opacity:.7;margin-inline-start:.6em}
 .pending-send-check{display:block;font-size:.8rem;margin:.3rem 0}
+
+/* The existing overflow receipt needs the width of its words. */
+.notebook-menu.said,.deck-menu.said,.stack-tool.said,.notebook-sheet-head .sheet-glyph.said{width:max-content;padding-inline:.45rem;white-space:nowrap;font-size:.78rem;font-weight:650;color:var(--accent)}

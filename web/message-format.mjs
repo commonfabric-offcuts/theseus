@@ -841,7 +841,7 @@ function blockNode(block, doc, cut, meter, copyFences = false, html = false) {
 // A row draws the cells it was written with, and a row with fewer than the
 // widest one cell more, empty, across the rest: what a table draws grows with
 // what was written, never with its rows times its columns.
-function tableNode(block, doc, meter) {
+function tableNode(block, doc, meter, scrolling = true) {
   const width = block.rows.reduce((most, row) => Math.max(most, row.cells.length), block.head.cells.length);
   const cell = (tag, line, n) => {
     const words = line.cells[n];
@@ -860,9 +860,60 @@ function tableNode(block, doc, meter) {
   const head = el(doc, 'thead', '', [tr('th', block.head)], { start: block.head.start, end: block.head.end });
   const body = el(doc, 'tbody', '', block.rows.map(line => tr('td', line)), block.rows.length ? { start: block.rows[0].start, end: block.rows.at(-1).end } : null);
   const table = el(doc, 'table', 'md-table', [head, body], { start: block.start, end: block.end });
+  if (!scrolling) return table;
   const wrap = el(doc, 'span', 'md-block md-table-wrap', [table], { start: block.start, end: block.end });
   edgeFades(wrap, table);
   return wrap;
+}
+
+function clipboardList(items, doc) {
+  const root = doc.createDocumentFragment(), entered = [];
+  const firstDepth = items.reduce((depth, item) => Math.min(depth, item.depth), items[0]?.depth ?? 0);
+  for (const { depth, marker, contents, task } of items) {
+    const level = Math.min(depth - firstDepth, entered.length);
+    entered.length = Math.min(entered.length, level + 1);
+    const number = /^(\d+)/.exec(marker);
+    const tag = number ? 'ol' : 'ul';
+    let parent = entered[level];
+    if (parent?.localName !== tag) {
+      parent = entered[level] = doc.createElement(tag);
+      if (number && Number(number[1]) !== 1) parent.start = Number(number[1]);
+      (entered[level - 1]?.lastElementChild ?? root).append(parent);
+    }
+    const row = doc.createElement('li');
+    if (task) row.append(task + ' ');
+    if (number && parent.lastElementChild) row.value = Number(number[1]);
+    row.append(...contents);
+    parent.append(row);
+  }
+  return root;
+}
+
+// Card blocks use spans so they can live inside the card's button. A paste
+// needs semantic elements because the destination does not have card CSS.
+export function clipboardNodes(text, { doc = globalThis.document, displayRules = [] } = {}) {
+  const inline = words => inlineNodes(words, { doc });
+  const node = (tag, ...contents) => {
+    const element = doc.createElement(tag);
+    element.append(...contents);
+    return element;
+  };
+  const render = block => {
+    if (block.kind === 'heading') return node(`h${block.level}`, ...inline(block.words));
+    if (block.kind === 'rule') return node('hr');
+    if (block.kind === 'code') return node('pre', node('code', block.words.text));
+    if (block.kind === 'quote') return node('blockquote', ...(block.blocks ? block.blocks.map(render) : inline(block.words)));
+    if (block.kind === 'list') return clipboardList(block.items.map(item => ({
+      depth: item.depth,
+      marker: item.marker,
+      contents: item.paragraphs ? item.paragraphs.map(part => node('p', ...inline(part.words))) : inline(item.words),
+      task: MARKS[item.task],
+    })), doc);
+    if (block.kind === 'table') return tableNode(block, doc, undefined, false);
+    return node('p', ...inline(block.words));
+  };
+  const blocks = displayBlocks(parseBlocks(text), displayRules, {});
+  return blocks.length ? blocks.map(render) : wordNodes(text, { doc });
 }
 
 // text as nodes for a card or any other place that shows a message's words.

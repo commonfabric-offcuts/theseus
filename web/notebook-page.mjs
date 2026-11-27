@@ -6,6 +6,7 @@ import { pageLink } from './links.mjs';
 import { copyText } from './message-menu.mjs';
 import { showGlyph } from './glyphs.mjs';
 import { openNotebookMenu } from './notebook-menu.mjs';
+import { copyWordsChoice, hasClipboardWords, notebookClipboard } from './copy-words.mjs';
 import { DeckPage, UNDO_LIMIT } from './deck-page.mjs';
 import { applyAct, deckBody, parseDeck, cardText, cardImages, cardRegionShape, imageLine, textCard, findCard, groupEnd, DEEPEST } from './deck.mjs';
 import { WritingInput, commandLetter } from './writing-input.mjs';
@@ -30,7 +31,7 @@ function refuseUnavailableWriting(page) {
   return true;
 }
 
-export function notebookMenuItems(page,{rail=false}={}) {
+export function notebookMenuItems(page,{rail=false,say=rail?null:page.more}={}) {
     const w=page.writing,state=w?.pageState;
     if(!state)return [];
     if(w.deleted)return state.reader_may_delete?[{key:'restore',label:'Undo delete',glyph:'undo',act:()=>page.pageAction('memory.delete',{deleted:false})}]:[];
@@ -43,6 +44,7 @@ export function notebookMenuItems(page,{rail=false}={}) {
       {key:'star',place:'mark',label:state.starred?'Unstar':'Star',glyph:state.starred?'starred':'star',checked:Boolean(state.starred),act:()=>page.pageAction('memory.star',{starred:!state.starred})},
       {key:'draft',place:'mark',label:'Private draft',glyph:'lock',checked:page.drafted(),disabled:!canWrite(),act:()=>{if(canWrite())page.markDraft(!page.drafted());}},
       {key:'copy',place:'mark',label:'Copy link',glyph:'link',act:()=>page.copyLink()},
+      ...(page.copyWordsItem?[page.copyWordsItem({say})]:[]),
       {key:'text',place:'view',label:'Text',glyph:'text',checked:page.mode==='text',act:()=>page.switchView('text')},
       {key:'cards',place:'view',label:'Cards',glyph:'stack',checked:page.mode==='cards',act:()=>page.switchView('cards')},
       ...['topic','dossier'].map(kind=>({key:'start-'+kind,place:'start',label:kind==='topic'?'Topic':'Dossier',ariaLabel:kind==='topic'?'Start a topic from this page':'Start a new dossier from this page',glyph:kind==='topic'?'topic':'pencil',act:()=>page.startNew(kind)})),
@@ -52,7 +54,7 @@ export function notebookMenuItems(page,{rail=false}={}) {
     // The sheet's pencil owns Rename; an unopened rail row still offers it.
     if(!page.readOnly&&(!page.inNotebookSheet||rail))items.push({key:'rename',label:'Rename',glyph:'pencil',disabled:!canWrite(),act:()=>{if(canWrite())page.rename();}});
     items.push({key:'move-page',label:'Move to…',glyph:'move',disabled:!canWrite(),act:()=>{if(canWrite())page.chooseTransfer('memory.move');}},
-      {key:'copy-page',label:'Copy to…',glyph:'copy',disabled:!canWrite(),act:()=>{if(canWrite())page.chooseTransfer('memory.copy');}});
+      {key:'copy-page',label:'Copy to…',glyph:'moveto',disabled:!canWrite(),act:()=>{if(canWrite())page.chooseTransfer('memory.copy');}});
     if(state.reader_may_delete)items.push({key:'delete',place:'danger',label:'Delete page',glyph:'drop',act:()=>page.pageAction('memory.delete',{deleted:true})});
     if(page.mode==='cards')items.push(
       {key:'edit',place:'key',label:page.editing?'Done':'Edit',glyph:'pencil',keys:'⌘↩',disabled:!canWriteCards(),act:()=>{if(canWriteCards()){if(page.editing)page.finish();else page.edit();}}},
@@ -179,7 +181,7 @@ export class NotebookPage extends DeckPage {
     this.drawView();
   }
   openPageMenu(at=null) {
-    const menu=openNotebookMenu({anchor:this.more,at,items:this.menuItems(),label:'This page',sheet:true,doc:this.doc});
+    const menu=openNotebookMenu({anchor:this.more,at,items:this.menuItems({say:at?null:this.more}),label:'This page',sheet:true,doc:this.doc});
     this.listening.signal.addEventListener('abort',()=>menu?.close(false),{once:true});
     return menu;
   }
@@ -768,6 +770,17 @@ export class NotebookPage extends DeckPage {
     this.paintPageState();
     this.revisionShown();
     putBack();
+  }
+  copyWordsItem({say, selected = this.selected, notice = words => this.say(words)} = {}) {
+    const w = this.writing, mode = this.mode;
+    const body = mode === 'cards' ? this.previewBody() : w?.value?.body ?? '';
+    const cards = mode === 'cards' && Boolean(selected?.size);
+    const picks = cards ? new Set(selected) : null;
+    const current = () => this.writing === w && !w?.closed && !w?.deleted && !this.unavailable && !this.detached &&
+      !this.listening.signal.aborted && this.menuCurrent?.() !== false;
+    const choice = copyWordsChoice({ cards, empty: !hasClipboardWords(body), contents: () => notebookClipboard(body, mode, picks, this.doc),
+      say, current, doc: this.doc, status: notice });
+    return { ...choice, key: 'copy-text' };
   }
   menuItems(options) { return notebookMenuItems(this,options); }
 

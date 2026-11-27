@@ -44,8 +44,13 @@ export function openNotebookMenu(options) {
     event.preventDefault();event.stopPropagation();const enabled=buttons.filter(b=>!b.disabled),i=enabled.indexOf(doc.activeElement);
     enabled[(i+(event.key==='ArrowRight'?1:-1)+enabled.length)%enabled.length]?.focus({preventScroll:true});
   });
-  const requested=options.focusKey==null?-1:items.findIndex(i=>i.key===options.focusKey),ordinary=items.findIndex((i,n)=>!buttons[n].disabled&&!['mark','swatch','danger','key'].includes(i.place));
-  (buttons[requested>=0&&!buttons[requested].disabled?requested:ordinary>=0?ordinary:buttons.findIndex(b=>!b.disabled)])?.focus({preventScroll:true});
+  const requested=options.focusKey==null?-1:items.findIndex(i=>i.key===options.focusKey);
+  const ordinary=(i,n)=>!buttons[n].disabled&&!['mark','swatch','danger','key'].includes(i.place);
+  // Keep the page's View and Reader Edit focus stops as the new copy row
+  // moves to the front. The card's existing first action remains Copy text.
+  const preferred=items.findIndex((i,n)=>ordinary(i,n)&&(options.label==='This card'||i.key!=='copy-text'));
+  const first=preferred>=0?preferred:items.findIndex(ordinary);
+  (buttons[requested>=0&&!buttons[requested].disabled?requested:first>=0?first:buttons.findIndex(b=>!b.disabled)])?.focus({preventScroll:true});
   if(!root.classList.contains('menu-sheet')) {
     const box=anchor.getBoundingClientRect(),width=root.offsetWidth||0,height=root.offsetHeight||0,W=win.innerWidth??Infinity,H=win.innerHeight??Infinity;
     const x=at?at.x:box.right-width,below=at?at.y:box.bottom+4,above=(at?at.y:box.top-4)-height;
@@ -54,11 +59,12 @@ export function openNotebookMenu(options) {
   return menu;
 }
 
-export function notebookReaderMenuItems(source,act) {
+export function notebookReaderMenuItems(source,act,copied) {
   const revision=source.source_ref.revision;
   return [
     {key:'star',place:'mark',label:source.starred?'Unstar':'Star',glyph:source.starred?'starred':'star',checked:Boolean(source.starred),act:()=>act('star')},
     {key:'copy',place:'mark',label:'Copy link',glyph:'link',act:()=>act('copy')},
+    ...(copied?[copied]:[]),
     ...(source.reader_may_write?[{key:'edit',label:'Edit page',glyph:'pencil',act:()=>act('edit')}]:[]),
     {key:'revision',label:'Copy link to revision '+revision,glyph:'link',act:()=>act('revision')},
     ...['topic','dossier'].map(kind=>({key:'start-'+kind,place:'start',label:kind==='topic'?'Topic':'Dossier',ariaLabel:kind==='topic'?'Start a topic from this page':'Start a new dossier from this page',glyph:kind==='topic'?'topic':'pencil',act:()=>act('start-'+kind)})),
