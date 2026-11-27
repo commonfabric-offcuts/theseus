@@ -53,6 +53,26 @@ test('a lost answer reloads the same request and checks its operation before an 
   assert.equal(next.owner.row.request, null);
 });
 
+test('seat settings and the single template stay bound across an unconfirmed Add', async () => {
+  const template = { id: 'template-' + '1'.repeat(64), model: 'gpt-6.2-sol', reasoning_effort: 'high' };
+  const choices = { model: 'gpt-6.1-terra', reasoning_effort: 'xhigh' };
+  const first = setup(() => { throw Error('lost reply'); });
+  first.owner.templates = { available: true, items: [template] };
+  await first.owner.load();
+  await first.owner.edit({ ...form, ...choices });
+  await assert.rejects(first.owner.add(), /unconfirmed/i);
+  assert.deepEqual(first.saved.row().request.args, { ...form, ...choices, template_id: template.id });
+  const next = setup(request => {
+    const receipt = committed(request);
+    Object.assign(receipt.result.seat, choices, { template_id: template.id });
+    return receipt;
+  }, first.saved);
+  await next.owner.load();
+  await next.owner.again();
+  assert.deepEqual(next.sent[0], first.sent[0]);
+  assert.equal(next.owner.row.request, null);
+});
+
 test('a confirmed operation lookup settles without issuing another Add', async () => {
   const state = setup(() => { throw Error('lost reply'); });
   await state.owner.load(); await state.owner.edit(form); await assert.rejects(state.owner.add());

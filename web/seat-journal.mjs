@@ -4,7 +4,11 @@ const copy = structuredClone;
 const bytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const template = value => typeof value === 'string' && /^template-[0-9a-f]{64}$/.test(value);
-const choice = args => !Object.hasOwn(args, 'template_id') || template(args.template_id);
+export const seatModels = new Map([['gpt-6.2-sol', 'GPT-6.2 Sol'], ['gpt-6.1-terra', 'GPT-6.1 Terra']]);
+export const seatEfforts = ['low', 'medium', 'high', 'xhigh'];
+const choice = args => (!Object.hasOwn(args, 'template_id') || template(args.template_id)) &&
+  (!Object.hasOwn(args, 'model') || seatModels.has(args.model)) &&
+  (!Object.hasOwn(args, 'reasoning_effort') || seatEfforts.includes(args.reasoning_effort));
 
 // One private draft/request per actor, authority and outcome. No prefix clearing,
 // background sending, account adoption or scan of another form's records.
@@ -32,8 +36,8 @@ export async function openSeatJournal(bootstrap, workspace, indexed = globalThis
         !same(request.expected?.authority, authority) || request.target?.workspace_id !== workspace) return false;
     if (request.kind === 'workspace.hosted_seat_add') return same(request.target, { workspace_id: workspace }) &&
       Number.isSafeInteger(request.expected.workspace_revision) && request.expected.workspace_revision >= 0 &&
-      [2, 3].includes(Object.keys(request.args ?? {}).length) && choice(request.args) &&
-      Object.keys(request.args).every(key => ['name', 'role', 'template_id'].includes(key)) &&
+      request.args && choice(request.args) &&
+      Object.keys(request.args).every(key => ['name', 'role', 'template_id', 'model', 'reasoning_effort'].includes(key)) &&
       typeof request.args.name === 'string' && typeof request.args.role === 'string';
     return ['workspace.hosted_seat_retry', 'workspace.hosted_seat_end'].includes(request.kind) && Object.keys(request.target).length === 2 &&
       validActorId(request.target.seat_request_id) && (Object.keys(request.args ?? {}).length === 0 ||

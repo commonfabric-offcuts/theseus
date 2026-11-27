@@ -29,9 +29,9 @@ class RunningSeatHost(fixture.HostCase):
         self.act('workspace.create', {'id': 'w1', 'title': 'New seat proof', 'team': [fixture.AGENT], 'coordinator': None}, {})
         self.route_bytes = self.map.read_bytes()
 
-    def add_seat(self, name='Evidence scribe'):
+    def add_seat(self, name='Evidence scribe', **settings):
         current = self.store.view('lead', 'workspace', {'workspace_id': 'w1'})['workspace']
-        return self.act('workspace.hosted_seat_add', {'name': name, 'role': 'Keep exact evidence.\nRead and answer your own delivery.'},
+        return self.act('workspace.hosted_seat_add', {'name': name, 'role': 'Keep exact evidence.\nRead and answer your own delivery.', **settings},
                         {'workspace_id': 'w1'}, {'workspace_revision': current['version']})
 
     def seat(self, identity):
@@ -78,7 +78,7 @@ class RunningSeatHost(fixture.HostCase):
         runner.event('settled', outcome='handed')
         original = self.turns_rows()[0]
         self.assertIsNone(original['final_status'])
-        added = self.add_seat()
+        added = self.add_seat(model='gpt-6.1-terra', reasoning_effort='medium')
         runner.event('seat_step', seat_id=added['seat_request_id'], state='ready')
         seat = self.seat(added['seat_request_id'])
         runner.event('host_turn_end', thread=seat['thread_id'], status='completed')
@@ -92,6 +92,8 @@ class RunningSeatHost(fixture.HostCase):
         self.assertTrue(replies[0][1].endswith('Hello from the isolated fixture seat.'), replies)
         starts = [row['in'] for row in self.wire() if row.get('in', {}).get('method') == 'thread/start']
         self.assertEqual(len(starts), 2, 'one operator fixture thread and exactly one newly requested thread')
+        self.assertEqual(starts[-1]['params']['model'], 'gpt-6.1-terra')
+        self.assertEqual(starts[-1]['params']['config']['model_reasoning_effort'], 'medium')
         self.assertEqual(len([row for row in self.wire() if 'spawn' in row]), 2, 'the provision fixture and one shared runner child')
         self.stop_clean(runner)
 

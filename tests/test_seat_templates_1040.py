@@ -57,11 +57,62 @@ class TemplateCatalogue(unittest.TestCase):
             made = self.command('workspace.hosted_seat_add', {'name': 'Default seat', 'role': 'Single template.'},
                                 {'workspace_id': 'w1'}, {'workspace_revision': version})
             self.assertEqual(made['result']['seat']['template_id'], option['id'])
+            self.assertEqual(made['result']['seat']['model'], option['model'])
+            self.assertEqual(made['result']['seat']['reasoning_effort'], option['reasoning_effort'])
             self.sql("UPDATE runner_state SET lease_until_ms=0")
             stale = self.store.view('owner', 'hosted_seat_templates', {'workspace_id': 'w1'})
             self.assertFalse(stale['available']); self.assertEqual(stale['items'], [])
             self.store.acquire_runner(guard)
             self.assertFalse(self.store.view('owner', 'hosted_seat_templates', {'workspace_id': 'w1'})['available'])
+
+    def test_model_and_effort_survive_retry_and_bind_the_host_plan(self):
+        from aim_next.runner import RunnerError
+        self.workspace()
+        template = {'id': 'template-' + '1' * 64, 'actor_id': 'agent-a',
+                    'model': 'gpt-6.2-sol', 'reasoning_effort': 'high'}
+        target = {'workspace_id': 'w1'}
+        args = {'name': 'Researcher', 'role': 'Review sources.', 'template_id': template['id'],
+                'model': 'gpt-6.1-terra', 'reasoning_effort': 'xhigh'}
+        with self.store.runner_guard('settings-fixture') as guard:
+            token = self.store.acquire_runner(guard)['runner_token']
+            self.store.hosted_seat_publish_templates(guard, token, [template])
+            def add(values):
+                version = self.sql("SELECT version FROM workspaces WHERE id='w1'")[0][0]
+                return self.command('workspace.hosted_seat_add', values, target, {'workspace_revision': version})
+            for key, value in [('model', 'unoffered-model'), ('reasoning_effort', 'ultra')]:
+                self.assertEqual(add(dict(args, **{key: value}))['error']['code'], 'INVALID_ARGUMENT')
+            seat = add(args)['result']['seat']
+            self.assertEqual(add(dict(args, reasoning_effort='low'))['error']['code'], 'SEAT_SETTINGS_MISMATCH')
+            self.assertEqual(add(args)['result']['seat']['id'], seat['id'])
+            seat = self.store.hosted_seat_claim(guard, token)['seat']
+            seat = self.store.hosted_seat_step(guard, token, seat['id'], seat['version'], 'refused',
+                                              {'reason': 'host_not_configured'})['seat']
+            reply = self.command('workspace.hosted_seat_retry', {}, dict(target, seat_request_id=seat['id']),
+                                 {'seat_revision': seat['version']})
+            self.assertEqual(reply['status'], 'committed')
+            seat = self.store.hosted_seat_claim(guard, token)['seat']
+            settings = {key: args[key] for key in ('model', 'reasoning_effort')}
+            self.assertEqual({key: seat[key] for key in settings}, settings)
+            with self.assertRaises(RunnerError):
+                self.store.hosted_seat_step(guard, token, seat['id'], seat['version'], 'profile',
+                                            {'plan': dict(settings, reasoning_effort='low')})
+            recorded = self.store.hosted_seat_step(guard, token, seat['id'], seat['version'], 'profile', {'plan': settings})
+            self.assertEqual(recorded['seat']['plan'], settings)
+
+    def test_migration_preserves_legacy_seats_and_guards_recorded_settings(self):
+        from aim_next.migrations import MigrationError, migrate
+        self.workspace()
+        self.command('workspace.hosted_seat_add', {'name': 'Legacy', 'role': 'Keep this role.'},
+                     {'workspace_id': 'w1'}, {'workspace_revision': self.sql("SELECT version FROM workspaces WHERE id='w1'")[0][0]})
+        kept = self.sql('SELECT agent_id,role,template_id FROM hosted_seats')
+        self.assertEqual(migrate(self.path, 'test-instance', self.binding, target='69')['schema_version'], '69')
+        self.assertEqual(migrate(self.path, 'test-instance', self.binding)['schema_version'], '70')
+        self.assertEqual(self.sql('SELECT agent_id,role,template_id FROM hosted_seats'), kept)
+        self.assertEqual(self.sql('SELECT model,reasoning_effort FROM hosted_seats'), [(None, None)])
+        self.sql("UPDATE hosted_seats SET model='gpt-6.1-terra',reasoning_effort='high'")
+        with self.assertRaises(MigrationError) as caught:
+            migrate(self.path, 'test-instance', self.binding, target='69')
+        self.assertEqual(caught.exception.code, 'RECORDS_WOULD_BE_LOST')
 
     def test_unplanned_refusal_can_choose_for_same_seat_but_a_kept_plan_locks_the_template(self):
         self.workspace()
