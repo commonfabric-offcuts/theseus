@@ -176,7 +176,7 @@ VIEWS = {
     "workspace_counts": {"workspace_ids"},
     "outcome_light": {"workspace_id"},
     "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done", "build"}, "topic": {"topic_id"},
-    "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction", "items", "message_ids", "position_format"}, "source": {"source_ref", "kind", "id", "revision"},
+    "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction", "items", "message_ids", "dossier_id", "position_format"}, "source": {"source_ref", "kind", "id", "revision"},
     "topic_images": {"topic_id", "limit", "include_pdfs"},
     "memory_stars": {"topic_id", "cursor", "limit"},
     "memory_items": {"owner_scope", "cursor", "limit"}, "memory_current": {"item_id"}, "memory_status": {"item_id"},
@@ -274,6 +274,10 @@ def _view_arguments(name, args):
         raise Refusal("INVALID_ARGUMENT", "Invalid message audience or direction")
     if name == "topic_messages" and args.get("items") not in (None, "open"):
         raise Refusal("INVALID_ARGUMENT", "items is \"open\" or absent")
+    if name == "topic_messages" and "dossier_id" in args:
+        _identifier(args["dossier_id"], "dossier_id")
+        if set(args) - {"topic_id", "dossier_id", "limit", "position_format"}:
+            raise Refusal("INVALID_ARGUMENT", "A dossier landing has its own page")
     if (name == "editor_state" and args.get("topic_id") is None
             and isinstance(args.get("source_ref"), dict) and args["source_ref"].get("kind") not in ("new_topic", "topic")):
         # A private note has no reply destination. Normalize only this view;
