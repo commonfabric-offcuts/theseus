@@ -126,8 +126,8 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       const target=await p.evaluate(`(()=>{const spans=[...document.querySelectorAll('#source-body [data-start]')];const s=spans.find(e=>e.getClientRects().length>1&&e.getBoundingClientRect().bottom<innerHeight/2)||spans[0];const range=document.createRange();range.selectNodeContents(s);const r=range.getClientRects()[0];return {start:s.dataset.start,x:r.x+2,y:r.y+r.height/2}})()`);
       await p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:target.x,y:target.y});
       const hovered=await style('#source-body .hover-quote');
-      expect(hovered.background==='rgb(0, 0, 0)',theme+': passage hover is black');
-      expect(contrast(hovered.color,'rgb(0, 0, 0)')>=4.5,theme+': passage hover text readable');
+      expect(hovered.background==='rgb(94, 97, 96)',theme+': own passage uses the same grey as the feed');
+      expect(contrast(hovered.color,hovered.background)>=4.5,theme+': passage hover text readable');
       const coverage=await p.evaluate(`(()=>{const s=document.querySelector('#source-body .hover-quote'),range=document.createRange();range.selectNodeContents(s);const rects=r=>[...r].map(b=>({x:b.x,y:b.y,width:b.width,height:b.height}));return {text:s.textContent,span:rects(s.getClientRects()),textRange:rects(range.getClientRects()),lineHeight:getComputedStyle(s).lineHeight,paddingTop:getComputedStyle(s).paddingTop,paddingBottom:getComputedStyle(s).paddingBottom}})()`);
       const hoverPixels=pngPixels(Buffer.from((await p.send('Page.captureScreenshot',{format:'png'})).data,'base64'));
       await shot(p,'reading-colors-'+theme+'-hover');

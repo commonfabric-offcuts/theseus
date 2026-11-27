@@ -40,7 +40,8 @@ export function paintCardColor(card, item, actor, color = agentColor) {
 // message, another person's and a Notebook page on the neutral page, never
 // the green that is Fable's card.
 export function paneClass(source, actor, color = agentColor) {
-  if (source?.source_ref?.kind === 'message' && source.author_kind === 'agent' && source.author !== actor)
-    return `reading-pane agent-pane agent-${color(source.author)}`;
-  return 'reading-pane';
+  if (source?.source_ref?.kind !== 'message') return 'reading-pane';
+  if (source.author === actor) return 'reading-pane message-pane own-message-pane';
+  if (source.author_kind === 'agent') return `reading-pane message-pane agent-pane agent-${color(source.author)}`;
+  return 'reading-pane message-pane';
 }
