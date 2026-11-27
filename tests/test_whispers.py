@@ -963,7 +963,9 @@ MESSAGE_READS = {
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
     "aim_next/conversation.py": ("the topic page and its images to pick (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations, "
                                  "and the messages a page names to refresh, each reached through _message_access and read under VISIBLE; "
-                                 "the newly published root read by id to record its initial cover inside the same command transaction, never shown", 23),
+                                 "the newly published root read by id to record its initial cover inside the same command transaction, never shown; "
+                                 "the scoped dossier page admits its canonical root only after _message_access and walks stacks.MEMBERS, "
+                                 "which applies whispers.VISIBLE to every member", 24),
     "aim_next/root_posts.py": ("candidate roots in the destination topic under VISIBLE before LIMIT; effective parent existence "
                                "in that same topic checked for visibility (public, author or private recipient) before suppressing a root; "
                                "only readable current root ids, sequences and bounded names are returned, no bodies or hidden counts", 2),
