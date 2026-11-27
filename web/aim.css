@@ -1197,6 +1197,7 @@ dialog.notebook-sheet-dialog:not([open]){display:none}
   /* The fixed row stays single on a phone; the existing 44px control floor remains. */
   .notebook-sheet-status{max-width:none;container-type:inline-size}.notebook-sheet-status .deck-status{justify-content:flex-end}
   .notebook-sheet-page{padding:0 .75rem .75rem}
+  .notebook-sheet-page:has([data-notebook-child-editor]:focus){padding-bottom:calc(.75rem + max(0px,100dvh - var(--vv-height,100dvh)))}
   .notebook-sheet-page>.deck-bar button{flex:none;padding-inline:.9rem}
   .notebook-back{max-width:9rem}
 }

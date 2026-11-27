@@ -659,6 +659,7 @@ export class DeckPage {
     field.value = editing.shown ?? editing.text;
     if (editing.bodyStart != null) field.style.setProperty('--body-start', `${editing.bodyStart}px`);
     field.setAttribute('aria-labelledby', 'deck-editor-label');
+    if (editing.revealAboveKeyboard) field.setAttribute('data-notebook-child-editor', '');
     field.addEventListener('input', () => {
       // Measuring at auto height can briefly clamp the sheet's scroll.
       // Restore the position before paint so caret reveal starts from it.
