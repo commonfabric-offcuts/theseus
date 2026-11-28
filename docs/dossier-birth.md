@@ -55,8 +55,9 @@ aim-next birth REPLY --root ROOT --expected-name N --expected-cover N \
   --stands "Checking whether the west cabin is available"
 ```
 
-Include `--name` when the hint offers it. A different coordinator gets the
-existing naming request. If a person has already named the dossier, the
+Include `--name` when the hint offers it to record the name and cover together.
+The existing `mint` instruction still works to name the dossier on its own.
+A different coordinator gets the existing naming request. If a person has already named the dossier, the
 first responder can still record the cover facts. A private or later reply
 does not create a first-cover prompt.
 
@@ -64,3 +65,5 @@ does not create a first-cover prompt.
 when recovering a saved public reply or rereading a changed fence. A write
 takes the actual root and both observed revisions. Reconcile or retry a
 saved write by its original operation if its result is lost.
+If the reply's output was lost, `aim-next --json reconcile OPERATION` reads
+the saved reply receipt. Use its committed message ID with `birth REPLY`.

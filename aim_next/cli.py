@@ -1688,8 +1688,10 @@ class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs,
             _diagnostic(self.out.stderr, "NAMER_UNREAD: the reply is posted. The first-cover and naming prompt could not be read (%s). "
                         "Read it again with `aim-next birth %s`. If you are its namer, you can also run `aim-next mint %s WORDS`."
                         % (found["error"]["code"], message_id, message_id))
-        elif not self.birth_hint(found) and found["namer"] == self.actor:
-            self.out.plain("its dossier has no name, and you name it:%s" % self.name_it({"root_id": found["root_id"], "name_revision": found["name_revision"]}))
+        else:
+            self.birth_hint(found)
+            if found["namer"] == self.actor:
+                self.out.plain("its dossier has no name, and you name it:%s" % self.name_it({"root_id": found["root_id"], "name_revision": found["name_revision"]}))
 
     def do_mint(self):
         """The name of the dossier a message is in, minted by the agent that names it (docs/reply-stacks.md, "Minted

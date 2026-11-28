@@ -29,6 +29,7 @@ class FirstCoverPromptCase(test_agent_verbs.AgentVerbCase):
         self.assertIn("birth %s --root %s --expected-name 0 --expected-cover 0" % (reply, self.root), out)
         self.assertIn("--name", out)
         self.assertIn("same turn", out)
+        self.assertIn("mint %s --expected 0" % self.root, out)
         args = ("birth", reply, "--root", self.root, "--expected-name", "0", "--expected-cover", "0",
                 "--operation", "first-cover-fixture", "--name", "Cabin availability", "--nature", "Decision",
                 "--done-when", "Owner confirms cabin", "--stands", "-")
