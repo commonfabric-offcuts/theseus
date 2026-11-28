@@ -678,7 +678,8 @@
 .edit-echo-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.25rem}
 .edit-echo-controls>.reply-echo{margin:0}
 .edit-echo .reply-echo-heading::before{content:'↻'}
-.edit-echo-toggle{padding-inline:.7rem}
+.edit-echo-toggle{--echo-hover:var(--row-hover);padding-inline:.7rem;-webkit-tap-highlight-color:transparent}
+.edit-echo-toggle[aria-expanded=true]{--echo-fill:var(--row-current);--echo-hover:var(--row-current);color:var(--ink)}
 .edit-echo-diff{margin:.25rem 0 0;padding:.55rem .8rem;border-radius:var(--stack-r-sheet);
   background:var(--stack-read-sheet);color:var(--ink);font-size:.82rem;overflow-wrap:anywhere}
 .edit-echo-change{display:grid;grid-template-columns:3.3rem minmax(0,1fr);gap:.45rem;margin:.15rem 0;white-space:pre-wrap}
