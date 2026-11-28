@@ -1977,6 +1977,10 @@ function feedOf() {
 // (arrangeStacks, which takes it back above More once the feed is drawn).
 function drawFeed(on, ...parts) {
   const sheet = $('new-message-sheet'), inFeed = $('messages').contains(sheet);
+  if (stackFeed) {
+    stackFeed.archiveAvailable = on;
+    stackFeed.shelf?.setAvailable(on);
+  }
   for (const id of ['messages', 'topic-people', ...parts]) $(id).hidden = !on;
   if (!on && windowGapHost) windowGapHost.hidden = true;
   reader?.keepReplyVisible();
@@ -3172,6 +3176,7 @@ function learnMessageRemoval({ message_id, removal }) {
   // or its pending read then sees the same fact as the loaded page.
   dossierHeads?.sync(views.messages, views.removals);
   views?.learnRemoval(message_id, removal);
+  stackFeed?.shelf?.removed(message_id);
   const item = feedMessages().get(message_id), entry = messageEntries.get(message_id), card = cardIn(entry);
   if (entry) dropCardDocuments(entry);
   if (removal.kind === 'unsent') { if (entry) dropCardImages(entry); entry?.remove(); messageEntries.delete(message_id); clearVisitNew(message_id); }

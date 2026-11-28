@@ -32,6 +32,7 @@ class ArchivedShelfCase(StackCase):
         self.assertFalse(set(self.roots(self.page())) & {row["id"] for row in feed["items"]})
         first = self.page()
         self.assertEqual(self.roots(first), [oldest, fourth])
+        self.assertEqual(first["remaining"], 2)
         self.assertEqual(first["items"][0]["count"], 2)
         self.assertTrue(first["items"][0]["starred"])
         self.assertEqual(first["items"][1]["aside_revision"], 1)
@@ -39,6 +40,7 @@ class ArchivedShelfCase(StackCase):
         self.assertEqual(self.roots(second_page), [third, second])
         self.assertEqual(second_page["items"][1]["name"], "Named archive")
         self.assertIsNone(second_page["next_cursor"])
+        self.assertEqual(second_page["remaining"], 0)
         self.assertEqual(self.roots(self.page(actor="agent-a")), [])
         self.assertIn("error", self.page(actor="outsider"))
 
@@ -74,4 +76,29 @@ class ArchivedShelfCase(StackCase):
         first = self.page(limit=1)
         self.assertEqual(self.roots(first), [])
         self.assertIsNotNone(first["next_cursor"])
+        self.assertIsNone(first["remaining"])
         self.assertEqual(self.roots(self.page(first["next_cursor"], limit=1)), [old])
+
+    def test_archive_unread_is_the_members_own_pending_or_marked_count(self):
+        root = self.post("Archived unread")
+        child = self.post("An archived unread reply", reply_to=root)
+        self.committed(self.archive(root))
+        unrelated = self.post("Unread elsewhere in this topic")
+        self.committed(self.command("message.mark", {"marked": True}, target={"message_id": unrelated}, expected={"mark_revision": 0}))
+        first = self.page()["items"][0]
+        self.assertEqual(first["unread"], 2)
+        seq = self.source({"kind": "message", "id": child})["seq"]
+        self.committed(self.command("topic.read_through", {"seq": seq}, target={"topic_id": "t1"}))
+        self.committed(self.command("message.mark", {"marked": True}, target={"message_id": child}, expected={"mark_revision": 0}))
+        self.assertEqual(self.page()["items"][0]["unread"], 1)
+
+    def test_remaining_count_is_omitted_when_the_lookahead_is_open_ended(self):
+        roots = [self.post("Archived %d" % n) for n in range(18)]
+        for root in roots:
+            self.committed(self.archive(root))
+        first = self.page(limit=8)
+        self.assertEqual(self.roots(first), list(reversed(roots))[:8])
+        self.assertIsNone(first["remaining"])
+        second = self.page(first["next_cursor"], limit=8)
+        self.assertEqual(self.roots(second), list(reversed(roots))[8:16])
+        self.assertEqual(second["remaining"], 2)

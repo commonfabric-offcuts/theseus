@@ -375,8 +375,12 @@ export class ThingsRail {
       }
     }
     const shelf = this.host.querySelector('.archive-shelf');
-    if (this.drawnOnce && shelf && !shelf.hidden) for (const el of shelf.querySelectorAll('.shelf-dossier')) {
-      rows.push({ el, level: 1, set: shelf, key: 'archive:' + el.dataset.id, parent: null });
+    if (this.drawnOnce && shelf && !shelf.hidden) {
+      for (const el of shelf.querySelectorAll('.shelf-dossier')) {
+        rows.push({ el, level: 1, set: shelf, key: 'archive:' + el.dataset.id, parent: null });
+      }
+      const more = shelf.querySelector('.archive-shelf-more:not([hidden])');
+      if (more) rows.push({ el: more, level: 1, set: shelf, key: 'archive:more', parent: null });
     }
     return rows;
   }

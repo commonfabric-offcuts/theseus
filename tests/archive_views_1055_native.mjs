@@ -53,7 +53,7 @@ try {
     let d = await drawn(page);
     assert.equal(d.stored, null, 'nothing chosen yet: nothing stored');
     assert.deepEqual([d.view, d.pressed, d.current], ['grid', ['auto'], ['grid']], 'Auto at 18: the grid, Auto pressed, the grid glyph marked as its choice');
-    assert.equal(d.sizes[ids.d0], '2', 'a dossier of two messages shows its count');
+    assert.equal(d.sizes[ids.d0], '1', 'a dossier of two messages shows its reply count');
     assert.equal(Object.entries(d.sizes).filter(([id]) => id !== ids.d0).every(([, size]) => size === ''), true, 'a single message shows no count: ' + JSON.stringify(d.sizes));
     seen.push('auto at 18: grid');
     await archive(order[18]); d = await becomes(d => d.replicas === 19 && d.ghosts === 0, 'archive 19 lands');

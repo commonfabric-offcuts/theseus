@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 
 from .contract import Refusal, _page_size
+from .marks import MARKED
 from .message_edit import words
-from .stacks import StackRoots, _dossier_totals, starred_in, starred_unread
+from .stacks import MEMBERS, StackRoots, _dossier_totals, starred_in
+from .topic_reading import unread_groups
 from .whispers import VISIBLE
 
 
@@ -25,6 +27,19 @@ def _key(row):
     return [row["starred"], row["rank"], row["tie"], row["seq"]]
 
 
+def _unread(db, actor, root, groups):
+    # The member's message id drives both indexed unread probes. Unrelated
+    # pending deliveries and marks never become candidates for this count.
+    return db.execute(MEMBERS +
+        " SELECT count(*) FROM members p CROSS JOIN messages m ON m.id=p.id"
+        " JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id"
+        " WHERE m.author_id<>:actor AND ("
+        " EXISTS(SELECT 1 FROM deliveries d WHERE d.message_id=m.id AND d.recipient_id=:actor"
+        " AND d.state='pending' AND d.group_id IN (SELECT value FROM json_each(:groups)))"
+        " OR EXISTS(SELECT 1 FROM message_marks k WHERE k.actor_id=:actor AND k.message_id=m.id AND " + MARKED + "))",
+        {"actor": actor, "root": root, "groups": groups}).fetchone()[0]
+
+
 def archive_page(db, actor, topic, instance, args):
     limit = min(_page_size(args), 40)
     tier, rank, tie, seq = _cursor(args)
@@ -34,8 +49,9 @@ def archive_page(db, actor, topic, instance, args):
     params = {"actor": actor, "topic": topic, "stars": json.dumps(list(stars)),
               "tier": tier, "rank": rank, "tie": tie, "seq": seq, "budget": budget + 1}
     # Only this reader's Archive acts and their order keys participate in the
-    # sort. The cursor ends at the last inspected candidate, including when
-    # older acts survive but their dossiers have already returned.
+    # sort. Take a small look ahead for an exact remaining count when the
+    # candidate page ends. Beyond it the shelf shows neither an estimate nor
+    # the size of the loaded page as a total.
     candidates = db.execute(
         "WITH ranked AS ("
         " SELECT a.message_id, a.revision, json_extract(a.value,'$.through') AS through,"
@@ -53,7 +69,8 @@ def archive_page(db, actor, topic, instance, args):
         " WHERE b.message_id=a.message_id AND b.kind='trash' AND b.owner=:actor ORDER BY b.revision DESC LIMIT 1),0)=0"
         ") SELECT * FROM ranked WHERE (starred,rank,tie,seq)<(:tier,:rank,:tie,:seq)"
         " ORDER BY starred DESC,rank DESC,tie DESC,seq DESC LIMIT :budget", params).fetchall()
-    items, at = [], 0
+    items, at, following, last = [], 0, 0, None
+    groups = json.dumps(unread_groups(db, actor, topic))
     for row in candidates[:budget]:
         at += 1
         root = row["message_id"]
@@ -61,6 +78,11 @@ def archive_page(db, actor, topic, instance, args):
             continue
         latest, other, count = _dossier_totals(db, actor, root)
         if other is not None and other > row["through"]:
+            continue
+        if len(items) == limit:
+            following += 1
+            if following > 8:
+                break
             continue
         detail = db.execute(
             "SELECT " + words("m", chars=160) + " AS excerpt,"
@@ -72,11 +94,17 @@ def archive_page(db, actor, topic, instance, args):
             "excerpt": detail["excerpt"], "name": detail["name"] or "", "count": count,
             "starred": bool(row["starred"]), "through": row["through"], "aside_revision": row["revision"],
             "order_key": row["rank"], "order_tie": row["tie"], "order_entry_key": row["entry_key"], "latest": latest,
+            "unread": _unread(db, actor, root, groups),
         })
-        if len(items) == limit:
-            break
-    unread = starred_unread(db, actor, topic, roots, {item["message_id"] for item in items})
-    for item in items:
-        item.update(unread[item["message_id"]])
+        last = row
+    remaining = following if at == len(candidates) and following <= 8 else None
+    if remaining == 0:
+        cursor = None
+    elif following:
+        cursor = _key(last)
+    else:
+        # All inspected candidates were consumed or ineligible. Move past
+        # them even if this page exposed zero roots.
+        cursor = _key(candidates[at - 1])
     return {"instance_id": instance, "topic_id": topic, "items": items,
-            "next_cursor": _key(candidates[at - 1]) if at < len(candidates) else None}
+            "next_cursor": cursor, "remaining": remaining}

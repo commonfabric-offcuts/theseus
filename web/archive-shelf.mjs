@@ -52,19 +52,18 @@ export class ArchiveShelf {
     allows = () => true, afterRead = () => {} }) {
     this.doc = doc; this.restore = restore; this.undo = undo; this.changed = changed; this.unread = unread;
     this.read = read; this.allows = allows; this.afterRead = afterRead; this.projected = new Map(); this.given = [];
-    this.suppress = new Set(); this.cursor = null;
+    this.suppress = new Set(); this.cursor = null; this.remaining = null; this.epoch = 0;
     this.replicas = new Map(); this.stacks = new Map(); this.flights = new Map();
     // The dossiers archived on this page, the latest last: they go first on the shelf. Any other keeps Core's order.
     this.here = []; this.drawn = false; this.list = [];
     this.root = element(doc, 'section', 'archive-shelf'); this.root.id = 'archive-shelf';
-    this.root.dataset.selectionOccluder = 'bottom';
     this.root.setAttribute('aria-labelledby', 'archive-shelf-heading'); this.root.hidden = true;
     const head = element(doc, 'div', 'archive-shelf-head');
     this.heading = element(doc, 'h2', '', 'Archived'); this.heading.id = 'archive-shelf-heading';
     this.count = element(doc, 'span', 'archive-shelf-count');
     head.append(this.heading, this.count, this.views());
     this.row = element(doc, 'div', 'archive-shelf-row'); this.row.setAttribute('role', 'list');
-    this.more = element(doc, 'button', 'archive-shelf-more', 'More archived'); this.more.hidden = true;
+    this.more = element(doc, 'button', 'archive-shelf-more', 'Show more'); this.more.hidden = true;
     this.more.type = 'button'; this.more.onclick = () => this.readPage(Boolean(this.pageError));
     this.more.setAttribute('aria-label', 'Load more archived dossiers');
     this.notice = element(doc, 'span', 'archive-shelf-notice');
@@ -90,6 +89,21 @@ export class ArchiveShelf {
     this.gone = true; this.root.remove(); this.watching?.disconnect(); this.panelWatching?.disconnect(); this.wide?.removeEventListener?.('change', this.recheck);
     if (this.drawn) delete this.doc.body.dataset.archiveShelf;
   }
+  setAvailable(available) {
+    if (available === !this.unavailable) return;
+    this.unavailable = !available;
+    this.epoch++;
+    this.started = false; this.refreshPending = false; this.pageError = false;
+    this.projected.clear(); this.cursor = null; this.remaining = null;
+    this.paint([], new Set(), true);
+  }
+  removed(id) {
+    this.epoch++;
+    this.projected.delete(id);
+    this.remaining = null;
+    this.paint(this.given.filter(each => dossierOf(each.stack) !== id), this.suppress, true);
+    this.refresh();
+  }
   // The rail is drawn again by the page as it moves; the shelf goes back in at its foot.
   place() {
     const things = this.doc.getElementById('things');
@@ -114,13 +128,13 @@ export class ArchiveShelf {
   // everywhere else the feed keeps Archived (N), as before the shelf.
   inPanel() { return Boolean(this.read && this.doc.documentElement?.hasAttribute?.('data-things-open')); }
   update(notify) {
-    const hasRows = Boolean(this.list.length || this.cursor || this.pageError);
+    const hasRows = !this.unavailable && Boolean(this.list.length || this.cursor || this.pageError);
     const beside = this.beside(), drawn = hasRows && beside, was = this.drawn;
     const panel = this.inPanel();
     this.drawn = drawn; this.root.hidden = !(drawn || panel && hasRows);
     if (drawn) this.doc.body.dataset.archiveShelf = 'on'; else delete this.doc.body.dataset.archiveShelf;
     if (notify && drawn !== was) this.changed(drawn);
-    if (this.read && (beside || panel)) {
+    if (this.read && !this.unavailable && (beside || panel)) {
       if (!this.started) { this.started = true; this.refreshPending = true; }
       if (this.refreshPending) this.refresh();
     }
@@ -145,34 +159,36 @@ export class ArchiveShelf {
   // Latest on top: a dossier archived while the page is open goes first on the shelf, before those already on it,
   // so the flight down always lands where the shelf begins. The first drawing keeps Core's order.
   refresh() {
-    if (!this.read || !this.started || this.gone) return;
+    if (!this.read || !this.started || this.gone || this.unavailable) return;
     this.refreshPending = true;
     if (!this.pending && (this.beside() || this.inPanel())) queueMicrotask(() => {
       if (this.refreshPending && (this.beside() || this.inPanel())) this.readPage(true);
     });
   }
   async readPage(reset) {
-    if (!this.read || this.gone || this.pending) return;
+    if (!this.read || this.gone || this.pending || this.unavailable) return;
     if (!reset && !this.cursor) return;
     const focusMore = !reset && this.doc.activeElement === this.more;
     let firstAdded = null;
+    const epoch = this.epoch;
     this.refreshPending = false;
     this.pending = true; this.pageError = false;
     this.paintPaging();
     try {
       const answer = await this.read(reset ? null : this.cursor);
       await this.afterRead();
-      if (this.gone || this.refreshPending) return;
+      if (this.gone || this.refreshPending || epoch !== this.epoch) return;
       if (reset) this.projected.clear();
       for (const item of answer.items) {
         if (!this.projected.has(item.message_id)) firstAdded ??= item.message_id;
         this.projected.set(item.message_id, archivedRow(item, answer.topic_id));
       }
       this.cursor = answer.next_cursor;
+      this.remaining = answer.remaining;
     } catch (error) {
       await this.afterRead();
-      if (this.gone || this.refreshPending) return;
-      this.projected.clear(); this.cursor = null;
+      if (this.gone || this.refreshPending || epoch !== this.epoch) return;
+      this.projected.clear(); this.cursor = null; this.remaining = null;
       if (error?.details?.error?.code === 'UNKNOWN_VIEW') this.read = null;
       else this.pageError = true;
     } finally {
@@ -188,12 +204,15 @@ export class ArchiveShelf {
   paintPaging() {
     this.more.hidden = !(this.cursor || this.pageError);
     this.more.disabled = this.pending === true;
-    this.more.textContent = this.pageError ? 'Retry archives' : 'More archived';
-    this.more.setAttribute('aria-label', this.pageError ? 'Retry loading archived dossiers' : 'Load more archived dossiers');
+    const count = this.list.every(({ stack }) => this.projected.has(dossierOf(stack))) ? this.remaining : null;
+    this.more.textContent = this.pageError ? 'Retry archives' : count == null ? 'Show more' : `Show ${count} more`;
+    this.more.setAttribute('aria-label', this.pageError ? 'Retry loading archived dossiers'
+      : count == null ? 'Show more archived dossiers' : `Show ${count} more archived dossiers`);
     this.notice.textContent = this.pending ? 'Loading archives…' : this.pageError ? 'Could not load archived dossiers.' : '';
   }
   paint(given, suppress = new Set(), notify = false) {
     if (this.gone) return;
+    if (this.unavailable) given = [];
     this.given = given; this.suppress = suppress;
     this.place();
     if (this.projected.size) {
@@ -232,7 +251,8 @@ export class ArchiveShelf {
     }
     this.list = list; this.paintPaging(); this.update(notify);
     const fresh = looks.reduce((sum, look) => sum + look.fresh, 0);
-    this.count.textContent = list.length ? `${list.length}${this.cursor ? '+' : ''}${fresh ? ` · ${fresh} new` : ''}` : '';
+    const total = !this.read ? list.length : this.remaining === null ? null : this.projected.size + this.remaining;
+    this.count.textContent = [total || '', fresh ? `${fresh} new` : ''].filter(Boolean).join(' · ');
     this.showView();
     this.retarget();
   }
@@ -292,9 +312,16 @@ export class ArchiveShelf {
   }
   dress(replica, { title, starred, count, fresh, colours }) {
     replica.querySelector('.shelf-title').textContent = title;
-    const size = replica.querySelector('.shelf-size'); if (size) size.textContent = count > 1 ? String(count) : '';
+    const replies = Math.max(0, count - 1), replyWords = replies === 1 ? '1 reply' : `${replies} replies`;
+    const size = replica.querySelector('.shelf-size');
+    if (size) {
+      size.textContent = replies ? String(replies) : '';
+      size.title = replies ? replyWords : '';
+      if (replies) size.setAttribute('aria-label', replyWords);
+      else size.removeAttribute('aria-label');
+    }
     const mark = replica.querySelector('.shelf-new'); mark.hidden = !fresh; mark.textContent = fresh ? `${fresh} new` : '';
-    const words = `${count === 1 ? 'one message' : `${count} messages`}${fresh ? `, ${fresh} new` : ''}`;
+    const words = `${replyWords}${fresh ? `, ${fresh} new` : ''}`;
     replica.title = `${title}: ${words}. Click to bring it back.`;
     replica.setAttribute('aria-label', `${title}${starred ? ', starred' : ''}, ${words}`);
     replica.dataset.archiveStarred = String(Boolean(starred));

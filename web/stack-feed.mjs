@@ -182,7 +182,8 @@ export class StackFeed {
     Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, landReply, captureArchive, captureEmptyReply, closeReplyToFold, clock, doc });
     this.archiveReads = new Map();
     this.thumbPending = thumbPending;
-    this.readNamed = readNamed; this.archiveTopic = archiveTopic; this.landArchive = landArchive; this.headerStars = new Set();
+    this.readNamed = readNamed; this.archiveTopic = archiveTopic; this.landArchive = landArchive;
+    this.archiveAvailable = true; this.headerStars = new Set();
     this.coordinationChoice = new CoordinationChoice({ instanceId, viewer, view: doc.defaultView ?? globalThis.window });
     this.state.showCoordination = this.coordinationChoice.on;
     home?.addEventListener('close', () => this.arrange());
@@ -1169,7 +1170,9 @@ export class StackFeed {
           topic_id: topicId, limit: 24, ...(cursor ? { cursor } : {}),
         }), this.instanceId);
         if (page.topic_id !== topicId || !Array.isArray(page.items) || page.items.length > 24 ||
-            page.next_cursor !== null && !Array.isArray(page.next_cursor)) throw Error('Could not confirm the archived dossiers.');
+            page.next_cursor !== null && !Array.isArray(page.next_cursor) ||
+            page.remaining !== null && (!Number.isSafeInteger(page.remaining) || page.remaining < 0))
+          throw Error('Could not confirm the archived dossiers.');
         return page;
       } : null,
       allows: row => {
@@ -1190,6 +1193,7 @@ export class StackFeed {
         if (mark) this.newest(stack, mark);
       }, undo: () => this.undo(),
       changed: drawn => { this.state.shelved = drawn; if (drawn) this.state.moreOpen = false; this.arrange(); this.moreChanged(); } });
+    this.shelf.setAvailable(this.archiveAvailable !== false);
     return this.shelf;
   }
   setAside(stack, below, { undoable = true, restoreThrough, restoreKey, focus = true, at = null, committed = null } = {}) {
