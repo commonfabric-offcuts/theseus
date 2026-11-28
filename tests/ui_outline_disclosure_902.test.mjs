@@ -8,6 +8,7 @@ import { Element, matches } from './fixtures/mini_dom.mjs';
 import { book, scopeOf } from '../web/outline-order.mjs';
 import { KEY_WORDS } from '../web/pane-keys.mjs';
 import { RULES } from '../web/interaction-guide.mjs';
+import { topicPosition } from '../web/topic-navigation.mjs';
 import { OutcomeColorPicker } from '../web/outcome-color-picker.mjs';
 
 class OutlineElement extends Element {
@@ -107,8 +108,14 @@ async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fi
     if (name === 'workspace_topics') {
       if (beforeTopics) await beforeTopics(args);
       if (refuseTopics) throw Error('Topics unavailable');
-      return { ...base, groups: { done: 0, archived: 0 }, items: topicRows?.[args.workspace_id]?.map((item,index)=>({list_position:index+1,archived:false,...item})) ?? [{ id: 't-' + args.workspace_id, workspace_id: args.workspace_id,
-        title: 'Topic ' + args.workspace_id, list_position: 1, state: 'active', archived: false, unread: 0 }] };
+      const all = topicRows?.[args.workspace_id]?.map((item,index)=>({list_position:index+1,archived:false,...item})) ??
+        [{ id: 't-' + args.workspace_id, workspace_id: args.workspace_id,
+           title: 'Topic ' + args.workspace_id, list_position: 1, state: 'active', archived: false, unread: 0 }];
+      const start = args.cursor ? all.findIndex(item => topicPosition(item) === args.cursor) + 1 : 0;
+      if (args.cursor) assert.ok(start, 'the continuation names an existing topic position');
+      const items = all.slice(start, start + args.limit);
+      return { ...base, groups: { done: 0, archived: 0 }, items,
+        next_cursor: start + items.length < all.length ? topicPosition(items.at(-1)) : null };
     }
     if (name === 'conversation') return { instance_id: instance, conversation: null };
     if (name === 'stars' || name === 'memory_stars') return { ...base, items: [] };
@@ -465,6 +472,29 @@ test('83 a cold phone outcome badge opens its home after a confirmed empty rail'
   assert.equal(outcome.topics.hidden, true);
   assert.equal(f.storage.writes.length, beforeWrites);
 });
+
+for (const hasUnread of [true, false]) {
+  test('83 the badge checks a continuation before ' + (hasUnread ? 'opening the first unread topic' : 'using the outcome fallback'), async t => {
+    let releasePage;
+    const nextPage = new Promise(resolve => { releasePage = resolve; });
+    const topics = Array.from({length: 23}, (_, index) => ({ id: 'position-' + (23 - index),
+      title: 'Topic ' + (23 - index), workspace_id: 'w2', state: 'active', list_position: 23 - index,
+      unread: hasUnread && index === 21 ? 1 : 0 }));
+    const f = await fixture(t, { topicRows: { w2: topics }, beforeTopics(args) {
+      if (args.workspace_id === 'w2' && args.cursor) return nextPage;
+    } });
+    const outcome = f.outcome('w2');
+    f.click(outcome.title.querySelector('.unread-count'));
+    await outcome.rail.loading;
+    assert.deepEqual(f.moves, [], 'a full read page with a continuation cannot establish emptiness');
+    assert.ok(outcome.rail.loading, 'the next page is being read');
+    releasePage();
+    await outcome.rail.loading;
+    assert.deepEqual(f.moves, hasUnread ? [[{kind:'topic', id:'position-2', at:'unread'}, 'Topic 2']]
+      : [[{kind:'workspace', id:'w2'}, 'Outcome w2']]);
+    assert.equal(f.reads.filter(([name,args]) => name === 'workspace_topics' && args.workspace_id === 'w2').length, 2);
+  });
+}
 
 test('83 a failed cold read leaves the current page and allows retry from the badge', async t => {
   let fail = true;

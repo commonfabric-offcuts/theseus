@@ -492,12 +492,16 @@ export class TopicRail {
     if (this.denied || list.details && (!list.details.open || !displayed(list.details))) return [];
     return [...list.host.children].filter(displayed).map(link => ({ link, item: this.rowItems.get(link) })).filter(row => row.item);
   }
-  firstUnread() {
+  unreadDestination() {
     for (const list of this.shownLists()) {
+      if (list.details && !list.details.open) continue;
       const row = this.shownRows(list).find(({ item }) => Number.isSafeInteger(item.unread) && item.unread > 0);
-      if (row) return row.item;
+      if (row) return { topic: row.item };
+      // Exhaust this list before choosing from a later one or falling back
+      // to the outcome. The same bounded pages supply the rail's More rows.
+      if (!list.pages.started || list.pages.next !== null) return { more: list };
     }
-    return null;
+    return {};
   }
   // Values and acts are the boundary to another presentation. Only this
   // owner knows its DOM, CSS filter and held order; a card never reads them.

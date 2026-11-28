@@ -550,12 +550,16 @@ export class OutlineRail {
           return;
         }
       }
-      if (unread && this.handles) {
-        const rail = this.ownRail(outcome);
-        if (rail.pages.started && !rail.denied) return this.openOutcomeUnread(outcome, rail);
+      if (unread) {
+        const rail = this.handles ? this.ownRail(outcome) : outcome.rail;
+        if (rail?.pages.started && !rail.denied) {
+          const { topic, more } = rail.unreadDestination();
+          if (!more) return this.openOutcomeUnread(outcome, topic);
+        }
         // The shell closes the phone drawer when the actual move begins.
         event.stopPropagation();
-        return this.openColdOutcomeUnread(outcome, rail, choice);
+        if (this.handles) return this.readOutcomeUnread(outcome, rail, choice);
+        return;
       }
       return this.open(this.nameTarget(outcome), outcome.item.title);
     };
@@ -563,20 +567,25 @@ export class OutlineRail {
     this.outcomes.set(id, outcome);
     return outcome;
   }
-  openOutcomeUnread(outcome, rail) {
-    const first = rail.firstUnread();
-    if (first) return this.open(topicTarget(first.id, null, 'unread'), first.title);
+  openOutcomeUnread(outcome, topic) {
+    if (topic) return this.open(topicTarget(topic.id, null, 'unread'), topic.title);
     return this.open(this.nameTarget(outcome), outcome.item.title);
   }
-  async openColdOutcomeUnread(outcome, rail, choice) {
+  async readOutcomeUnread(outcome, rail, choice) {
     const run = this.run;
-    const loaded = await (rail.lists[0].reading ? rail.loading : rail.load(false, true));
-    if (run !== this.run || choice !== this.badgeChoice) return;
-    if (!loaded || !rail.pages.started || rail.denied) {
-      this.tree.say('Topics could not be loaded. Press the unread count again to retry.');
-      return;
+    let loaded = true;
+    if (!rail.pages.started || rail.denied) {
+      loaded = await (rail.lists[0].reading ? rail.loading : rail.load(false, true));
     }
-    return this.openOutcomeUnread(outcome, rail);
+    while (run === this.run && choice === this.badgeChoice) {
+      if (!loaded || !rail.pages.started || rail.denied) {
+        this.tree.say('Topics could not be loaded. Press the unread count again to retry.');
+        return;
+      }
+      const { topic, more } = rail.unreadDestination();
+      if (!more) return this.openOutcomeUnread(outcome, topic);
+      loaded = await rail.load(more);
+    }
   }
   // The phone drawer keeps its question cycle. Desktop uses the waiting pill
   // and topic rows; it carries neither a hidden cycle button nor its handler.
