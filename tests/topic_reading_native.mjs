@@ -256,7 +256,7 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     await until(async () => (await readerOn(p))?.startsWith(starts), `${device}: the Reader opens on "${starts}"`);
   };
   if (only1385) {
-    await coverBirth1385Checks({ check, until, control, shot, observations }, { seed, open, openReader, closeReader });
+    await coverBirth1385Checks({ check, until, control, view, shot, observations }, { seed, open, openReader, closeReader, centre, press, card });
     return;
   }
   // The Reader opened to be read: a click on the lit message, or a phone's second tap. The cursor is never put
