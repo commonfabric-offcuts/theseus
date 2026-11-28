@@ -61,6 +61,10 @@ class Covers:
             body = value["stands"]
         elif part == "payload":
             body = (value["payload"] or {}).get("text")
+        elif part == "done_when":
+            body = (value.get("birth") or {}).get("done_when")
+        elif part.startswith("section.") and part[8:] in COVER_SECTIONS:
+            body = value.get("sections", {}).get(part[8:])
         else:
             wait = re.fullmatch(r"(wait|default)\.(0|[1-9][0-9]{0,5})", part)
             if not wait:

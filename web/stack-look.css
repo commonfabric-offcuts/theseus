@@ -639,6 +639,8 @@
 .cover-section-peek{min-width:0;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cover-structured-section[open] .cover-section-peek{display:none}
 .cover-structured-section>.cover-section-body{padding:0 .22rem .3rem}
+.dossier-cover { --lit-field:#000; }
+.dossier-cover *::highlight(cover-lit-passage) { background-color:var(--pointer-lit-field,var(--lit-field)); color:var(--light-words,#fff); }
 #reader-cover-line>.reader-cover-status{color:var(--muted);flex:none}
 #reader-cover[open] #reader-cover-line>.reader-cover-status{display:none}
 .reply-stack[data-cover-closed=true]>.dossier-cover{display:none}

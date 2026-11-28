@@ -329,3 +329,14 @@ stays stable when another wait closes. Labels, link controls, and
 generated item rows have no quote coordinates. The stored revision and
 coordinates remain on the reply. This uses existing cover history and needs no
 schema change.
+
+## Light on cover words
+
+The topic cover uses the existing pointer Light setting and message colours.
+An authored passage under a mouse or trackpad can be copied with Command+C
+or quoted with Return in the dossier root's inline reply. Native selection
+and the Return action of a focused control retain priority. Folded peeks
+offer Light for displayed words that map to a contiguous authored range.
+The same root and stored cover revision identify a quote from `done_when`
+or `section.<key>` as from stands, a payload, or a wait. Coordinates count
+Unicode code points in the authored field, including its Markdown.
