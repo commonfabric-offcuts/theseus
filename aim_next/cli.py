@@ -1679,15 +1679,15 @@ class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs,
             for person in people]}
 
     def namer_hint(self, message_id):
-        """After a reply: when this agent now names its dossier, which nobody has named (item 479), the mint to run.
-        The reply is posted either way; a read that fails says so and leaves the mint to `mint`."""
+        """After posting, offer the shared first-cover or naming act that the current read permits."""
         try:
             found = self.store.view(self.actor, "stack_namer", {"message_id": message_id})
         except (StoreError, OSError):
             found = {"error": {"code": "UNREAD"}}
         if found.get("error"):
-            _diagnostic(self.out.stderr, "NAMER_UNREAD: the reply is posted; whether you name its dossier could not be read (%s). "
-                        "`stack_namer` says it; `mint %s WORDS` names it if you do." % (found["error"]["code"], message_id))
+            _diagnostic(self.out.stderr, "NAMER_UNREAD: the reply is posted. The first-cover and naming prompt could not be read (%s). "
+                        "Read it again with `aim-next birth %s`. If you are its namer, you can also run `aim-next mint %s WORDS`."
+                        % (found["error"]["code"], message_id, message_id))
         elif not self.birth_hint(found) and found["namer"] == self.actor:
             self.out.plain("its dossier has no name, and you name it:%s" % self.name_it({"root_id": found["root_id"], "name_revision": found["name_revision"]}))
 

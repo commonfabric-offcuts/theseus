@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from unittest import mock
+
+from aim_next import Store
 from aim_next import hosted_notice
+from aim_next.contract import StoreError
 import test_agent_verbs
 
 
@@ -89,3 +93,23 @@ class FirstCoverPromptCase(test_agent_verbs.AgentVerbCase):
         code, out, err = self.run_cli("birth", self.latest()[0])
         self.assertEqual((code, err), (0, ""), (code, out, err))
         self.assertNotIn(" --root ", out)
+
+    def test_failed_post_commit_hint_read_can_recover_without_sending_another_reply(self):
+        original = Store.view
+
+        def blocked(store, actor, name, args):
+            if name == "stack_namer":
+                raise StoreError("Fixture interrupts the read after posting")
+            return original(store, actor, name, args)
+
+        with mock.patch.object(Store, "view", blocked):
+            code, out, err = self.run_cli("reply", self.root, "--without-quote", "Fixture recovery.",
+                                          "Checking the cabin.")
+        self.assertEqual(code, 0, (out, err))
+        reply = self.latest()[0]
+        self.assertIn("posted " + reply, out)
+        self.assertIn("aim-next birth " + reply, err)
+        code, out, err = self.run_cli("birth", reply)
+        self.assertEqual((code, err), (0, ""), (code, out, err))
+        self.assertIn("--root " + self.root, out)
+        self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE reply_to=?", (self.root,)), [(1,)])
