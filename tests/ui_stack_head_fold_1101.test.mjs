@@ -133,6 +133,25 @@ test('54 an unsent original keeps the cue and takes focus to its dossier', () =>
   assert.equal(f.doc.activeElement, section);
 });
 
+test('54 an unloaded original uses its authorized time, agent tint and withdrawal cue', () => {
+  const f = fixture({ count: 5 }), item = f.messages.get('m5');
+  Object.assign(item, { reply_to_author: 'agent', reply_to_author_kind: 'agent',
+    reply_to_sent_ms: Date.UTC(2026, 10, 27, 18, 12), reply_to_excerpt: 'Off-page excerpt', reply_to_withdrawn: false });
+  f.cards.get('m1').remove();
+  f.messages.delete('m1');
+  const draw = () => arrangeStacks(f.list, f.messages, { doc: f.doc,
+    colorOf: parent => parent.author_kind === 'agent' ? 'cyan' : null });
+  draw();
+  const echo = f.list.querySelector('.reply-echo');
+  assert.match(echo.getAttribute('aria-label'), /^Go to agent's message from /);
+  assert.ok(echo.classList.contains('agent-cyan'));
+  assert.equal(echo.querySelector('.reply-echo-excerpt').dataset.words, 'Off-page excerpt');
+  item.reply_to_withdrawn = true;
+  draw();
+  assert.equal(echo.querySelector('.reply-echo-excerpt').dataset.words, '');
+  assert.match(echo.querySelector('.reply-echo-detail').dataset.words, /withdrawn/);
+});
+
 test('1101 opening Earlier messages shows an unfolded first message whole and keeps earlier replies as rows', () => {
   const f = fixture(); assert.equal(f.section().dataset.headOpen, 'false');
   const held = f.state.held.get('m1'); f.openEarlier(); whole(f);

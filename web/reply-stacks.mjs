@@ -689,11 +689,12 @@ function paintReplyEcho(section, entry, previous, { state, messages, nameOf, col
   });
   const parts = echoParts.get(echo);
   const name = nameOf(item.reply_to_author);
-  const time = Number.isSafeInteger(parent?.sent_ms) ? shownTime(parent.sent_ms) : '';
+  const sent = parent?.sent_ms ?? item.reply_to_sent_ms;
+  const time = Number.isSafeInteger(sent) ? shownTime(sent) : '';
   const removal = parent?.removal ?? item.reply_to_removal;
-  const withdrawn = Boolean(parent?.withdrawal || removal);
+  const withdrawn = Boolean(parent?.withdrawal || item.reply_to_withdrawn || removal);
   const words = withdrawn ? '' : messagePreview(parent ?? { body: item.reply_to_excerpt, preview: true });
-  parts.parent = parent;
+  parts.parent = parent ?? { author_id: item.reply_to_author, author_kind: item.reply_to_author_kind };
   parts.author.dataset.words = name;
   parts.detail.dataset.words = `${time ? ` · ${time}` : ''}${withdrawn ? ' · withdrawn' : ''}`;
   parts.excerpt.dataset.words = words;

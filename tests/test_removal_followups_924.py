@@ -70,3 +70,5 @@ class RemovalFollowupsCase(fixtures.ReaderCase):
         self.assertTrue(page['items'][0]['reply_to_withheld'])
         self.assertIsNone(page['items'][0]['reply_to_excerpt'])
         self.assertIsNone(page['items'][0].get('reply_to_removal'))
+        for field in ('reply_to_sent_ms', 'reply_to_author_kind', 'reply_to_withdrawn'):
+            self.assertNotIn(field, page['items'][0])

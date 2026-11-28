@@ -7623,6 +7623,23 @@ test('891 scoped withdrawal refresh reaches cached-only root and suppresses its 
   assert.equal(p.f.views.messages.has('q891'), false);
 });
 
+test('54 an off-page withdrawal updates the echo using the existing actor event', async () => {
+  const root = { id: 'root54', seq: 1, author_id: 'dan', body: 'Dossier root' };
+  const position = { ...sourcePosition891, root_id: root.id };
+  const reply = reply891('reply54', 8, { reply_to: 'offpage54', stack_position: position,
+    reply_to_author_kind: 'human', reply_to_sent_ms: TODAY, reply_to_withdrawn: false, reply_to_excerpt: 'Original off-page words' });
+  const p = await questionPage891([{ ...root, stack_position: position }, reply]);
+  const echo = () => walk(p.f.get('messages')).find(node => node.classList?.contains('reply-echo'));
+  assert.equal(p.f.views.messages.has('offpage54'), false);
+  assert.equal(echo().querySelector('.reply-echo-excerpt').dataset.words, 'Original off-page words');
+  const read = () => assert.fail('A known off-page reply context should update without a read');
+  const answer = await p.f.fresh.options.refresh('withdrawal:offpage54', 1, read, () => true);
+  assert.equal(answer, true);
+  assert.equal(p.f.views.messages.get(reply.id).reply_to_withdrawn, true);
+  assert.equal(echo().querySelector('.reply-echo-excerpt').dataset.words, '');
+  assert.match(echo().querySelector('.reply-echo-detail').dataset.words, /withdrawn/);
+});
+
 test('891 committed withdrawal updates same Reader but preserves writing and removes visible ask only after success', async () => {
   const p = await questionPage891([ask891({ withdrawal: null }), reply891()]);
   await p.f.openSource({ kind: 'message', id: 'q891' }, entryIn(p.f, 'q891'));

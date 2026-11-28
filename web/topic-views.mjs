@@ -348,6 +348,13 @@ export class TopicViews {
       if (known && JSON.stringify(parentRemoval) !== JSON.stringify(known.reply_to_removal ?? null)) this.revised.add(item.id);
       item.reply_to_removal = parentRemoval;
       if (known) known.reply_to_removal = parentRemoval;
+      if (item.reply_to_author && !item.reply_to_withheld && (item.reply_to_withdrawn || known?.reply_to_withdrawn)) {
+        item.reply_to_withdrawn = true;
+        if (known && !known.reply_to_withdrawn) {
+          known.reply_to_withdrawn = true;
+          this.revised.add(item.id);
+        }
+      }
       item.withdrawal = known?.withdrawal ?? item.withdrawal;
       item.removal = this.removals.get(item.id) ?? known?.removal ?? item.removal;
       if (item.removal) { this.removals.set(item.id, item.removal); terminalFields(item); }

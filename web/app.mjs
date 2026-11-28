@@ -3129,6 +3129,19 @@ function learnQuestionState({ message_id, question }) {
   if (author && item) { paintCardAuthor(author, item); paintReactions(card, item, bootstrap.actor, bootstrap.actor_kind, document); }
   paintReaderThumb$();
 }
+// The actor's withdrawal event also covers replies whose original is outside
+// this page. Their existing authorized context can be updated without a read.
+function learnWithdrawnReplyContext(messageId, messages) {
+  let changed = false;
+  for (const reply of messages.values()) {
+    if (reply.reply_to !== messageId || !reply.reply_to_author || reply.reply_to_withheld || reply.reply_to_withdrawn) continue;
+    reply.reply_to_withdrawn = true;
+    changed = true;
+    const entry = messageEntries.get(reply.id);
+    if (entry) paintReplyContext(cardIn(entry), reply, messages);
+  }
+  return changed;
+}
 // A message's withdrawal is permanent and belongs only to that identity, even after a Reader step.
 function learnQuestionWithdrawal({ message_id, withdrawal }) {
   questionStates?.learn(message_id, { state: 'withdrawn', waiting_on: [], may_resolve: false, ...withdrawal });
@@ -3136,11 +3149,7 @@ function learnQuestionWithdrawal({ message_id, withdrawal }) {
   learnWithdrawal(item, withdrawal);
   const card = cardIn(messageEntries.get(message_id)), author = card?.querySelector('.message-author');
   if (author && item) { paintCardAuthor(author, item); paintReactions(card, item, bootstrap.actor, bootstrap.actor_kind, document); }
-  for (const reply of messages.values()) if (reply.reply_to === message_id) {
-    const entry = messageEntries.get(reply.id);
-    if (entry) paintReplyContext(cardIn(entry), reply, messages);
-  }
-  if (item) stackMessages();
+  if (learnWithdrawnReplyContext(message_id, messages) || item) stackMessages();
   menu?.paint();
   const source = registry.current?.source;
   if (source?.source_ref?.kind === 'message' && source.source_ref.id === message_id) {
@@ -3721,7 +3730,10 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       if (key.startsWith('withdrawal:')) {
         const id = key.slice('withdrawal:'.length);
         const source = registry.current?.source;
-        if (!views.messages.has(id) && !dossierHeads?.records.has(id) && source?.source_ref?.id !== id) return true;
+        if (!views.messages.has(id) && !dossierHeads?.records.has(id) && source?.source_ref?.id !== id) {
+          if (learnWithdrawnReplyContext(id, feedMessages())) stackMessages();
+          return true;
+        }
         let answer;
         try { answer = checkedView(await read('source', { kind: 'message', id }), bootstrap.instance_id); }
         catch (error) {
