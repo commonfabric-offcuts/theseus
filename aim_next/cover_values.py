@@ -154,7 +154,8 @@ def shown(db, actor, value, by, at_ms, owner, archived=False):
     """The cover as actor reads it, or None when every field is clear: its fields, who wrote it last and when, and the
     outcome's owner (whose 👍 or word gives Done). A word given in a whisper actor is outside shows as given, with no
     message to open."""
-    if value == EMPTY_COVER or (not value["stands"] and not value["waiting"] and value["payload"] is None):
+    birth = value.get("birth")
+    if not birth and not value["stands"] and not value["waiting"] and value["payload"] is None:
         return None
     payload = value["payload"]
     # done_by is what the writer named; a reader is told Done, which carries the word when they can open it.
@@ -198,6 +199,8 @@ def shown(db, actor, value, by, at_ms, owner, archived=False):
             wait.update(go_ahead=True, answer_revision=answer[0] if answer else 0)
     cover = {"stands": value["stands"], "waiting": waiting,
              "payload": dict(payload) if payload is not None else None, "by": by, "at_ms": at_ms, "owner": owner}
+    if birth:
+        cover["birth"] = {key: birth[key] for key in ("nature", "done_when") if key in birth}
     if quote_wait_indices:
         cover["quote_wait_indices"] = quote_wait_indices
     return cover
