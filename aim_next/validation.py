@@ -4,6 +4,7 @@ from .contract import LIMITS, Refusal, _identifier, _json
 
 
 COMMANDS = {
+    "schedule.save": "_command_schedule_save",
     "release_card.create": "_command_release_card_create", "release_card.update": "_command_release_card_update",
     "performance.record": "_command_performance_record",
     "current_rule.update": "_command_current_rule_update",
@@ -159,9 +160,12 @@ REQUIRED_EXPECTED = {"release_card.update": "message_revision", "current_rule.up
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 EXPECTED["pipeline.clock_record"] = {"clock_revision"}
 EXPECTED["performance.record"] = set()
+EXPECTED["schedule.save"] = {"schedule_revision"}
 REQUIRED_EXPECTED["pipeline.clock_record"] = "clock_revision"
 REQUIRED_EXPECTED["stack.birth"] = "name_revision"
+REQUIRED_EXPECTED["schedule.save"] = "schedule_revision"
 VIEWS = {
+    "schedule_definition": {"schedule_id", "schedule_revision"},
     "release_card": {"message_id", "workspace_id", "release"},
     "current_rule": {"workspace_id", "history"},
     "work_context": {"workspace_id", "piece_id", "topic_id", "topic_ids"},
