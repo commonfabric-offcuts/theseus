@@ -66,7 +66,8 @@ from .rail_dimming import DIM_SCHEMA, DIM_DOWN, DIM_OCCUPIED
 from .hosted_seats import SEAT_SCHEMA, SEAT_DOWN, SEAT_OCCUPIED, END_SCHEMA, END_DOWN, END_OCCUPIED
 from .workspace_links import LINK_SCHEMA, LINK_DOWN, LINK_OCCUPIED
 from .hosted_seats import (SEAT_SCHEMA, SEAT_DOWN, SEAT_OCCUPIED, END_SCHEMA, END_DOWN, END_OCCUPIED,
-                           TEMPLATE_SCHEMA, TEMPLATE_DOWN, TEMPLATE_OCCUPIED)
+                           TEMPLATE_SCHEMA, TEMPLATE_DOWN, TEMPLATE_OCCUPIED,
+                           SETTINGS_SCHEMA, SETTINGS_DOWN, SETTINGS_OCCUPIED)
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -252,6 +253,7 @@ STEPS = (
     ("67", "68", TEMPLATE_SCHEMA, TEMPLATE_DOWN, TEMPLATE_OCCUPIED),
     # 1060: follows actual368/1040 schema68.
     ("68", "69", MEMORY_TRANSFER_SCHEMA, MEMORY_TRANSFER_DOWN, MEMORY_TRANSFER_OCCUPIED),
+    ("69", "70", SETTINGS_SCHEMA, SETTINGS_DOWN, SETTINGS_OCCUPIED),
 )
 
 
