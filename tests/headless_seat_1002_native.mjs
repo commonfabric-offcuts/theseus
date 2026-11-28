@@ -253,17 +253,21 @@ for (const { engine, batch } of batches) {
     assert.equal(await reopened.locator('#headless-seat-reasoning_effort').inputValue(), choice.reasoning_effort, 'reopened form keeps the chosen effort');
     await press(reopened, '#headless-seat-retry', false);
     await until(async () => (await reopened.locator('#headless-seat-retry').isHidden()), 'same committed operation lookup');
+    // The seat's own starts are identified by its host plan's cwd (as seat_template_1040_native does), never by the
+    // value under test; exactly one thread/start belongs to this seat, and it must carry both chosen values.
     const state = await until(async () => {
       const value = await channel.control({ method: 'inspect', workspace });
-      return value.starts.some(start => start.model === choice.model) && value;
-    }, 'synthetic child thread/start with the chosen model', 30000);
+      const recorded = value.templates.length === 1 && value.templates[0][1] && JSON.parse(value.templates[0][1]);
+      return recorded && value.starts.some(start => start.cwd === recorded.cwd) && value;
+    }, 'the seat host plan and its synthetic child thread/start', 30000);
     assert.equal(state.seats.length, 1); assert.equal(state.seats[0][5], role);
     assert.deepEqual(state.settings, [[choice.model, choice.reasoning_effort]], 'Core seat row holds the chosen pair');
     const plan = JSON.parse(state.templates[0][1]);
     assert.equal(plan.model, choice.model); assert.equal(plan.reasoning_effort, choice.reasoning_effort);
-    const started = state.starts.filter(start => start.model === choice.model);
-    assert.ok(started.length >= 1 && started.every(start => start.config?.model_reasoning_effort === choice.reasoning_effort),
-      'every thread/start for the seat carries the chosen effort: ' + JSON.stringify(state.starts));
+    const started = state.starts.filter(start => start.cwd === plan.cwd);
+    assert.equal(started.length, 1, 'exactly one thread/start for this seat: ' + JSON.stringify(state.starts));
+    assert.equal(started[0].model, choice.model);
+    assert.equal(started[0].config?.model_reasoning_effort, choice.reasoning_effort);
     assert.equal(await reopened.locator('#headless-seat-role').inputValue(), newer);
     // A stale writer gets an explicit refusal, preserving the authoritative bytes.
     const storage = await reopened.evaluate(async () => {
