@@ -3132,6 +3132,7 @@ function learnQuestionState({ message_id, question }) {
 // The actor's withdrawal event also covers replies whose original is outside
 // this page. Their existing authorized context can be updated without a read.
 function learnWithdrawnReplyContext(messageId, messages) {
+  views.rememberParentWithdrawal(messageId);
   let changed = false;
   for (const reply of messages.values()) {
     if (reply.reply_to !== messageId || !reply.reply_to_author || reply.reply_to_withheld || reply.reply_to_withdrawn) continue;

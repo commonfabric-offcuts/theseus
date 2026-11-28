@@ -291,7 +291,10 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor(callbacks) { reader.callbacks = callbacks; return reader; } },
-    TopicViews: class { constructor({ paint, invalidate }) { Object.assign(views, { paint, invalidate }); return views; } }, Freshness: class { constructor(options) { fresh.options = options; return fresh; } },
+    TopicViews: class { constructor({ paint, invalidate }) {
+      Object.assign(views, { paint, invalidate, rememberParentWithdrawal: id => events.push(['parent-withdrawal', id]) });
+      return views;
+    } }, Freshness: class { constructor(options) { fresh.options = options; return fresh; } },
     initialViews: async () => ({}), actorBaseline: async () => null, readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
     openIntentJournal: async () => { events.push(['intent-journal']); throw Error('No browser intent storage in this fixture'); },
     openOpeningStore: async () => { events.push(['opening-store']); return { close() {} }; },

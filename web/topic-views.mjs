@@ -274,12 +274,13 @@ export class TopicViews {
     const moved = this.learnUnread(answer);
     if (!initial && !live && !anchored && cursor !== this.olderCursor || live && cursor !== this.newest) { if (moved) this.paint('line'); return false; }
     let previous = -1;
-    const ids = new Set();
+    const ids = new Set(), withdrawnParents = new Set();
     for (const item of answer.items) {
       if (!item || typeof item.id !== 'string' || !integer(item.seq) || item.seq < 1 || item.seq <= previous || ids.has(item.id) ||
           item.topic_id !== this.topicId || typeof item.body !== 'string' || typeof item.author_id !== 'string' ||
           live && item.seq <= cursor || !initial && !live && item.seq >= cursor) throw invalid('The message page belongs to another frontier.');
       previous = item.seq; ids.add(item.id);
+      if (item.reply_to && item.reply_to_author && !item.reply_to_withheld && item.reply_to_withdrawn === true) withdrawnParents.add(item.reply_to);
       const known = this.messages.get(item.id);
       const hint = this.windowHints.get(item.id);
       if (hint && (hint.seq !== undefined && hint.seq !== item.seq || hint.author_id !== undefined && hint.author_id !== item.author_id ||
@@ -338,6 +339,12 @@ export class TopicViews {
       }
     }
     for (const [id, other] of this.runs) if (joined.has(other)) this.runs.set(id, run);
+    for (const id of withdrawnParents) this.rememberParentWithdrawal(id);
+    if (withdrawnParents.size) for (const item of this.messages.values()) {
+      if (withdrawnParents.has(item.reply_to) && item.reply_to_author && !item.reply_to_withheld && !item.reply_to_withdrawn) {
+        item.reply_to_withdrawn = true; this.revised.add(item.id);
+      }
+    }
     // A message read again keeps any act the page heard of after this page
     // was read, and the latest revision of its words the page has seen.
     for (const item of answer.items) {
@@ -348,7 +355,8 @@ export class TopicViews {
       if (known && JSON.stringify(parentRemoval) !== JSON.stringify(known.reply_to_removal ?? null)) this.revised.add(item.id);
       item.reply_to_removal = parentRemoval;
       if (known) known.reply_to_removal = parentRemoval;
-      if (item.reply_to_author && !item.reply_to_withheld && (item.reply_to_withdrawn || known?.reply_to_withdrawn)) {
+      if (item.reply_to_author && !item.reply_to_withheld && (item.reply_to_withdrawn ||
+          known?.reply_to_withdrawn || withdrawnParents.has(item.reply_to) || this.windowHints.get(item.reply_to)?.parentWithdrawn)) {
         item.reply_to_withdrawn = true;
         if (known && !known.reply_to_withdrawn) {
           known.reply_to_withdrawn = true;
@@ -440,6 +448,9 @@ export class TopicViews {
     ++this.windowKnowledge;
     if (this.windowHints.size > 256) this.windowReadFloor = Math.max(this.windowReadFloor, this.windowKnowledge - 256);
     boundMap(this.windowHints); this.pruneWindowRemovals();
+  }
+  rememberParentWithdrawal(id) {
+    if (id && !this.windowHints.get(id)?.parentWithdrawn) this.rememberWindowHint(id, { parentWithdrawn: true });
   }
   pruneWindowRemovals() {
     for (const id of this.removals.keys()) if (!this.messages.has(id) && !this.windowRoots.has(id) &&

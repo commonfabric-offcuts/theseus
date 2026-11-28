@@ -628,7 +628,7 @@ export function paintFolderColors(list) {
     const section = state.sections.get(stack.id);
     if (!section) continue;
     paintFolderColor(section, stack, state.colorOf);
-    for (const echo of section.querySelectorAll('.reply-echo')) paintEchoColor(echo, state.colorOf);
+    for (const control of parts.get(section).lines.values()) if (echoParts.has(control)) paintEchoColor(control, state.colorOf);
   }
 }
 
