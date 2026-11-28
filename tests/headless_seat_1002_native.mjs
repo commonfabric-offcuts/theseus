@@ -185,6 +185,24 @@ for (const { engine, batch } of batches) {
     await type(page, '#headless-seat-name', 'Recover ' + engine, false);
     const role = 'Exact durable Δ role.\n  Keep spaces.';
     await type(page, '#headless-seat-role', role, false);
+    // A non-default model/effort pair, chosen by native keyboard type-ahead on the focused selects, must differ from
+    // the template defaults the selects name, survive the lost answer, close/reopen and retry, and reach Core's seat
+    // row, its host plan and the synthetic child's thread/start.
+    const choice = { model: 'gpt-6.1-terra', reasoning_effort: 'xhigh' };
+    const defaults = { model: await page.locator('#headless-seat-model option[value=""]').innerText(),
+      reasoning_effort: await page.locator('#headless-seat-reasoning_effort option[value=""]').innerText() };
+    assert.ok(!defaults.model.includes('GPT-6.1 Terra') && !defaults.reasoning_effort.endsWith(' xhigh'),
+      'the chosen pair differs from the template defaults: ' + JSON.stringify(defaults));
+    await press(page, '#headless-seat-model', false); await page.keyboard.press('Escape'); await page.keyboard.type('GPT-6.1');
+    await press(page, '#headless-seat-reasoning_effort', false); await page.keyboard.press('Escape'); await page.keyboard.type('x');
+    await until(async () => await page.locator('#headless-seat-model').inputValue() === choice.model &&
+      await page.locator('#headless-seat-reasoning_effort').inputValue() === choice.reasoning_effort, 'native non-default model/effort choice');
+    await until(async () => { const kept = await page.evaluate(async () => {
+      const { openSeatJournal } = await import('/seat-journal.mjs');
+      const bootstrap = await (await fetch('/api/bootstrap', { headers: { Authorization: 'Bearer ' + document.querySelector('meta[name="aim-next-session"]').content, 'X-AIM-Read-Class': 'foreground' } })).json();
+      const journal = await openSeatJournal(bootstrap, new URL(location).searchParams.get('workspace'));
+      const row = await journal.get(); journal.close(); return row; });
+      return kept?.form.model === choice.model && kept?.form.reasoning_effort === choice.reasoning_effort; }, 'durable saved form holds the chosen pair');
     let release, arrived;
     const held = new Promise(resolve => { arrived = resolve; });
     const released = new Promise(resolve => { release = resolve; });
@@ -223,16 +241,29 @@ for (const { engine, batch } of batches) {
       const kept = await keptDraft(); return kept.form.role === newer && kept;
     }, 'actual device commit of newer typing');
     assert.deepEqual(digestBefore.request, original); assert.equal(digestBefore.form.role, newer);
+    assert.equal(original.args.model, choice.model); assert.equal(original.args.reasoning_effort, choice.reasoning_effort);
+    assert.equal(digestBefore.form.model, choice.model); assert.equal(digestBefore.form.reasoning_effort, choice.reasoning_effort);
     assert.equal(await page.locator('#headless-seat-role').inputValue(), newer);
     await closePage(page);
     const reopened = watchPage(await persistent.newPage()); await reopened.goto(info.origin + '/?workspace=' + workspace);
     await until(async () => (await reopened.locator('.headless-seats .notice').innerText()).includes('unconfirmed'), 'unconfirmed Add visible before opening its form');
     await open(reopened, false);
     assert.equal(await reopened.locator('#headless-seat-role').inputValue(), newer);
+    assert.equal(await reopened.locator('#headless-seat-model').inputValue(), choice.model, 'reopened form keeps the chosen model');
+    assert.equal(await reopened.locator('#headless-seat-reasoning_effort').inputValue(), choice.reasoning_effort, 'reopened form keeps the chosen effort');
     await press(reopened, '#headless-seat-retry', false);
     await until(async () => (await reopened.locator('#headless-seat-retry').isHidden()), 'same committed operation lookup');
-    const state = await channel.control({ method: 'inspect', workspace });
+    const state = await until(async () => {
+      const value = await channel.control({ method: 'inspect', workspace });
+      return value.starts.some(start => start.model === choice.model) && value;
+    }, 'synthetic child thread/start with the chosen model', 30000);
     assert.equal(state.seats.length, 1); assert.equal(state.seats[0][5], role);
+    assert.deepEqual(state.settings, [[choice.model, choice.reasoning_effort]], 'Core seat row holds the chosen pair');
+    const plan = JSON.parse(state.templates[0][1]);
+    assert.equal(plan.model, choice.model); assert.equal(plan.reasoning_effort, choice.reasoning_effort);
+    const started = state.starts.filter(start => start.model === choice.model);
+    assert.ok(started.length >= 1 && started.every(start => start.config?.model_reasoning_effort === choice.reasoning_effort),
+      'every thread/start for the seat carries the chosen effort: ' + JSON.stringify(state.starts));
     assert.equal(await reopened.locator('#headless-seat-role').inputValue(), newer);
     // A stale writer gets an explicit refusal, preserving the authoritative bytes.
     const storage = await reopened.evaluate(async () => {
