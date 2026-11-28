@@ -1679,14 +1679,16 @@ class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs,
             name = _one_line(ask["dossier_name"], 100)
             dossier = '%s (%s)' % (name, ask["root_id"]) if name else ask["root_id"]
             self.out.problem("  Ask #%s from %s in dossier %s" % (ask["seq"], ask["asker"], dossier))
-            self.out.problem("    aim-next read %s --after %s --limit 1" % (shlex.quote(topic_id), ask["seq"] - 1))
-            tell = " --tells " + shlex.quote(ask["asker"]) if ask["may_tell"] else ""
-            self.out.problem("    aim-next reply %s%s --quote TEXT -" % (shlex.quote(ask["message_id"]), tell))
+            self.out.problem("    aim-next read --after %s --limit 1 -- %s" % (ask["seq"] - 1, shlex.quote(topic_id)))
+            # The recipient option parses a comma list. Only put an ID in it
+            # when the CLI will send to exactly that actor.
+            asker = ask["asker"]
+            tell = " --tells=" + shlex.quote(asker) if ask["may_tell"] and _names(asker) == [asker] else ""
+            self.out.problem("    aim-next reply %s%s --quote=TEXT -" % (shlex.quote(ask["message_id"]), tell))
         if found.get("more"):
             self.out.problem("More open Asks are in this topic. Read the topic for more choices.")
         self.out.problem("Replace TEXT with a passage from the Ask, or use --without-quote with your reason.")
-        self.out.problem("For a new subject, use post %s --divergence-reason TEXT with a fresh operation." %
-                         shlex.quote(topic_id))
+        self.out.problem("For a new subject, supply --divergence-reason with a fresh operation.")
 
     def default_ask_wait(self, args, operation):
         """Keep ordinary CLI asks usable without inventing choices or promises.

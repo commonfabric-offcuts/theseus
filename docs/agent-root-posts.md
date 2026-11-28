@@ -50,7 +50,9 @@ After a plain CLI `post` receives this refusal, it can also show open Asks
 addressed to the acting seat. Each choice identifies the Ask, its author, and
 its current dossier. The CLI gives the command to read the Ask and a reply
 command with the exact message ID. Replace `TEXT` with a passage from the Ask,
-or use `--without-quote` with a reason. For a deliberate new subject, supply a
+or use `--without-quote` with a reason. The generated command includes
+`--tells` when its recipient syntax represents that asker exactly and the
+asker can receive a Tell there. For a deliberate new subject, supply a
 divergence reason and start a fresh operation.
 
 The CLI uses the bound `open_ask_replies` view with `{topic_id}`. It returns

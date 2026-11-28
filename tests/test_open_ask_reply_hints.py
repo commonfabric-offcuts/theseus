@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from unittest import mock
 
 from aim_next import Store
@@ -35,8 +36,8 @@ class OpenAskReplyHintsCase(test_agent_verbs.AgentVerbCase):
         self.assertEqual((code, out), (2, ""), (out, err))
         self.assertIn("DIVERGENCE_REASON_REQUIRED", err)
         self.assertIn("Choose the Ask you mean", err)
-        self.assertIn("aim-next reply %s --tells owner --quote TEXT -" % first, err)
-        self.assertIn("aim-next reply %s --tells agent-b --quote TEXT -" % second, err)
+        self.assertIn("aim-next reply %s --tells=owner --quote=TEXT -" % first, err)
+        self.assertIn("aim-next reply %s --tells=agent-b --quote=TEXT -" % second, err)
         self.assertNotIn("aim-next reply " + foreign, err)
         code, result, err = self.view_cli("open_ask_replies", {"topic_id": "t1"})
         self.assertEqual((code, err), (0, ""), result)
@@ -50,8 +51,8 @@ class OpenAskReplyHintsCase(test_agent_verbs.AgentVerbCase):
         seq = self.sql("SELECT seq FROM messages WHERE id=?", (open_ask,))[0][0]
         code, out, err = self.bare()
         self.assertEqual((code, out), (2, ""))
-        self.assertIn("aim-next read t1 --after %d --limit 1" % (seq - 1), err)
-        self.assertIn("aim-next reply %s --tells owner --quote TEXT -" % open_ask, err)
+        self.assertIn("aim-next read --after %d --limit 1 -- t1" % (seq - 1), err)
+        self.assertIn("aim-next reply %s --tells=owner --quote=TEXT -" % open_ask, err)
         self.assertNotIn("aim-next reply " + closed, err)
         code, out, err = self.run_cli("reply", open_ask, "--tells", "owner", "--quote",
                                       "Which route should we publish?", "The riverside route.")
@@ -83,7 +84,7 @@ class OpenAskReplyHintsCase(test_agent_verbs.AgentVerbCase):
                          [(ask, root, "Route planning")])
         _, _, error = self.bare()
         self.assertIn("Route planning (%s)" % root, error)
-        self.assertIn("aim-next reply %s --tells owner " % ask, error)
+        self.assertIn("aim-next reply %s --tells=owner " % ask, error)
 
     def test_edit_held_ask_is_skipped_and_the_result_is_bounded(self):
         held = self.ask("There is a private edit in progress.")
@@ -94,6 +95,40 @@ class OpenAskReplyHintsCase(test_agent_verbs.AgentVerbCase):
         self.assertEqual([item["message_id"] for item in result["items"]], live[:10])
         self.assertTrue(result["more"])
         self.assertNotIn("private edit", json.dumps(result))
+
+    def test_copying_the_reply_command_cannot_address_somebody_else(self):
+        for actor in ("alpha", "beta", "alpha,beta", "-route-lead"):
+            self.store.register_actor(actor, "human", actor)
+            self.participation(actor, True)
+        for asker, expected in (("alpha,beta", []), ("-route-lead", ["-route-lead"])):
+            with self.subTest(asker=asker):
+                question = "Which route should we publish?"
+                ask = self.ask(question, actor=asker)
+                _, _, err = self.bare()
+                command = next(line for line in err.splitlines() if "aim-next reply " + ask in line)
+                argv = [word.replace("--quote=TEXT", "--quote=" + question) for word in shlex.split(command)]
+                code, out, err = self.run_cli(*argv[1:], stdin=b"The riverside route.")
+                self.assertEqual(code, 0, (out, err))
+                self.assertEqual((json.loads(self.latest()[4]), self.latest()[-1]), (expected, ask))
+
+    def test_copying_the_read_command_works_for_a_topic_starting_with_a_dash(self):
+        topic = "-project"
+        target = {"opening_id": "fixture-opening"}
+        saved = self.committed(self.command("opening.save", {
+            "workspace_id": "w1", "topic_id": topic, "title": "Route planning", "participants": ["agent-a"],
+            "body": "Plan the route.", "attachments": [],
+        }, target=target, expected={"opening_revision": 0}))
+        self.committed(self.command("opening.publish", {}, target=target,
+                                    expected={"opening_revision": saved["opening_revision"]}))
+        ask = self.committed(self.command("message.post", {
+            "body": "Which route?", "intent": "ask", "addressees": ["agent-a"], "go_ahead": False,
+        }, target={"topic_id": topic}))["message_id"]
+        code, _, err = self.run_cli("post", "--", topic, "An answer.")
+        self.assertEqual(code, 2, err)
+        command = next(line for line in err.splitlines() if "aim-next read " in line)
+        code, out, err = self.run_cli(*shlex.split(command)[1:])
+        self.assertEqual((code, err), (0, ""), out)
+        self.assertIn(ask, out)
 
     def test_hint_read_failure_preserves_the_original_refusal(self):
         self.ask("Which route should we publish?")
