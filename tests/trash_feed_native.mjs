@@ -131,8 +131,65 @@ try {
   await archiveOrder([discarded, newerArchive, olderArchive]);
   assert.equal(await dossier(discarded).isVisible(), false, 'a starred restore keeps its saved Archive placement');
   assert.equal(foldedReadCount(), 0, 'live acts and starred landing leave folded Trash unread');
+  await page.close();
+
+  // Replay the pre-Trash Archive response and omit the initial feed's Trash
+  // fields. Later reads get the real, already-committed state from Core.
+  const coldReply = await post('A detail on the current route', kept);
+  const staleArchive = await control({ method: 'agent_view', actor, name: 'dossier_archive', args: { topic_id: topic, limit: 24 } });
+  assert.ok(staleArchive.items.some(item => item.message_id === discarded));
+  await trash(kept, true);
+  await trash(discarded, true);
+
+  page = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+  page.setDefaultTimeout(9500);
+  page.on('pageerror', error => report.pageErrors.push(error.stack));
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/view') report.requests.push(request.postDataJSON());
+  });
+  let omittedInitialState = false, replayedArchive = false;
+  const withoutTrash = record => {
+    delete record.trashed;
+    delete record.trash_revision;
+  };
+  await page.route('**/api/view', async route => {
+    const { name, args } = route.request().postDataJSON();
+    if (args.topic_id !== topic) return route.continue();
+    if (name === 'topic_messages' && args.direction === 'before' && args.cursor === undefined && args.audience === 'all' && !omittedInitialState) {
+      omittedInitialState = true;
+      const response = await route.fetch(), json = await response.json();
+      assert.equal(json.positions[kept]?.trashed, true);
+      withoutTrash(json.positions[kept]);
+      withoutTrash(json.items.find(item => item.id === kept).acts);
+      return route.fulfill({ response, json });
+    }
+    if (name === 'dossier_archive' && !replayedArchive) {
+      replayedArchive = true;
+      return route.fulfill({ json: staleArchive });
+    }
+    return route.continue();
+  });
+  await page.goto(origin + '/?topic=' + topic);
+  await page.locator('body[data-ready=true]').waitFor();
+  await card(kept).waitFor();
+  await page.locator('#things .shelf-dossier[data-id="' + discarded + '"]').waitFor();
+  assert.equal(await card(coldReply).count(), 1);
+  assert.equal(await card(coldReply).isVisible(), true);
+  assert.ok(omittedInitialState && replayedArchive, 'both first snapshots were stale about Trash');
+  report.coldConvergence = { before: { rootVisible: true, replyVisible: true, archiveVisible: true } };
+  // An ordinary actor signal asks for the current positions. Trash itself
+  // has already happened and stays unchanged throughout this convergence.
+  const from = report.requests.length;
+  await act(olderArchive, 'message.fold', { folded: true });
+  await card(kept).waitFor({ state: 'hidden' });
+  await card(coldReply).waitFor({ state: 'hidden' });
+  await archiveOrder([newerArchive, olderArchive]);
+  assert.ok(report.requests.slice(from).some(request => request?.name === 'stack_positions'
+    && request.args?.message_ids?.includes(coldReply)));
+  assert.equal(foldedReadCount(), 0, 'the cold page converges through positions and Archive, with Trash folded');
+  report.coldConvergence.after = { rootVisible: false, replyVisible: false, archiveVisible: false, foldedTrashReads: 0 };
   assert.deepEqual(report.pageErrors, []);
-  console.log('Cold and paged feed, off-page Archive updates, starred access, restores and folded read bound passed.');
+  console.log('Cold and paged feed, off-page Archive updates, starred access, restores, cold convergence and folded read bound passed.');
 } catch (error) {
   report.error = error.stack;
   await page?.screenshot({ path: join(output, 'failure.png') }).catch(() => {});

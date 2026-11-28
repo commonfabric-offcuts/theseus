@@ -611,11 +611,12 @@ export class TopicViews {
     // What was learned is drawn even when reading the places after it fails
     // (superseded, or deferred behind the page's own reads): the next read
     // learns nothing new, so it would draw nothing.
-    try { await this.readPositions(read, current, () => { changed = true; }); }
+    let positionsChanged = false;
+    try { positionsChanged = await this.readPositions(read, current); }
     finally {
       if (changed) this.paint('acts');
       // An Archive row can change even when its dossier is outside this window.
-      else if (moved && current()) this.offPageActs();
+      else if (moved && !positionsChanged && current()) this.offPageActs();
       // Acts count apart from the topic's versions, so the neighbours are
       // asked for afresh (force), even over a read already under way that
       // began before this act.
@@ -650,7 +651,7 @@ export class TopicViews {
     }
     return changed;
   }
-  async readPositions(read, current = () => true, onChange = () => this.paint('acts')) {
+  async readPositions(read, current = () => true) {
     // A cached pre-355 Core has no position contract; its ordinary act reads
     // remain usable until the page is reloaded onto the new release.
     const messages = this.actMessages?.() ?? this.messages;
@@ -664,7 +665,8 @@ export class TopicViews {
         if (answer.topic_id !== this.topicId || !Array.isArray(answer.items)) throw invalid('The dossier positions belong to another topic.');
         changed = this.learnPositions(answer.items) || changed;
       }
-    } finally { if (changed) onChange(); }
+    } finally { if (changed) this.paint('acts'); }
+    return changed;
   }
   runOf(id) { return this.runs.get(id); }
   validMemory(item) {

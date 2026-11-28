@@ -1362,7 +1362,7 @@ function paintNewAbove() {
     const entry = messageEntries.get(id), item = views.messages.get(id);
     // Count retained arrival offers, not an estimate of current visibility.
     // Only activation measures its chosen card; passive paints need no scan.
-    if (trashed.has(id) || !entry?.isConnected || entry.dataset.id !== id || !item || item.id !== id ||
+    if (trashed?.has(id) || !entry?.isConnected || entry.dataset.id !== id || !item || item.id !== id ||
         item.topic_id !== topic?.id || item.author_id === bootstrap.actor) newAbove.delete(id);
   }
   if (!newAboveButton && newAbove.size) {
