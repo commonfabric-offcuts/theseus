@@ -23,6 +23,19 @@ class TrashCase(ReaderCase):
         self.assertNotIn("error", result, result)
         return result["items"][0]["stack_position"]
 
+    def test_trash_keeps_retracted_words_and_omits_unsent_roots(self):
+        def trashed(body):
+            root = self.committed(self.command("message.post", {"body": body}, target={"topic_id": "t1"}))["message_id"]
+            self.committed(self.trash(root, True, 0))
+            return root
+
+        retracted = trashed("Keep the retracted title.")
+        removed = trashed("Erase the unsent title.")
+        act = self.committed(self.command("message.retract", target={"message_id": retracted}))["removal"]
+        self.committed(self.command("message.unsend", target={"message_id": removed}))
+        row, = self.page()["items"]
+        self.assertEqual((row["message_id"], row["excerpt"], row["removal"]), (retracted, "Keep the retracted title.", act))
+
     def test_trash_is_personal_revision_fenced_and_does_not_change_archive_or_stars(self):
         root = self.opening["id"]
         child = self.post("Part of the dossier", reply_to=root)

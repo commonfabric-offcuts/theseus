@@ -21,7 +21,9 @@ const drawn = page => page.evaluate(() => {
   const shown = node => Boolean(node && node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden');
   const shelves = [...document.querySelectorAll('#things .archive-shelf')];
   const shelf = shelves.find(s => !s.hidden) ?? null;
+  const trash = shelf?.querySelector('.archive-trash');
   return { shelves: shelves.length, shelfShown: shown(shelf),
+    trashFolded: shown(trash?.querySelector('summary')) && !trash.open,
     replicas: shelf ? [...shelf.querySelectorAll('.shelf-dossier')].map(r => ({ id: r.dataset.id, title: r.querySelector('.shelf-title').textContent,
       folder: r.dataset.folder, sheets: r.dataset.sheets, card: r.style.getPropertyValue('--replica-card'), popup: r.getAttribute('aria-haspopup') })) : [],
     feed: [...document.querySelectorAll('#messages .reply-stack')].filter(shown).map(s => s.dataset.stack),
@@ -67,7 +69,8 @@ try {
     try {
       await page.goto(`${facts.origin}/?topic=${here}`); await page.locator('body[data-ready=true]').waitFor();
       let d = await becomes(d => d.feed.includes(ids.one) && d.feed.includes(ids.three), 'the feed draws its dossiers');
-      assert.equal(d.shelfShown, false, 'nothing archived: no shelf'); seen.push('no shelf before archiving');
+      assert.equal(d.replicas.length, 0, 'there are no archive rows before archiving');
+      assert.equal(d.trashFolded, true, 'Trash is reachable with no archive rows'); seen.push('closed Trash before archiving');
       const one = (await nameOf(ids.one)).trim(), three = (await nameOf(ids.three)).trim();
       await archive(ids.one);
       d = await becomes(d => d.replicas.length === 1 && !d.feed.includes(ids.one) && d.ghosts === 0, 'the dossier lands on the shelf');
@@ -229,7 +232,8 @@ try {
       await page.locator('#messages .stack-more').click(); await becomes(d => d.feed.includes(ids.three), 'Archived (N) opened');
       await page.locator(`${section(ids.three)} [aria-label="Bring back"]`).first().click();
       await becomes(d => d.feed.includes(ids.three) && !d.more, 'the last brought back in the feed');
-      await page.setViewportSize({ width: 1280, height: 900 }); await becomes(d => !d.shelfShown, 'widened, nothing archived');
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await becomes(d => d.trashFolded && d.replicas.length === 0, 'widened, only the folded Trash remains');
       const both = await page.evaluate(async id => {
         document.querySelector(`#messages .reply-stack[data-stack="${id}"] [aria-label="Archive"]`).click();
         // Looked at before Core's answer can arrive (its arrange would hide the dossier anyway): only the page's own work.

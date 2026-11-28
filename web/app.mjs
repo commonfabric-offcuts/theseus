@@ -3176,7 +3176,7 @@ function learnMessageRemoval({ message_id, removal }) {
   // or its pending read then sees the same fact as the loaded page.
   dossierHeads?.sync(views.messages, views.removals);
   views?.learnRemoval(message_id, removal);
-  if (typeof stackFeed !== 'undefined') stackFeed?.shelf?.removed(message_id);
+  if (typeof stackFeed !== 'undefined') stackFeed?.shelf?.removed(message_id, removal);
   const item = feedMessages().get(message_id), entry = messageEntries.get(message_id), card = cardIn(entry);
   if (entry) dropCardDocuments(entry);
   if (removal.kind === 'unsent') { if (entry) dropCardImages(entry); entry?.remove(); messageEntries.delete(message_id); clearVisitNew(message_id); }

@@ -8,6 +8,7 @@
 import { openMessageMenu } from './message-menu.mjs';
 import { archiveOrder, dossierOf, keyOf } from './stack-order.mjs';
 import { keyAction } from './pane-keys.mjs';
+import { ArchiveTrash } from './archive-trash.mjs';
 
 const VIEW_KEY = 'theseus-archive-view', AUTO_LIST = 18;
 // Grid: four replicas; List: three rows, each a dot and a line, as the rail's topics.
@@ -48,7 +49,7 @@ const path = (rect, end) => {
 export class ArchiveShelf {
   // restore brings a dossier back; undo is the feed's one-key undo; changed says the shelf began or stopped being
   // drawn (the rail moved beside the page or away), outside any redraw of the feed.
-  constructor({ doc, restore, undo = () => {}, changed = () => {}, unread = () => false, read = null,
+  constructor({ doc, restore, undo = () => {}, changed = () => {}, unread = () => false, read = null, readTrash = null,
     allows = () => true, afterRead = () => {} }) {
     this.doc = doc; this.restore = restore; this.undo = undo; this.changed = changed; this.unread = unread;
     this.read = read; this.allows = allows; this.afterRead = afterRead; this.projected = new Map(); this.given = [];
@@ -61,7 +62,8 @@ export class ArchiveShelf {
     const head = element(doc, 'div', 'archive-shelf-head');
     this.heading = element(doc, 'h2', '', 'Archived'); this.heading.id = 'archive-shelf-heading';
     this.count = element(doc, 'span', 'archive-shelf-count');
-    head.append(this.heading, this.count, this.views());
+    this.viewGroup = this.views();
+    head.append(this.heading, this.count, this.viewGroup);
     this.row = element(doc, 'div', 'archive-shelf-row'); this.row.setAttribute('role', 'list');
     this.more = element(doc, 'button', 'archive-shelf-more', 'Show more'); this.more.hidden = true;
     this.more.type = 'button'; this.more.onclick = () => this.readPage(Boolean(this.pageError));
@@ -69,6 +71,10 @@ export class ArchiveShelf {
     this.notice = element(doc, 'span', 'archive-shelf-notice');
     this.notice.setAttribute('role', 'status');
     this.root.append(head, this.row, this.more, this.notice);
+    if (readTrash) {
+      this.trash = new ArchiveTrash({ doc, read: readTrash, afterRead });
+      this.root.append(this.trash.root);
+    }
     const replicaOf = event => event.target.closest?.('.shelf-dossier') ?? null;
     this.row.addEventListener('contextmenu', event => {
       const replica = replicaOf(event); if (!replica) return;
@@ -86,6 +92,7 @@ export class ArchiveShelf {
   }
   // Gone with its page: a feed left behind that still hears Core draws nothing in the rail.
   leave() {
+    this.trash?.show(false);
     this.gone = true; this.root.remove(); this.watching?.disconnect(); this.panelWatching?.disconnect(); this.wide?.removeEventListener?.('change', this.recheck);
     if (this.drawn) delete this.doc.body.dataset.archiveShelf;
   }
@@ -97,7 +104,8 @@ export class ArchiveShelf {
     this.projected.clear(); this.cursor = null; this.remaining = null;
     this.paint([], new Set(), true);
   }
-  removed(id) {
+  removed(id, removal) {
+    this.trash?.learnRemoval(id, removal);
     this.epoch++;
     this.projected.delete(id);
     this.remaining = null;
@@ -131,7 +139,10 @@ export class ArchiveShelf {
     const hasRows = !this.unavailable && Boolean(this.list.length || this.cursor || this.pageError);
     const beside = this.beside(), drawn = hasRows && beside, was = this.drawn;
     const panel = this.inPanel();
-    this.drawn = drawn; this.root.hidden = !(drawn || panel && hasRows);
+    const visible = !this.unavailable && (beside || panel);
+    this.drawn = drawn; this.root.hidden = !(visible && (hasRows || this.trash));
+    this.viewGroup.hidden = !hasRows;
+    this.trash?.show(visible);
     if (drawn) this.doc.body.dataset.archiveShelf = 'on'; else delete this.doc.body.dataset.archiveShelf;
     if (notify && drawn !== was) this.changed(drawn);
     if (this.read && !this.unavailable && (beside || panel)) {

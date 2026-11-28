@@ -34,6 +34,8 @@ const DRAWN = {
   reply: { d: 'M9.5 7 4.5 12l5 5 M5 12h9.5a5 5 0 0 1 5 5v1' },
   // Bring back: a tray, an arrow coming up out of it.
   back: { d: 'M4 14v4.5h16V14 M12 14V4 M8 8l4-4 4 4' },
+  // Trash: a bin with a lid, beside a dossier title.
+  trash: { d: 'M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 10v7 M14 10v7' },
   // Show full message: two arrows pointing out, up and down.
   full: { d: 'M12 3v18 M8 7l4-4 4 4 M8 17l4 4 4-4' },
   // Fold: two arrows pointing in to a line.
