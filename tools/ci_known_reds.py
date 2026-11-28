@@ -414,11 +414,17 @@ def unit_log(text):
         require(found['FAIL'] + found['ERROR'] >= failing, 'python-units: check outcome missing for ' + name)
         require(failing or not found, 'python-units: failure event for a method whose outcomes are ' +
                 ', '.join(sorted(slot)))
+    # Each subTest-only slot takes one event not already witnessing another slot of its name: FAIL events first, in
+    # listing order; no event is used for two slots.
+    spare = {name: named.get(name, Counter()) - Counter({'FAIL': slot['FAIL'], 'ERROR': slot['ERROR']})
+             for name, slot in slots.items()}
     final = []
     for case, status in rows:
         if status == 'subtests':
-            found, slot = named[case['name']], slots[case['name']]
-            status = 'FAIL' if found['FAIL'] > slot['FAIL'] else 'ERROR'
+            left = spare[case['name']]
+            status = 'FAIL' if left['FAIL'] else 'ERROR'
+            require(left[status] > 0, 'python-units: check outcome missing for ' + case['name'])
+            left[status] -= 1
         final.append((case, status))
     require(len(final) == ran, 'python-units: %d method outcomes but Ran %d' % (len(final), ran))
     require(summary.get('failures', 0) == kinds['FAIL'] and summary.get('errors', 0) == kinds['ERROR'],

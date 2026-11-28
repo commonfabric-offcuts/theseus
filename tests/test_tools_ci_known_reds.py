@@ -1439,6 +1439,14 @@ class UnitLog1389(unittest.TestCase):
                                          [('FAIL', 'test_a (m.C)', None), ('ERROR', 'test_a (m.C)', '(k=1)')], ran=4))
         self.assertEqual(mixed['rows'], [({'name': 'test_a (m.C)'}, 'FAIL'), ({'name': 'test_a (m.C)'}, 'ok'),
                                          ({'name': 'test_a (m.C)'}, 'ERROR'), ({'name': 'test_b (m.C)'}, 'ok')])
+        # Two subTest-only slots of one name, one FAIL and one ERROR event: each slot takes its own event, none twice.
+        two = ci.unit_log(unittest_log(['test_a (m.C) ... test_a (m.C) ... test_b (m.C) ... ok'],
+                                       [('ERROR', 'test_a (m.C)', '(k=1)'), ('FAIL', 'test_a (m.C)', '(k=2)')], ran=3))
+        self.assertEqual(two['rows'], [({'name': 'test_a (m.C)'}, 'FAIL'), ({'name': 'test_a (m.C)'}, 'ERROR'),
+                                       ({'name': 'test_b (m.C)'}, 'ok')])
+        with self.assertRaisesRegex(ci.Refused, 'check outcome missing for test_a'):
+            ci.unit_log(unittest_log(['test_a (m.C) ... test_a (m.C) ... test_b (m.C) ... ok'],
+                                     [('FAIL', 'test_a (m.C)', '(k=1)')], ran=3))
 
     def test_incomplete_unmatched_or_miscounted_logs_refuse(self):
         good = unittest_log(['test_a (m.C) ... ok', 'test_b (m.C) ... FAIL'], [('FAIL', 'test_b (m.C)', None)])
