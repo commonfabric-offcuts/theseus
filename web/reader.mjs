@@ -91,7 +91,7 @@ export class Reader {
     this.mac = onMac();
     this.mode = 'reply';
     this.positions = new Map();
-    this.hover = null; this.tableLight = new LightTableRows();
+    this.hover = null;
     this.held = null;
     this.pointer = null;
     this.source = null;
@@ -620,6 +620,7 @@ export class Reader {
     const { start, end } = row ?? { start: Number(span.dataset.start), end: Number(span.dataset.end) };
     const anchor = extend && this.hover ? this.hover.anchor : { start, end };
     this.hover = { anchor, start: Math.min(anchor.start, start), end: Math.max(anchor.end, end), pressed: pressed || Boolean(extend && this.hover?.pressed) };
+    this.tableLight ??= new LightTableRows();
     this.tableLight.paint(this.sourceBody, this.hover);
     for (const part of this.sourceBody.children) {
       const lit = Number(part.dataset.start) < this.hover.end && Number(part.dataset.end) > this.hover.start;
@@ -691,7 +692,7 @@ export class Reader {
     this.hover = null;
     this.pointer = null;
     for (const span of this.sourceBody.querySelectorAll('.hover-quote')) span.classList.remove('hover-quote');
-    this.tableLight.clear();
+    this.tableLight?.clear();
     this.paintQuote();
   }
 
@@ -1514,7 +1515,7 @@ export class Reader {
     // ⌘C with a passage lit and no words selected copies the passage's words,
     // as Return would quote them, as on the topic page (message-menu.mjs).
     if (!inEditor && copyKey(event, this.mac) && this.hover && window.getSelection()?.isCollapsed !== false && this.source) {
-      event.preventDefault(); copyText(this.tableLight.copied() ?? this.passageParts(this.selectedPassage()).join('').trimEnd()).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
+      event.preventDefault(); copyText(this.tableLight?.copied() ?? this.passageParts(this.selectedPassage()).join('').trimEnd()).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
     }
     if (!inEditor && event.metaKey && event.shiftKey && event.code === 'KeyC' && this.source?.source_ref.kind === 'message') {
       event.preventDefault(); copyText(this.source.body).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;

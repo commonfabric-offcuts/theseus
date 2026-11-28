@@ -4892,15 +4892,16 @@ function topicName(id) {
 }
 nameTopicsWith(topicName);
 // from: the link pressed, which takes the focus back when the Reader closes.
-async function openDestination(target, title, from = null, writtenQuery = false) {
+async function openDestination(target, title, from = null, writtenQuery = false, { notebookQuote = false } = {}) {
   const landing = ++landingSerial;
   // Here the shared sheet reads the page by id through Core itself. Resolving
   // its label first must not replace this local opening or lose its opener.
-  // Authored URL queries still confirm existence/access before opening.
+  // Authored URL queries still confirm existence/access before opening. An
+  // active Notebook quote already names its exact source and reply topic.
   const localPage = !writtenQuery && target.page && !target.revision && ((topic && views &&
     (target.kind === 'topic' ? target.id === topic.id : target.kind === 'workspace' && target.id === topic.workspace_id)) ||
     (!topic && pageHere && target.kind === 'workspace' && target.id === pageHereOutcome));
-  if (!localPage && !notebookQuoteRoute(target) && (writtenQuery || target.page) && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
+  if (!localPage && !notebookQuote && (writtenQuery || target.page) && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
     const original = target;
     topicNavigation?.cancelPending();
     try {
@@ -5374,7 +5375,7 @@ async function quoteNotebookPassage(choice, opener) {
       if (notebookSheet?.showing) await notebookSheet.quoteWith(open); else await open();
     } else {
       await openDestination({ kind: 'topic', id: topicId, page: choice.source.id, revision: String(choice.source.revision) },
-        'the page quote', opener);
+        'the page quote', opener, false, { notebookQuote: true });
     }
   } catch (error) { notebookQuoteNotice(error); }
 }
