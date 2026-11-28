@@ -572,6 +572,16 @@ def source_dossier(db, actor, message_id):
     return {**move_fields(db, actor, root), "root_id": root, "name": name, "first": {"body": first["body"], "attachments": [] if withheld(root) else json.loads(first["attachments"]), "withheld": withheld(root), "removal": value(db, root)}, "alone": count < 2}
 
 
+def first_public_agent_reply(db, root):
+    """The first agent's on-record reply in the current public dossier."""
+    row = db.execute(
+        MEMBERS + " SELECT m.id FROM members p CROSS JOIN messages m ON m.id=p.id "
+        "JOIN actors a ON a.id=m.author_id WHERE m.id<>:root AND m.reply_to IS NOT NULL "
+        "AND a.kind='agent' AND EXISTS(SELECT 1 FROM messages WHERE id=:root AND private_to IS NULL) "
+        "ORDER BY m.seq LIMIT 1", {"root": root, "actor": ""}).fetchone()
+    return row["id"] if row is not None else None
+
+
 def dossier_namer(db, root, replied=False):
     """(who mints a name for the dossier root heads, why) (item 479). The namer is None once anyone ever named it
     (`named`: a typed name wins and is never replaced, and a dossier is minted once), and before a reply on the record
@@ -934,13 +944,19 @@ class Stacks:
 
     def _view_stack_namer(self, db, actor, args):
         """Who names the dossier a message is in (item 479), for an agent about to mint its name: the dossier's first
-        message, its name and the name's revision (the fence a mint is sent on), and its namer, or None."""
-        message, _ = self._acted_message(db, actor, {"message_id": args.get("message_id")})
+        message, its name, its name revision and its namer. The eligible first responder also gets the birth fences."""
+        message, topic = self._acted_message(db, actor, {"message_id": args.get("message_id")})
         root = StackRoots(db, actor).root(message["id"])
         acts = current_acts(db, actor, [root]).get(root, EMPTY)
         namer, why = dossier_namer(db, root)
-        return {"instance_id": self.instance_id, "message_id": message["id"], "topic_id": message["topic_id"], "root_id": root,
-                "name": acts["name"], "name_revision": acts["name_revision"], "namer": namer, "why": why}
+        result = {"instance_id": self.instance_id, "message_id": message["id"], "topic_id": message["topic_id"], "root_id": root,
+                  "name": acts["name"], "name_revision": acts["name_revision"], "namer": namer, "why": why}
+        if (message["id"] != root and message["author_id"] == actor and message["reply_to"]
+                and message["private_to"] is None and "birth" not in (acts["cover"] or {})
+                and self._closed(db, topic["workspace_id"]) is None and first_public_agent_reply(db, root) == message["id"]):
+            result["birth_it"] = {"root_id": root, "reply_id": message["id"], "name_revision": acts["name_revision"],
+                                  "cover_revision": acts["cover_revision"], "can_name": namer == actor}
+        return result
 
     def _name_it(self, db, recipient, message_id):
         """{root_id, name_revision} when message_id, a reply on the record, lands in a dossier nobody has named and

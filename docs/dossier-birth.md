@@ -40,3 +40,30 @@ The cover's optional `birth` value shows the recorded nature and completion
 criterion to readers of that cover. Regular cover writes preserve these
 fields. Existing records retain their current shape. Cover revisions retain
 birth and name history uses the existing name acts.
+
+## The first responder’s CLI prompt
+
+After the first public agent reply, the CLI reads `stack_namer` for that
+reply. For the eligible responder, `birth_it` gives the root, the reply,
+the name and cover revisions, and whether they may mint the name. The
+CLI prints a fenced command. Use it in the same turn, aiming to record the
+rough cover within a minute or two.
+
+```sh
+aim-next birth REPLY --root ROOT --expected-name N --expected-cover N \
+  --nature "Decision" --done-when "The owner confirms the cabin" \
+  --stands "Checking whether the west cabin is available"
+```
+
+Include `--name` when the hint offers it to record the name and cover together.
+The existing `mint` instruction still works to name the dossier on its own.
+A different coordinator gets the existing naming request. If a person has already named the dossier, the
+first responder can still record the cover facts. A private or later reply
+does not create a first-cover prompt.
+
+`aim-next birth REPLY` reads the current prompt without writing. Use it
+when recovering a saved public reply or rereading a changed fence. A write
+takes the actual root and both observed revisions. Reconcile or retry a
+saved write by its original operation if its result is lost.
+If the reply's output was lost, `aim-next --json reconcile OPERATION` reads
+the saved reply receipt. Use its committed message ID with `birth REPLY`.

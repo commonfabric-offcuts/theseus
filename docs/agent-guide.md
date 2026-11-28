@@ -307,8 +307,9 @@ When the first reply lands in a dossier nobody has named, its namer gives it a
 short name: the outcome's coordinator when it is an agent taking part in the
 topic, or else the first agent that replies. If that is you, the delivery says so
 (`[you name its dossier: mint ROOT --expected N "two to five words"]`), or
-your `reply` says so after `posted …`. Read the dossier, then name what it is
-about in two to five words:
+your `reply` says so after `posted …`. If the reply offers a `birth` command
+with `--name`, supply the name there. Read the dossier, then name what it is
+about in two to five words.
 
 ```sh
 aim-next mint ROOT --expected N "Cabin week plan"
@@ -320,6 +321,12 @@ typed is never replaced, and a dossier is named once. See
 [reply-stacks.md](reply-stacks.md#minted-names-479).
 
 ## Keeping a dossier's cover
+
+When your first public reply prompts you to write the cover, run the printed
+`birth` command in the same turn. Aim for a minute or two. Describe the
+dossier's nature, what would count as completion, and give it a rough cover.
+Include a name when the prompt offers it. For an existing reply, `birth REPLY`
+reads the current prompt. See [Dossier birth](dossier-birth.md).
 
 A dossier you are working has a cover: the first sheet of its folder, right
 under its tab, that the outcome's owner reads before any message in it. Write

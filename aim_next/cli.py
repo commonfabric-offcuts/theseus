@@ -193,6 +193,7 @@ USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute
          "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
          "| post TOPIC [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--reply-to MESSAGE] [--divergence-reason TEXT] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
          "| thumb MESSAGE [--off] | withdraw MESSAGE [--operation ID] | mint MESSAGE [--expected N] WORDS|- | edit MESSAGE --expected N TEXT|- "
+         "| birth REPLY [--root ROOT --expected-name N --expected-cover N [--name TEXT] [--nature TEXT] [--done-when TEXT] [--stands TEXT|-] [--operation ID]] "
          "| cover MESSAGE [--refresh [--operation ID]] [--expected N] [--stands TEXT] [--waits TEXT --default TEXT]... [--no-waits] "
          "[--payload TEXT --from MESSAGE [--link URL] [--kind answer|decision|preview|page|release] [--done-by MESSAGE]] [--no-payload] "
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
@@ -1678,16 +1679,22 @@ class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs,
             for person in people]}
 
     def namer_hint(self, message_id):
-        """After a reply: when this agent now names its dossier, which nobody has named (item 479), the mint to run.
-        The reply is posted either way; a read that fails says so and leaves the mint to `mint`."""
+        """After posting, offer the shared first-cover or naming act that the current read permits."""
         try:
             found = self.store.view(self.actor, "stack_namer", {"message_id": message_id})
         except (StoreError, OSError):
-            found = {"error": {"code": "UNREAD"}}
-        if found.get("error"):
-            _diagnostic(self.out.stderr, "NAMER_UNREAD: the reply is posted; whether you name its dossier could not be read (%s). "
-                        "`stack_namer` says it; `mint %s WORDS` names it if you do." % (found["error"]["code"], message_id))
-        elif found["namer"] == self.actor:
+            found = {"error": {"code": "UNREAD", "retryable": True}}
+        error = found.get("error")
+        if error:
+            detail = "NAMER_UNREAD: the reply is posted. The first-cover and naming prompt could not be read (%s)." % error["code"]
+            if error.get("message"):
+                detail += " " + error["message"]
+            if error.get("retryable"):
+                detail += " When the same bound read is available, use `aim-next birth %s`." % message_id
+            _diagnostic(self.out.stderr, _shown(detail))
+            return
+        self.birth_hint(found)
+        if found["namer"] == self.actor:
             self.out.plain("its dossier has no name, and you name it:%s" % self.name_it({"root_id": found["root_id"], "name_revision": found["name_revision"]}))
 
     def do_mint(self):
