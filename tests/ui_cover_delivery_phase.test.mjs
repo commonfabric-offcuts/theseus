@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { copyOfCover, coverKey, coverSheet, coverSummary } from '../web/dossier-cover.mjs';
+import { copyOfCover, coverKey, coverPreview, coverSheet, coverSummary } from '../web/dossier-cover.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 
 const context = { viewer: 'owner', nameOf: id => id === 'builder' ? 'Builder' : 'Tony', topicId: 't', rootId: 'm' };
@@ -22,7 +22,7 @@ test('the shared cover puts payload first, folds ordered authored fields, and ke
   assert.match(view.children[2].className, /cover-heading/);
   assert.equal(find(view, 'pill-words')[0].text, "Waiting on Tony's ok");
   assert.equal(find(view, 'cover-src')[0].text, '#8');
-  assert.equal(coverSummary(cover), 'Cover release');
+  assert.equal(coverSummary(cover, miniDocument()), 'Cover release');
   assert.deepEqual(find(view, 'cover-section-label').map(node => node.text), ['Why', 'What', 'Log']);
   assert.equal(find(view, 'cover-section-peek')[0].text, 'For readers');
   assert.equal(find(view, 'cover-section-peek')[1].text, 'Item, State · 1 row');
@@ -44,6 +44,13 @@ test('field peeks summarize the first block in plain words', () => {
   assert.deepEqual(find(view, 'cover-section-peek').map(node => node.text), [
     'Preserve this sentence.', '2 of 4 done · Add the route', 'Check the legend', '2 of 2 done',
   ]);
+});
+
+test('a section-only cover uses the same plain peek in the closed row and Reader', () => {
+  const cover = { ...base, stands: null, sections: fields };
+  const doc = miniDocument();
+  assert.equal(find(coverPreview(doc, { ...cover, sections: [fields[3]] }, context), 'stack-cover-lead')[0].text, 'Item, State · 1 row');
+  assert.equal(coverSummary({ ...cover, sections: [fields[3]] }, doc), 'Item, State · 1 row');
 });
 
 test('phase follows persisted evidence, and tracking reads its checkpoint without phase bars', () => {

@@ -41,12 +41,11 @@ export function structuredCover(cover) {
 }
 
 function firstLine(text, doc) {
-  return inlineNodes(text.trim().split('\n', 1)[0], { doc }).map(node => node.textContent).join('');
+  return inlineText(text.trim().split('\n', 1)[0], doc);
 }
 
-function plainWords(words, doc) {
-  return inlineNodes(words, { doc }).map(node => node.textContent).join('').replace(/\s+/g, ' ').trim();
-}
+const inlineText = (words, doc) => inlineNodes(words, { doc }).map(node => node.textContent).join('');
+const plainWords = (words, doc) => inlineText(words, doc).replace(/\s+/g, ' ').trim();
 
 function fieldPeek(blocks, doc) {
   const block = blocks.find(item => item.kind !== 'rule');
@@ -68,6 +67,8 @@ function fieldPeek(blocks, doc) {
   const text = plainWords(block.words, doc);
   return (sentences?.segment(text)[Symbol.iterator]().next().value?.segment ?? text).trim();
 }
+
+const sectionPeek = (section, doc) => section ? fieldPeek(parseBlocks(section.text), doc) : '';
 
 function presentation(cover, sections, doc) {
   const writtenNature = cover.birth?.nature?.trim();
@@ -152,11 +153,10 @@ export function coverPreview(doc, cover, context) {
   const { label, next, phase } = presentation(cover, sections, doc);
   const preview = element(doc, 'span', 'stack-cover-preview');
   preview.append(element(doc, 'span', 'cover-nature', label));
-  const lead = cover.stands ?? sections[0]?.text ?? cover.payload?.text;
-  if (lead?.trim()) {
-    const words = firstLine(lead, doc);
-    const snippet = element(doc, 'span', 'stack-cover-lead', words);
-    snippet.title = words;
+  const lead = cover.stands ? firstLine(cover.stands, doc) : sectionPeek(sections[0], doc) || firstLine(cover.payload?.text ?? '', doc);
+  if (lead) {
+    const snippet = element(doc, 'span', 'stack-cover-lead', lead);
+    snippet.title = lead;
     preview.append(snippet);
   }
   if (cover.payload && !cover.payload.done && cover.owner_name) {
@@ -364,11 +364,12 @@ export function coverSheet(doc, cover, context, previous = null) {
     const text = cover.birth.done_when;
     line('cover-criterion', [label, text]).append(element(doc, 'span', 'cover-label', label), ' ', ...inlineNodes(text, { doc }));
   }
-  for (const { key, label, text } of sections) {
+  for (const field of sections) {
+    const { key, label, text } = field;
     const title = element(doc, 'span', 'cover-section-label', label);
     const { section, summary, body } = coverDisclosure(title, { ...ctx, doc, sectionId: JSON.stringify(['structured', key]), initiallyOpen: false });
     section.classList.add('cover-structured-section');
-    summary.append(element(doc, 'span', 'cover-section-peek', fieldPeek(parseBlocks(text), doc)));
+    summary.append(element(doc, 'span', 'cover-section-peek', sectionPeek(field, doc)));
     body.append(...formatNodes(text, { doc }));
     line('cover-field', [key, text]).append(section);
   }
@@ -438,9 +439,12 @@ export function itemRow(doc, item) {
   return row;
 }
 
-export const coverSummary = cover => (structuredCover(cover) && cover.payload?.text) || cover.stands || cover.payload?.text ||
-  writtenSections(cover)[0]?.text.trim().split('\n', 1)[0] ||
-  (cover.items?.length ? cover.items.map(item => `${item.title} · ${item.state}`).join('; ') : null);
+export function coverSummary(cover, doc) {
+  const words = (structuredCover(cover) && cover.payload?.text) || cover.stands || cover.payload?.text;
+  if (words) return inlineText(words, doc);
+  return sectionPeek(writtenSections(cover)[0], doc) ||
+    (cover.items?.length ? inlineText(cover.items.map(item => `${item.title} · ${item.state}`).join('; '), doc) : null);
+}
 
 // What a cover on a message on its own shows instead: its payload's pill and
 // one pill for what waits on the owner, under who wrote it. Null with neither.

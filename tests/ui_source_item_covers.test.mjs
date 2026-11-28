@@ -69,7 +69,7 @@ test('757 singleton and Reader summary retain separate rows without inventing pa
   assert.deepEqual(pills.children.map(n => n.className), ['row-pill pill-payload', 'cover-item', 'cover-item', 'row-pill pill-waits'], 'singleton keeps generated rows before manual waits');
   assert.equal(of(pills, 'pill-payload').length, 1);
   const generated = { ...cover, stands: null, payload: null, waiting: [] };
-  assert.equal(coverSummary(generated), 'Make the reader clearer · Build; Speed up the feed · Review');
+  assert.equal(coverSummary(generated, miniDocument()), 'Make the reader clearer · Build; Speed up the feed · Review');
   assert.equal(of(coverPills(miniDocument(), generated, context), 'pill-payload').length, 0);
   const newer = { ...cover, items: [rows[0], { ...rows[1], state: 'Wait' }] };
   assert.notEqual(coverKey(cover, context), coverKey(newer, context), 'stage change redraws the cover');

@@ -1191,10 +1191,10 @@ export class Reader {
     const words = document.createElement('span'); words.className = 'reader-cover-words';
     const waitingOn = [...new Set(cover.waiting.map(wait => wait.actor_id ?? cover.owner))]
       .map(id => id === shown.viewer ? 'you' : shown.nameOf(id)).join(', ');
-    const authored = coverSummary(cover) ?? cover.birth?.done_when ?? cover.birth?.nature;
-    // Read the inline marks without adding links or extra controls to the summary (989).
-    words.textContent = authored ? inlineNodes(authored, { doc: document }).map(node => node.textContent).join('')
-      : `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${waitingOn}`;
+    const birth = cover.birth?.done_when ?? cover.birth?.nature;
+    const birthWords = birth && inlineNodes(birth, { doc: document }).map(node => node.textContent).join('');
+    words.textContent = coverSummary(cover, document) ?? birthWords ??
+      `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${waitingOn}`;
     const label = document.createElement('span'); label.className = 'cover-label'; label.textContent = summary?.label ?? 'Cover';
     const status = document.createElement('span'); status.className = 'reader-cover-status'; status.textContent = summary?.status ?? '';
     line.replaceChildren(label, ' ', words, ...(cover.payload ? [' ', payloadPill(document, cover.payload, shown)]

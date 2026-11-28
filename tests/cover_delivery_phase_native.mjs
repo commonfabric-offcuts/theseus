@@ -70,6 +70,7 @@ try {
     criterion: 'The route and legend appear on the same page.',
     fields: { what: '- [x] Measure the path\n- [ ] Add the **route**\n- [ ] Print the guide\n- [x] Check the scale' },
   });
+  await act('stack.cover', 'working-section-only', agent, working.root, { stands: null });
 
   browser = await chromium.launch({ executablePath: process.env.AIM_CHROME, headless: true });
   report.browser = browser.version();
@@ -158,6 +159,9 @@ try {
       assert.equal(await readerSheet.locator('.cover-structured-section[open] .cover-section-label').textContent(), 'What');
       assert.deepEqual(await readerSheet.locator(':scope > .cover-line').evaluateAll(rows => rows.slice(0, 3).map(row => row.className)),
         ['cover-line cover-header', 'cover-line cover-payload', 'cover-line cover-heading']);
+      await page.goto(origin + '/?topic=' + topic + '&message=' + working.reply);
+      await page.locator('#reader-cover-line .reader-cover-words').waitFor();
+      assert.equal(await page.locator('#reader-cover-line .reader-cover-words').textContent(), checklist);
       report.cases.push({ ...screen, geometry, peeks, checklist, previewFile });
     } finally {
       await context.close();
