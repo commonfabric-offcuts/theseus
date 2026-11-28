@@ -15,7 +15,7 @@ import { coverAnswers } from './cover-answers.mjs';
 import { glyph } from './glyphs.mjs';
 import { linkNode, writtenLink } from './links.mjs';
 import { timeNode } from './times.mjs';
-import { composeFormattedWords, formatNodes, inlineNodes, literalWords, parseBlocks } from './message-format.mjs';
+import { composeFormattedWords, formatNodes, inlineNodes, literalWords, parseBlocks, sourcePosition } from './message-format.mjs';
 import { literalHTMLNodes } from './interactive-html.mjs';
 import { coverSectionNodes, coverDisclosure } from './cover-sections.mjs';
 
@@ -49,26 +49,56 @@ const plainWords = (words, doc) => inlineText(words, doc).replace(/\s+/g, ' ').t
 
 function fieldPeek(blocks, doc) {
   const block = blocks.find(item => item.kind !== 'rule');
-  if (!block) return '';
+  if (!block) return { text: '' };
   if (block.kind === 'table') {
     const headers = block.head.cells.map(cell => plainWords(cell, doc)).filter(Boolean).join(', ');
     const count = block.rows.length;
-    return [headers, `${count} ${count === 1 ? 'row' : 'rows'}`].filter(Boolean).join(' · ');
+    return { text: [headers, `${count} ${count === 1 ? 'row' : 'rows'}`].filter(Boolean).join(' · ') };
   }
   if (block.kind === 'list') {
     const [first] = block.items;
-    if (!first.task) return plainWords(first.words, doc);
+    if (!first.task) return { text: plainWords(first.words, doc), words: first.words };
     const tasks = block.items.filter(item => item.task);
     const open = tasks.find(item => item.task === 'open');
     const done = tasks.filter(item => item.task === 'done').length;
-    return [`${done} of ${tasks.length} done`, open && plainWords(open.words, doc)].filter(Boolean).join(' · ');
+    const authored = open && plainWords(open.words, doc);
+    const prefix = `${done} of ${tasks.length} done` + (authored ? ' · ' : '');
+    return { text: prefix + (authored || ''), prefix, words: open?.words };
   }
   if (block.kind === 'quote' && block.blocks) return fieldPeek(block.blocks, doc);
   const text = plainWords(block.words, doc);
-  return (sentences?.segment(text)[Symbol.iterator]().next().value?.segment ?? text).trim();
+  return { text: (sentences?.segment(text)[Symbol.iterator]().next().value?.segment ?? text).trim(), words: block.words };
 }
 
-const sectionPeek = (section, doc) => section ? fieldPeek(parseBlocks(section.text), doc) : '';
+const sectionPeek = (section, doc) => section ? fieldPeek(parseBlocks(section.text), doc).text : '';
+
+// A folded peek flattens inline markup and whitespace. Locate its visible
+// authored prefix in the formatter's text nodes to get the original offsets.
+function peekSpan(doc, words, text, body) {
+  if (!words || !text) return null;
+  const host = element(doc, 'span');
+  host.append(...inlineNodes(words, { doc }));
+  const shown = host.textContent, startAt = shown.search(/\S/);
+  let endAt = 0, read = 0;
+  for (const word of shown.matchAll(/\S+/g)) {
+    if (read) read++;
+    if (read + word[0].length >= text.length) {
+      endAt = word.index + text.length - read;
+      break;
+    }
+    read += word[0].length;
+  }
+  if (startAt < 0 || endAt <= startAt) return null;
+  const walker = doc.createTreeWalker(host, 4);
+  let start = null, end = null, offset = 0;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const next = offset + node.data.length;
+    if (offset <= startAt && startAt < next) start = sourcePosition(node, startAt - offset);
+    if (offset < endAt && endAt <= next) { end = sourcePosition(node, endAt - offset, true); break; }
+    offset = next;
+  }
+  return start !== null && end > start && plainWords(body.slice(start, end), doc) === text ? { start, end } : null;
+}
 
 function presentation(cover, sections, doc) {
   const writtenNature = cover.birth?.nature?.trim();
@@ -260,9 +290,11 @@ function coverFooter(doc, cover, context, previous) {
 }
 
 const sheetRows = new WeakMap();
+const peekQuotes = new WeakMap();
 export const copyOfCover = sheet => sheetRows.get(sheet)?.copy;
+export const coverPeekSpan = words => peekQuotes.get(words);
 export function coverQuoteSource(words) {
-  const part = words?.dataset.coverQuotePart;
+  const part = words?.dataset.coverQuotePart ?? words?.dataset.coverPeekPart;
   const ref = part && sheetRows.get(words.closest('.dossier-cover'))?.quote;
   return ref ? { ...ref, part } : null;
 }
@@ -331,6 +363,7 @@ export function coverSheet(doc, cover, context, previous = null) {
   const copy = () => coverCopyWords(cover, ctx);
   const quote = typeof doc.getSelection === 'function' && ctx.rootId && Number.isSafeInteger(cover.revision) && cover.revision > 0
     ? { kind: 'cover', id: ctx.rootId, revision: cover.revision } : null;
+  if (quote) sheet.dataset.coverQuoteRevision = String(quote.revision);
   const quotable = (words, part, body) => {
     if (quote) {
       words.dataset.coverQuotePart = part;
@@ -414,15 +447,29 @@ export function coverSheet(doc, cover, context, previous = null) {
   if (cover.birth?.done_when?.trim()) {
     const label = view.nature === 'question' ? 'Answered when' : 'Done when';
     const text = cover.birth.done_when;
-    line('cover-criterion', [label, text]).append(element(doc, 'span', 'cover-label', label), ' ', ...inlineNodes(text, { doc }));
+    const words = element(doc, 'span');
+    words.append(...inlineNodes(text, { doc }));
+    line('cover-criterion', [label, text]).append(element(doc, 'span', 'cover-label', label), ' ', quotable(words, 'done_when', text));
   }
   for (const field of sections) {
     const { key, label, text } = field;
     const title = element(doc, 'span', 'cover-section-label', label);
     const { section, summary, body } = coverDisclosure(title, { ...ctx, doc, sectionId: JSON.stringify(['structured', key]), initiallyOpen: false });
     section.classList.add('cover-structured-section');
-    summary.append(element(doc, 'span', 'cover-section-peek', sectionPeek(field, doc)));
+    const peek = fieldPeek(parseBlocks(text), doc);
+    const preview = element(doc, 'span', 'cover-section-peek', peek.text);
+    const authored = peek.text.slice(peek.prefix?.length ?? 0);
+    const span = quote && peekSpan(doc, peek.words, authored, text);
+    if (span) {
+      const words = peek.prefix ? element(doc, 'span', '', authored) : preview;
+      if (peek.prefix) preview.replaceChildren(peek.prefix, words);
+      words.dataset.coverPeekPart = `section.${key}`;
+      composeFormattedWords(words, text, cover.revision, []);
+      peekQuotes.set(words, span);
+    }
+    summary.append(preview);
     body.append(...formatNodes(text, { doc }));
+    quotable(body, `section.${key}`, text);
     line('cover-field', [key, text]).append(section);
   }
   const items = linkedItems(doc, cover.items, { ...ctx, rootId: cover.root_id ?? ctx.rootId }, sameScope ? kept.items : null);
@@ -470,6 +517,7 @@ export function coverSheet(doc, cover, context, previous = null) {
       if (node !== next) previous.insertBefore(node, next);
     }
     previous.dataset.done = sheet.dataset.done;
+    if (quote) previous.dataset.coverQuoteRevision = sheet.dataset.coverQuoteRevision;
     if (view) previous.dataset.coverLayout = sheet.dataset.coverLayout;
     else delete previous.dataset.coverLayout;
     sheetRows.set(previous, { scope, rows: desired, items, footer, copy, quote });

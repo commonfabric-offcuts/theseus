@@ -4361,6 +4361,7 @@ async function initialize() {
   installCoverQuote({ host: $('messages'), template: $('quote-selection'),
     available: source => !retired && !topicUnavailable && !outcomeReached && !authorityReviewPending() && !registry.disposed &&
       !freshness?.stopped && !registry.current && Boolean(topic) && (!source || messageEntries.has(source.id)),
+    copy: words => copyText(words).then(done => { if (!done) status(COPY_REFUSED); }),
     quote: quote => run(async () => {
       const id = quote.source.id, entry = messageEntries.get(id), shownTopic = topic;
       const p = await replyInCard(id, entry && cardIn(entry));

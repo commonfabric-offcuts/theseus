@@ -24,6 +24,26 @@ import { pointerLight, observePointerLight } from './pointer-light.mjs';
 const NAME = 'lit-passage';
 const WORDS = ':scope > .message-preview';
 
+// A caret falls between characters. Use the range's geometry to choose the
+// actual passage under the pointer, including at a wrapped sentence boundary.
+export function passageAt(words, doc, x, y) {
+  const text = words && drawnText(words);
+  if (text === undefined || !words || !words.getClientRects().length) return null;
+  const caret = doc.caretPositionFromPoint?.(x, y), range = caret ? null : doc.caretRangeFromPoint?.(x, y);
+  const node = caret ? caret.offsetNode : range?.startContainer, offset = caret ? caret.offset : range?.startOffset;
+  if (!node || node.nodeType !== 3 || !words.contains(node)) return null;
+  const position = sourcePosition(node, offset);
+  if (position === null) return null;
+  for (const span of passageSpans(text, doc, drawnDisplayRules(words))) {
+    if (span.start > position || position > span.end) continue;
+    const shown = rangeOf(words, span.start, span.end);
+    if (shown && [...shown.getClientRects()].some(box => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom)) {
+      return { words, span, range: shown };
+    }
+  }
+  return null;
+}
+
 export class FeedPassages {
   // host: the list of messages. lights(): whether Return on the lit message
   // would answer it now, so a passage may light (message-menu.mjs, returns).
@@ -98,21 +118,7 @@ export class FeedPassages {
   // The card's words and the passage of them under a point, or null when
   // the point is not on them.
   at(x, y, entry) {
-    const words = this.wordsOf(entry), text = words && drawnText(words);
-    if (text === undefined || !words.getClientRects().length) return null;
-    const caret = this.doc.caretPositionFromPoint?.(x, y), range = caret ? null : this.doc.caretRangeFromPoint?.(x, y);
-    const node = caret ? caret.offsetNode : range?.startContainer, offset = caret ? caret.offset : range?.startOffset;
-    if (!node || node.nodeType !== 3 || !words.contains(node)) return null;
-    const position = sourcePosition(node, offset);
-    if (position === null) return null;
-    // A caret falls between two characters: the passage is the one whose
-    // words are under the point, of those either side of it.
-    const spans = passageSpans(text, this.doc, drawnDisplayRules(words)).filter(span => span.start <= position && position <= span.end);
-    const under = spans.find(span => {
-      const shown = rangeOf(words, span.start, span.end);
-      return shown && [...shown.getClientRects()].some(box => x >= box.left && x <= box.right && y >= box.top && y <= box.bottom);
-    });
-    return under ? { words, span: under } : null;
+    return passageAt(this.wordsOf(entry), this.doc, x, y);
   }
 
   // Lights a passage of an entry's words; extend grows the light from what

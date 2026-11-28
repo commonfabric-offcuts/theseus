@@ -79,3 +79,29 @@ class CoverQuoteCase(CoverCase):
         result = self.committed(self.send_quote(root, quote))
         source = self.source({"kind": "message", "id": result["message_id"]}, actor="owner")
         self.assertEqual(source["quotes"], [quote])
+
+    def test_structured_quote_keeps_the_exact_field_and_revision(self):
+        root, reply, _ = self.dossier()
+        criterion = "Finish **the report**."
+        self.committed(self.command("stack.birth", {"reply_id": reply, "nature": "Feature", "done_when": criterion},
+                                    target={"message_id": root}, expected={"name_revision": 0, "cover_revision": 0},
+                                    actor="agent-a"))
+        keys = ("why", "what", "how", "when", "who", "where", "log")
+        text = "👋 Introduction.\n\nUse **the report**."
+        self.committed(self.cover(root, {"sections": dict.fromkeys(keys, text)}, revision=1))
+        self.committed(self.cover(root, {"sections": {"what": "The plan changed."}}, revision=2))
+        for part, body in [("done_when", criterion)] + [("section." + key, text) for key in keys]:
+            with self.subTest(part=part):
+                quote = self.quote(root, part, body, "**the report**", revision=2)
+                sent = self.committed(self.send_quote(root, quote))
+                self.assertEqual(self.source({"kind": "message", "id": sent["message_id"]}, actor="owner")["quotes"], [quote])
+        stale = self.quote(root, "section.what", text, "**the report**", revision=3)
+        self.assertEqual(self.send_quote(root, stale)["error"]["code"], "INVALID_QUOTE")
+
+    def test_unreadable_dossier_cannot_supply_a_structured_quote(self):
+        root = self.post("A private dossier.", whisper=True, addressees=["agent-a"])
+        text = "Private cover words."
+        self.committed(self.cover(root, {"sections": {"what": text}}))
+        quote = self.quote(root, "section.what", text, "Private")
+        refusal = self.send_quote(root, quote, actor="agent-b")
+        self.assertEqual(refusal["status"], "rejected")

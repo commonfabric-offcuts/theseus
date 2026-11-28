@@ -155,6 +155,6 @@
 :root[data-look=paper]:not([data-agent-colors=vivid])[data-light-colour=darker]{--light-field:#100d0a;--light-own-field:#2b2723}
 :root[data-look=paper][data-agent-colors=vivid][data-light-colour=darker]{--light-field:#123908}
 :root[data-look=paper][data-light-colour=darker] :is(.notebook-reading-words,.notebook-reading-source){--light-words:var(--notebook-paper-ink)}
-:root[data-light-colour] :is(.message-card,.message-pane,.notebook-reading-words){--pointer-lit-field:var(--light-field)}
+:root[data-light-colour] :is(.message-card,.message-pane,.notebook-reading-words,.dossier-cover){--pointer-lit-field:var(--light-field)}
 :root[data-light-colour] :is(.message-card.own-message,.message-pane.own-message-pane){--pointer-lit-field:var(--light-own-field,var(--light-field))}
 :root[data-agent-colors=vivid][data-light-colour=darker] :is(.message-card.agent-card,.message-pane.agent-pane){--pointer-lit-field:var(--agent-deep,var(--light-field))}

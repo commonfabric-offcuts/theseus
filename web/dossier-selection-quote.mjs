@@ -92,7 +92,7 @@ export class DossierSelectionQuote {
       this.update();
     });
     this.changes.observe(this.doc.body, { subtree: true, childList: true, characterData: true,
-      attributes: true, attributeFilter: ['hidden', 'inert', 'open', 'data-folded', 'data-head-open', 'class'] });
+      attributes: true, attributeFilter: ['hidden', 'inert', 'open', 'data-folded', 'data-head-open', 'data-cover-quote-revision', 'class'] });
     this.sizes = new this.win.ResizeObserver(() => this.update());
     this.sizes.observe(host);
     this.win.addEventListener('pagehide', () => {
