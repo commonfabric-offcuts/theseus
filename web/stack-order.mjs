@@ -380,7 +380,7 @@ export function stackCover(stack, { alone = false, provenance = false } = {}) {
     // 1385: Core projects a cover that holds only birth facts (nature, done_when), or one whose ordinary fields were
     // cleared while its birth facts stay. This page does not present birth facts yet, so such a cover shows as no
     // cover, exactly as before birth facts existed; a cover with words, waits, a payload or items is unchanged.
-    const cover = presentable(currentQuestionCover(value ?? null));
+    const cover = currentQuestionCover(presentable(value ?? null));
     return provenance && cover ? { ...cover, revision } : cover;
   };
   if (position && position.root_id !== stack.head.id) return shown(position.cover, position.cover_revision);
