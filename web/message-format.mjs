@@ -839,6 +839,8 @@ function blockNode(block, doc, cut, meter, copyFences = false, html = false) {
   return sentencePart(el(doc, 'span', 'md-block md-p', inline(block.words), span), block);
 }
 
+export function tableSourceSpan(node) { return SOURCE.get(node); }
+
 // A table scrolls inside its own box, so a wide one never widens the card or the page.
 // A row draws the cells it was written with, and a row with fewer than the
 // widest one cell more, empty, across the rest: what a table draws grows with

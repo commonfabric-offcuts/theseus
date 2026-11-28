@@ -71,7 +71,7 @@ export function wordLines(range, stop) {
   const doc = range.startContainer.ownerDocument, common = range.commonAncestorContainer;
   const walk = doc.createTreeWalker(common.nodeType === 1 ? common : common.parentNode, 4), boxes = [];
   for (let node = walk.nextNode(); node; node = walk.nextNode()) {
-    if (!range.intersectsNode(node) || !node.data.trim()) continue;
+    if (!range.intersectsNode(node) || !node.data.trim() || node.parentElement.closest('.md-table thead')) continue;
     const part = doc.createRange(), box = clipBox(node, stop), block = blockOf(node);
     part.selectNodeContents(node);
     if (node === range.startContainer) part.setStart(node, range.startOffset);

@@ -21,6 +21,10 @@ export class NotebookQuoteTransfer {
     return pending?.topicId === topicId && from?.kind === 'memory' && ref?.kind === 'memory' &&
       from.id === ref.id && from.revision === ref.revision && typeof pending.choice.text === 'string' ? pending : null;
   }
+  forRoute(route) {
+    if (route.kind !== 'topic' || !route.page || !route.revision) return null;
+    return this.forSource(route.id, { source_ref: { kind: 'memory', id: route.page, revision: Number(route.revision) } });
+  }
   claim(pending) {
     const current = JSON.parse(this.storage.getItem(this.key));
     if (current?.token !== pending.token) return false;

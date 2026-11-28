@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { LightTableRows } from '../web/light-table-rows.mjs';
 import { Reader } from '../web/reader.mjs';
 
 // A source drawn as the reader draws it (drawPassages, on a small document
@@ -30,7 +31,18 @@ class Element extends Node0 {
   addEventListener() {}
   get textContent() { return this.childNodes.map(node => node.textContent).join(''); }
   set textContent(value) { this.childNodes = []; if (String(value)) this.append(new Text(value)); }
-  closest(selector) { assert.equal(selector, '[data-start]'); for (let at = this; at; at = at.parentElement) if (at.dataset?.start !== undefined) return at; return null; }
+  matches(selector) {
+    if (selector === '[data-start]') return this.dataset.start !== undefined;
+    if (selector === '.md-table-wrap') return this.classList.contains('md-table-wrap');
+    return false;
+  }
+  closest(selector) {
+    for (let at = this; at; at = at.parentElement) if (at.matches(selector)) return at;
+    return null;
+  }
+  querySelectorAll(selector) {
+    return this.children.flatMap(child => [...(child.matches(selector) ? [child] : []), ...child.querySelectorAll(selector)]);
+  }
   contains(node) { for (let at = node; at; at = at.parentNode) if (at === this) return true; return false; }
 }
 function fixture(passages) {
@@ -45,7 +57,7 @@ function fixture(passages) {
   globalThis.document = { createElement: tag => new Element(tag), createTextNode: data => new Text(data) };
   const body = new Element('div');
   // A laptop's Reader: no end line under the passages (placeEnd).
-  const reader = Object.assign(Object.create(Reader.prototype), { sourceBody: body, source: { body: source }, hover: null, narrow: { matches: false } });
+  const reader = Object.assign(Object.create(Reader.prototype), { sourceBody: body, source: { body: source }, hover: null, tableLight: new LightTableRows(), narrow: { matches: false } });
   reader.drawSource(source);
   assert.deepEqual(body.children.map(span => span.textContent), passages.map(passage => (typeof passage === 'string' ? [passage] : passage).map(words).join('')), 'drawn as the passages the test names');
   // Each passage's first text node, and the text of the link in it.
