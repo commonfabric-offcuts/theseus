@@ -15,7 +15,7 @@ import { coverAnswers } from './cover-answers.mjs';
 import { glyph } from './glyphs.mjs';
 import { linkNode, writtenLink } from './links.mjs';
 import { timeNode } from './times.mjs';
-import { composeFormattedWords, inlineNodes, literalWords, parseBlocks } from './message-format.mjs';
+import { composeFormattedWords, formatNodes, inlineNodes, literalWords, parseBlocks } from './message-format.mjs';
 import { literalHTMLNodes } from './interactive-html.mjs';
 import { coverSectionNodes, coverDisclosure } from './cover-sections.mjs';
 
@@ -23,6 +23,63 @@ const element = (doc, tag, className, text) => {
   const node = doc.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node;
 };
 const PAYLOAD_LABELS = { answer: 'Payload · answer', decision: 'Payload · decision', preview: 'Payload · preview', page: 'Payload · page', release: 'Payload · release' };
+const SECTION_LABELS = { why: 'Why', what: 'What', how: 'How', when: 'When', who: 'Who', where: 'Where', log: 'Log' };
+const NATURE_LABELS = new Map([['question', 'Question'], ['decision', 'Decision'], ['research', 'Research'], ['feature', 'Feature'], ['tracking', 'Tracking']]);
+const PHASES = ['Open', 'Working', 'Delivered', 'Accepted'];
+
+function writtenSections(cover) {
+  const sections = new Map((cover.sections ?? []).map(({ key, text }) => [key, text]));
+  return Object.entries(SECTION_LABELS).flatMap(([key, label]) => {
+    const text = sections.get(key);
+    return text?.trim() ? [{ key, label, text }] : [];
+  });
+}
+
+export function structuredCover(cover) {
+  return Boolean(cover && (cover.birth || cover.sections?.length || cover.owner_name));
+}
+
+function firstLine(text, doc) {
+  return inlineNodes(text.trim().split('\n', 1)[0], { doc }).map(node => node.textContent).join('');
+}
+
+function presentation(cover, sections, doc) {
+  const writtenNature = cover.birth?.nature?.trim();
+  const matched = writtenNature?.toLowerCase();
+  const nature = NATURE_LABELS.has(matched) ? matched : 'other';
+  const label = NATURE_LABELS.get(nature) ?? (writtenNature && matched !== 'none' && matched !== 'other' ? writtenNature : 'Other');
+  const when = sections.find(section => section.key === 'when');
+  const next = nature === 'tracking' && when ? `next ${firstLine(when.text, doc)}` : null;
+  const phase = nature === 'other' || nature === 'tracking' ? null
+    : cover.payload?.done ? 3 : cover.payload ? 2 : sections.length ? 1 : 0;
+  return { label, nature, next, phase };
+}
+
+export function coverStatus(doc, cover) {
+  const { label, next, phase } = presentation(cover, writtenSections(cover), doc);
+  return { label, status: next ?? PHASES[phase] };
+}
+
+function coverHeader(doc, cover, view, context) {
+  const header = element(doc, 'div', 'cover-header-content');
+  header.append(element(doc, 'span', 'cover-nature', view.label));
+  if (view.phase !== null) {
+    const status = element(doc, 'span', 'cover-status');
+    const bars = element(doc, 'span', 'cover-phase-bars');
+    bars.setAttribute('aria-hidden', 'true');
+    for (const [index] of PHASES.entries()) {
+      const bar = element(doc, 'span');
+      bar.dataset.step = index < view.phase ? 'past' : index === view.phase ? 'current' : 'future';
+      bars.append(bar);
+    }
+    status.append(bars, element(doc, 'span', 'cover-phase', PHASES[view.phase]));
+    header.append(status);
+  }
+  if (view.next) header.append(element(doc, 'span', 'cover-next', view.next));
+  const keeper = cover.writer ?? cover.by;
+  if (keeper) header.append(element(doc, 'span', 'cover-keeper', context.nameOf(keeper)));
+  return header;
+}
 
 // The cover a message carries, or null: only a dossier's first message carries one.
 export const coverOf = item => currentQuestionCover(item?.acts?.cover ?? null);
@@ -45,12 +102,43 @@ export function payloadPill(doc, payload, context) {
   const done = payload.done ?? null;
   const pill = element(doc, 'span', 'row-pill pill-payload');
   pill.dataset.state = done ? 'done' : 'proposed';
+  if (context.ownerName) {
+    pill.classList.add('cover-acceptance');
+    const name = done ? context.acceptedByName ?? context.ownerName : context.ownerName;
+    const words = element(doc, 'span', 'pill-words', done ? `${name} accepted` : `Waiting on ${name}'s ok`);
+    if (done) {
+      pill.append(glyph('kept', doc, 15));
+      if (Number.isSafeInteger(done.at_ms)) pill.title = `${words.textContent} at ${timeNode(done.at_ms, doc).textContent}`;
+    } else pill.title = words.textContent;
+    pill.append(words);
+    return pill;
+  }
   const words = element(doc, 'span', 'pill-words', doneWords(done, context));
   if (done && Number.isSafeInteger(done.at_ms)) words.append(' at ', timeNode(done.at_ms, doc));
   pill.append(glyph(done ? 'kept' : 'payload', doc, 15), words);
   pill.title = done ? (done.how === 'thumb' ? 'Done: the owner gave its message a thumbs up' : 'Done: the owner replied to its message')
     : proposedTitle(context.owner === context.viewer ? ['your', 'yours'] : Array(2).fill(`${context.nameOf(context.owner)}'s`));
   return pill;
+}
+
+export function coverPreview(doc, cover, context) {
+  const sections = writtenSections(cover);
+  const { label, next, phase } = presentation(cover, sections, doc);
+  const preview = element(doc, 'span', 'stack-cover-preview');
+  preview.append(element(doc, 'span', 'cover-nature', label));
+  const lead = cover.stands ?? sections[0]?.text ?? cover.payload?.text;
+  if (lead?.trim()) {
+    const words = firstLine(lead, doc);
+    const snippet = element(doc, 'span', 'stack-cover-lead', words);
+    snippet.title = words;
+    preview.append(snippet);
+  }
+  if (cover.payload && !cover.payload.done && cover.owner_name) {
+    preview.append(payloadPill(doc, cover.payload, { ...context, ownerName: cover.owner_name }));
+  } else if (next || phase !== null) {
+    preview.append(element(doc, 'span', 'stack-cover-status', next ?? PHASES[phase]));
+  }
+  return preview;
 }
 
 // A message of the dossier, cited by its number, a link that opens it.
@@ -109,15 +197,19 @@ export function coverQuoteSource(words) {
 
 
 function coverCopyWords(cover, context) {
+  const payload = cover.payload;
+  const delivery = payload && `Payload: ${payload.text}${payload.link ? ` <${payload.link}>` : ''}`;
+  const structured = structuredCover(cover);
   const parts = [cover.stands];
+  if (structured) {
+    parts.unshift(delivery);
+    for (const { label, text } of writtenSections(cover)) parts.push(`${label}\n${text}`);
+  }
   for (const wait of cover.waiting ?? []) {
     const name = context.nameOf(wait.actor_id ?? cover.owner);
     parts.push(`Waits on ${name}: ${wait.text}${wait.default == null ? '' : ` (default: ${wait.default})`}`);
   }
-  if (cover.payload) {
-    const { text, link } = cover.payload;
-    parts.push(`Payload: ${text}${link ? ` <${link}>` : ''}`);
-  }
+  if (!structured) parts.push(delivery);
   return parts.filter(Boolean).join('\n\n');
 }
 function linkedItems(doc, items, context, previous) {
@@ -161,7 +253,8 @@ function linkedItems(doc, items, context, previous) {
 }
 export function coverSheet(doc, cover, context, previous = null) {
   cover = currentQuestionCover(cover);
-  const ctx = { ...context, rootId: cover.root_id ?? context.rootId, owner: cover.owner };
+  const ctx = { ...context, rootId: cover.root_id ?? context.rootId, owner: cover.owner,
+    ownerName: cover.owner_name, acceptedByName: cover.accepted_by_name };
   const sheet = element(doc, 'div', 'dossier-cover');
   const copy = () => coverCopyWords(cover, ctx);
   const quote = typeof doc.getSelection === 'function' && ctx.rootId && Number.isSafeInteger(cover.revision) && cover.revision > 0
@@ -182,6 +275,32 @@ export function coverSheet(doc, cover, context, previous = null) {
     const node = remember(element(doc, 'div', `cover-line ${className}`), [className, value]);
     sheet.append(node); return node;
   };
+  const payload = cover.payload;
+  const drawPayload = () => {
+    const row = line('cover-payload', [payload, cover.owner, ctx.ownerName, ctx.acceptedByName]);
+    const words = element(doc, 'span', 'cover-words');
+    const text = quote ? quotable(literalWords(element(doc, 'span'), payload.text, cover.revision), 'payload', payload.text) : payload.text;
+    words.append(element(doc, 'span', 'cover-label', PAYLOAD_LABELS[payload.kind] ?? 'Payload'), ' ', text);
+    const link = payload.link ? writtenLink(payload.link) : null;
+    if (link) {
+      let shown = payload.link;
+      try { shown = new URL(payload.link).host; } catch { /* the address as written */ }
+      const anchor = linkNode(doc, shown, link); anchor.title = payload.link; words.append(' ', anchor);
+    }
+    words.append(' ', payloadPill(doc, payload, ctx));
+    row.append(words);
+    if (Number.isSafeInteger(payload.seq)) row.append(cite(doc, ctx.topicId, payload.message_id, payload.seq, 'The message that delivered it'));
+    const done = payload.done;
+    if (done?.how === 'word' && done.message_id && Number.isSafeInteger(done.seq)) row.append(cite(doc, ctx.topicId, done.message_id, done.seq, 'The word that made it done'));
+  };
+  const structured = structuredCover(cover);
+  const sections = writtenSections(cover);
+  const view = structured ? presentation(cover, sections, doc) : null;
+  if (view) {
+    sheet.dataset.coverLayout = view.nature;
+    line('cover-header', [view, cover.writer ?? cover.by]).append(coverHeader(doc, cover, view, ctx));
+    if (payload) drawPayload();
+  }
   if (cover.stands) {
     const words = element(doc, 'span', 'cover-words cover-stands');
     const nodes = literalHTMLNodes(cover.stands, doc);
@@ -202,24 +321,23 @@ export function coverSheet(doc, cover, context, previous = null) {
     }
     else words.append(...nodes);
     quotable(words, 'stands', cover.stands);
-    line('cover-heading', cover.stands).append(words);
-  }
-  const payload = cover.payload;
-  if (payload) {
-    const row = line('cover-payload', [payload, cover.owner]), words = element(doc, 'span', 'cover-words');
-    const text = quote ? quotable(literalWords(element(doc, 'span'), payload.text, cover.revision), 'payload', payload.text) : payload.text;
-    words.append(element(doc, 'span', 'cover-label', PAYLOAD_LABELS[payload.kind] ?? 'Payload'), ' ', text);
-    const link = payload.link ? writtenLink(payload.link) : null;
-    if (link) {
-      let shown = payload.link;
-      try { shown = new URL(payload.link).host; } catch { /* the address as written */ }
-      const anchor = linkNode(doc, shown, link); anchor.title = payload.link; words.append(' ', anchor);
-    }
-    words.append(' ', payloadPill(doc, payload, ctx));
+    const row = line('cover-heading', [cover.stands, view?.nature]);
+    if (view?.nature === 'research') row.append(element(doc, 'span', 'cover-label', 'Finding'));
     row.append(words);
-    if (Number.isSafeInteger(payload.seq)) row.append(cite(doc, ctx.topicId, payload.message_id, payload.seq, 'The message that delivered it'));
-    const done = payload.done;
-    if (done?.how === 'word' && done.message_id && Number.isSafeInteger(done.seq)) row.append(cite(doc, ctx.topicId, done.message_id, done.seq, 'The word that made it done'));
+  }
+  if (payload && !structured) drawPayload();
+  if (cover.birth?.done_when?.trim()) {
+    const label = view.nature === 'question' ? 'Answered when' : 'Done when';
+    const text = cover.birth.done_when;
+    line('cover-criterion', [label, text]).append(element(doc, 'span', 'cover-label', label), ' ', ...inlineNodes(text, { doc }));
+  }
+  for (const { key, label, text } of sections) {
+    const title = element(doc, 'span', 'cover-section-label', label);
+    const { section, summary, body } = coverDisclosure(title, { ...ctx, doc, sectionId: JSON.stringify(['structured', key]), initiallyOpen: false });
+    section.classList.add('cover-structured-section');
+    summary.append(element(doc, 'span', 'cover-section-peek', firstLine(text, doc)));
+    body.append(...formatNodes(text, { doc }));
+    line('cover-field', [key, text]).append(section);
   }
   const items = linkedItems(doc, cover.items, { ...ctx, rootId: cover.root_id ?? ctx.rootId }, sameScope ? kept.items : null);
   if (items) {
@@ -270,6 +388,8 @@ export function coverSheet(doc, cover, context, previous = null) {
       if (node !== next) previous.insertBefore(node, next);
     }
     previous.dataset.done = sheet.dataset.done;
+    if (view) previous.dataset.coverLayout = sheet.dataset.coverLayout;
+    else delete previous.dataset.coverLayout;
     sheetRows.set(previous, { scope, rows: desired, items, copy, quote });
     return previous;
   }
@@ -285,14 +405,15 @@ export function itemRow(doc, item) {
   return row;
 }
 
-export const coverSummary = cover => cover.stands || cover.payload?.text ||
+export const coverSummary = cover => (structuredCover(cover) && cover.payload?.text) || cover.stands || cover.payload?.text ||
+  writtenSections(cover)[0]?.text.trim().split('\n', 1)[0] ||
   (cover.items?.length ? cover.items.map(item => `${item.title} · ${item.state}`).join('; ') : null);
 
 // What a cover on a message on its own shows instead: its payload's pill and
 // one pill for what waits on the owner, under who wrote it. Null with neither.
 export function coverPills(doc, cover, context) {
   cover = currentQuestionCover(cover);
-  const ctx = { ...context, owner: cover.owner };
+  const ctx = { ...context, owner: cover.owner, ownerName: cover.owner_name, acceptedByName: cover.accepted_by_name };
   const pills = element(doc, 'span', 'row-pills');
   if (cover.payload) pills.append(payloadPill(doc, cover.payload, ctx));
   for (const item of cover.items ?? []) {
@@ -315,7 +436,11 @@ export function coverPills(doc, cover, context) {
 }
 
 // A key for what a cover shows a reader, so a sheet is drawn again only when it changes.
-export const coverKey = (cover, context) => ((cover = currentQuestionCover(cover)) ? JSON.stringify([cover.stands, cover.waiting, cover.quote_wait_indices, cover.payload, cover.items, cover.by, cover.at_ms, cover.owner, cover.root_id, cover.revision, cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId, context.rootId]) : '');
+export const coverKey = (cover, context) => ((cover = currentQuestionCover(cover)) ? JSON.stringify([
+  cover.stands, cover.waiting, cover.quote_wait_indices, cover.payload, cover.items, cover.sections, cover.birth,
+  cover.by, cover.at_ms, cover.owner, cover.owner_name, cover.accepted_by_name, cover.root_id, cover.revision,
+  cover.writer, cover.refresh, cover.refresh_revision, context.viewer, context.topicId, context.rootId,
+]) : '');
 
 const pillRows = new WeakMap();
 // The pills of a message on its own that carries a cover, set under its

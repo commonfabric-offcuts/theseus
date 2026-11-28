@@ -26,7 +26,7 @@ import { paintWithdrawal } from './question-withdrawal.mjs';
 import { paintRemoval } from './message-removal.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { overhang } from './lit-field.mjs';
-import { coverSheet, coverKey, coverSummary, payloadPill } from './dossier-cover.mjs';
+import { coverSheet, coverKey, coverStatus, coverSummary, payloadPill, structuredCover } from './dossier-cover.mjs';
 import { paintReleaseCard, disposeReleaseCard } from './release-card.mjs';
 import { pointerLight, observePointerLight } from './pointer-light.mjs';
 
@@ -1184,19 +1184,26 @@ export class Reader {
     if ((this.coverShown ?? '') === key) return;
     this.coverShown = key;
     host.hidden = !found;
-    for (const node of [...host.children]) if (node !== line) node.remove();
-    if (!found) { line.replaceChildren(); return; }
-    const { cover } = found, shown = { ...context, owner: cover.owner };
+    const previous = host.querySelector('.dossier-cover');
+    if (!found) { previous?.remove(); line.replaceChildren(); return; }
+    const { cover } = found, shown = { ...context, owner: cover.owner, ownerName: cover.owner_name, acceptedByName: cover.accepted_by_name };
+    const summary = structuredCover(cover) ? coverStatus(document, cover) : null;
     const words = document.createElement('span'); words.className = 'reader-cover-words';
     const waitingOn = [...new Set(cover.waiting.map(wait => wait.actor_id ?? cover.owner))]
       .map(id => id === shown.viewer ? 'you' : shown.nameOf(id)).join(', ');
-    const authored = coverSummary(cover);
+    const authored = coverSummary(cover) ?? cover.birth?.done_when ?? cover.birth?.nature;
     // Read the inline marks without adding links or extra controls to the summary (989).
     words.textContent = authored ? inlineNodes(authored, { doc: document }).map(node => node.textContent).join('')
       : `${cover.waiting.length === 1 ? 'Something waits' : `${cover.waiting.length} things wait`} on ${waitingOn}`;
-    const label = document.createElement('span'); label.className = 'cover-label'; label.textContent = 'Cover';
-    line.replaceChildren(label, ' ', words, ...(cover.payload ? [' ', payloadPill(document, cover.payload, shown)] : []));
-    host.append(coverSheet(document, cover, context));
+    const label = document.createElement('span'); label.className = 'cover-label'; label.textContent = summary?.label ?? 'Cover';
+    const status = document.createElement('span'); status.className = 'reader-cover-status'; status.textContent = summary?.status ?? '';
+    line.replaceChildren(label, ' ', words, ...(cover.payload ? [' ', payloadPill(document, cover.payload, shown)]
+      : summary?.status ? [' ', status] : []));
+    const sheet = coverSheet(document, cover, context, previous);
+    if (sheet !== previous) {
+      previous?.remove();
+      host.append(sheet);
+    }
   }
 
   paintOrigin(source) {
