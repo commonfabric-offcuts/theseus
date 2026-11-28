@@ -67,7 +67,8 @@ export class ArchiveTrash {
   }
 
   paintTerminal(row, removal) {
-    row.querySelector('.archive-trash-title').classList.toggle('retracted-words', removal?.kind === 'retracted');
+    const title = row.querySelector('.archive-trash-title');
+    title.classList.toggle('retracted-words', removal?.kind === 'retracted' && title.dataset.sourceExcerpt === 'true');
     paintRemoval(row, { removal }, this.doc);
   }
 
@@ -85,10 +86,13 @@ export class ArchiveTrash {
       for (const item of page.items) {
         const removal = this.removals.get(item.message_id) ?? item.removal;
         if (item.withheld || removal?.kind === 'unsent' || this.rows.has(item.message_id)) continue;
-        const title = item.name?.trim() || item.excerpt?.split('\n', 1)[0].trim() || 'Dossier';
+        const name = item.name?.trim(), excerpt = item.excerpt?.split('\n', 1)[0].trim();
+        const title = name || excerpt || 'Dossier';
         const row = element(this.doc, 'li');
         row.title = title;
-        row.append(glyph('trash', this.doc, 13), element(this.doc, 'span', 'archive-trash-title', title));
+        const words = element(this.doc, 'span', 'archive-trash-title', title);
+        words.dataset.sourceExcerpt = String(!name && Boolean(excerpt));
+        row.append(glyph('trash', this.doc, 13), words);
         this.paintTerminal(row, removal);
         this.rows.set(item.message_id, row);
         this.list.append(row);

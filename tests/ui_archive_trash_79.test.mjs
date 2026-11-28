@@ -88,23 +88,26 @@ test('79 terminal removal cannot return in a late page and denial clears prior r
 test('79 retraction keeps its row and act label on the open and reloaded fold', async () => {
   const removal = { kind: 'retracted', by: 'owner', at_ms: 123 };
   let held = null;
-  const f = fold(async () => page([{ ...entry('a'), removal: held }]));
+  const f = fold(async () => page([{ ...entry('a'), removal: held }, { ...entry('b', 'Dossier name'), removal: held }]));
   f.trash.show(true);
   await f.toggle(true);
   const first = f.trash.rows.get('a');
   held = removal;
   f.trash.learnRemoval('a', removal);
-  const check = row => {
-    assert.equal(row.querySelector('.archive-trash-title').classList.contains('retracted-words'), true);
+  f.trash.learnRemoval('b', removal);
+  const check = (row, strikes) => {
+    assert.equal(row.querySelector('.archive-trash-title').classList.contains('retracted-words'), strikes);
     const label = row.querySelector('.message-retracted');
     assert.equal(label.classList.contains('retracted-words'), false);
     assert.match(label.text, /Retracted/);
     assert.equal(label.querySelector('time').dataset.ms, '123');
-    assert.equal(f.trash.count.textContent, '1');
+    assert.equal(f.trash.count.textContent, '2');
   };
-  check(first);
+  check(first, true);
+  check(f.trash.rows.get('b'), false);
   assert.equal(f.trash.rows.get('a'), first);
   f.toggle(false);
   await f.toggle(true);
-  check(f.trash.rows.get('a'));
+  check(f.trash.rows.get('a'), true);
+  check(f.trash.rows.get('b'), false);
 });
