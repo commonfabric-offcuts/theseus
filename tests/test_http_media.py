@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from base64 import b64decode
 from contextlib import contextmanager
 import hashlib
 import http.client
@@ -12,12 +13,16 @@ import time
 from types import SimpleNamespace
 import unittest
 from unittest import mock
+from urllib.parse import urlencode
 
 from aim_next import Store
 from aim_next.contract import LIMITS, Refusal
 from aim_next.server import create_server, Handler, DeadlineInput
 from aim_next import server as server_module
 from reader_fixture import ReaderCase
+
+
+PREVIEW_PDF = b64decode(Path(__file__).with_name('fixtures').joinpath('rail-preview.pdf.b64').read_bytes())
 
 
 class PacedClock:
@@ -101,7 +106,7 @@ class MediaHTTPTests(ReaderCase):
                   'Content-Type': 'application/json'}
         actual.update(headers or {})
         try:
-            connection.request(method, path, body=body, headers=actual)
+            connection.request(method, path, body=body, headers={key: value for key, value in actual.items() if value is not None})
             response = connection.getresponse()
             return response.status, dict(response.getheaders()), response.read()
         finally:
@@ -114,6 +119,14 @@ class MediaHTTPTests(ReaderCase):
 
     def read_media(self, media_id='blob-one', **args):
         return self.request('/api/media/read', json.dumps(dict(media_id=media_id, **args)).encode())
+
+    def pdf_preview(self, message_id, media_id, data, headers=None, **fields):
+        form = dict(token='isolated-media-session', instance_id='test-instance',
+                    message_id=message_id, media_id=media_id, sha256=hashlib.sha256(data).hexdigest())
+        form.update(fields)
+        actual = {'Authorization': None, 'Content-Type': 'application/x-www-form-urlencoded'}
+        actual.update(headers or {})
+        return self.request('/api/media/pdf-preview', urlencode(form).encode('ascii'), actual)
 
     def assert_error(self, response, code, status=None):
         actual, headers, raw = response
@@ -162,6 +175,53 @@ class MediaHTTPTests(ReaderCase):
         self.assert_error(self.read_media(source_ref=self.opening), 'FORBIDDEN', 403)
         self.server.actor = 'outsider'
         self.assert_error(self.read_media(source_ref=source), 'FORBIDDEN', 403)
+
+    def test_verified_pdf_is_inline_with_media_policy_for_old_ready_records_and_native_navigation(self):
+        pdf = PREVIEW_PDF
+        _, receipt = self.ready('preview', pdf, 'application/pdf', 'Site plan.pdf')
+        self.assertFalse(receipt['result']['inline'], 'the stored flag is still the image policy')
+        sent = self.send('A readable PDF', attachments=[{'id': 'preview'}])
+        ref = {'kind': 'message', 'id': sent['id']}
+        for result in (self.read_media('preview', source_ref=ref), self.pdf_preview(sent['id'], 'preview', pdf)):
+            with self.subTest(status=result[0]):
+                status, headers, data = result
+                self.assertEqual((status, data), (200, pdf))
+                self.assertEqual(headers['Content-Disposition'], "inline; filename*=UTF-8''Site%20plan.pdf")
+                self.assertEqual(headers['Content-Type'], 'application/pdf')
+                self.assertEqual(headers['Cache-Control'], 'no-store')
+                self.assertEqual(headers['X-Content-Type-Options'], 'nosniff')
+                self.assertEqual(headers['X-Frame-Options'], 'DENY')
+                self.assertEqual(headers['Referrer-Policy'], 'no-referrer')
+                self.assertEqual(headers['Content-Security-Policy'],
+                                 "default-src 'none'; sandbox; frame-ancestors 'none'; base-uri 'none'")
+
+    def test_unrecognized_pdf_and_other_types_keep_attachment_disposition(self):
+        for media_id, data, mime in (
+                ('unrecognized', b'Ordinary unformatted notes.\n', 'application/pdf'),
+                ('other-type', PREVIEW_PDF, 'application/octet-stream')):
+            with self.subTest(media=media_id):
+                self.ready(media_id, data, mime, 'Fixture file')
+                sent = self.send('With a file', attachments=[{'id': media_id}])
+                status, headers, received = self.read_media(media_id)
+                self.assertEqual((status, received), (200, data))
+                self.assertTrue(headers['Content-Disposition'].startswith('attachment;'))
+                self.assert_error(self.pdf_preview(sent['id'], media_id, data), 'PDF_PREVIEW_REFUSED', 415)
+
+    def test_pdf_preview_requires_session_origin_and_exact_authorized_source(self):
+        pdf = PREVIEW_PDF
+        self.ready('preview', pdf, 'application/pdf', 'Site plan.pdf')
+        sent = self.send('With a verified PDF', attachments=[{'id': 'preview'}])
+        with mock.patch.object(Store, 'open_media', side_effect=AssertionError('authority check happened too late')) as opened:
+            self.assert_error(self.pdf_preview(sent['id'], 'preview', pdf, token='wrong'), 'SESSION_REQUIRED', 401)
+            self.assert_error(self.pdf_preview(sent['id'], 'preview', pdf, {'Origin': None}), 'ORIGIN_REFUSED', 403)
+            self.assert_error(self.pdf_preview(sent['id'], 'preview', pdf, {'Origin': 'null'}), 'ORIGIN_REFUSED', 403)
+            self.assert_error(self.pdf_preview(sent['id'], 'preview', pdf, instance_id='another-instance'), 'MEDIA_UNCONFIRMED', 409)
+            self.assert_error(self.request('/api/media/pdf-preview', method='GET'), 'METHOD_REFUSED', 405)
+            opened.assert_not_called()
+        self.assert_error(self.pdf_preview(self.opening['id'], 'preview', pdf), 'FORBIDDEN', 403)
+        self.assert_error(self.pdf_preview(sent['id'], 'preview', pdf, sha256='0' * 64), 'PDF_PREVIEW_REFUSED', 415)
+        self.server.actor = 'outsider'
+        self.assert_error(self.pdf_preview(sent['id'], 'preview', pdf), 'FORBIDDEN', 403)
 
     def test_original_operation_and_authority_are_not_replaced(self):
         envelope, receipt = self.ready()
