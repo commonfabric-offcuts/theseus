@@ -1,4 +1,5 @@
 import { glyph } from './glyphs.mjs';
+import { openMessageMenu } from './message-menu.mjs';
 import { readFailure } from './freshness.mjs';
 import { paintRemoval } from './message-removal.mjs';
 
@@ -12,9 +13,10 @@ const element = (doc, tag, className, text) => {
 // Trash has its own lifetime and cursor. A response is only for the open
 // fold that asked for it, even if that fold closes and reopens meanwhile.
 export class ArchiveTrash {
-  constructor({ doc, read, afterRead, folded = () => {} }) {
-    Object.assign(this, { doc, read, afterRead, folded });
+  constructor({ doc, read, afterRead, act = null, folded = () => {} }) {
+    Object.assign(this, { doc, read, afterRead, act, folded });
     this.rows = new Map();
+    this.records = new Map();
     this.removals = new Map();
     this.epoch = 0;
     this.confirmedEmpty = false;
@@ -54,6 +56,30 @@ export class ArchiveTrash {
     this.confirmedEmpty = false;
   }
 
+  reload() {
+    if (!this.visible || !this.root.open) return;
+    const focused = this.list.contains(this.doc.activeElement) || this.doc.activeElement === this.more;
+    this.clear();
+    if (focused) this.summary.focus({ preventScroll: true });
+    return this.load();
+  }
+
+  learnStar({ message_id, starred, star_revision }) {
+    const record = this.records.get(message_id);
+    if (!record || record.star_revision > star_revision) return;
+    Object.assign(record, { starred, star_revision });
+  }
+
+  menu(anchor, item, at = null) {
+    if (!this.root.open || this.records.get(item.message_id) !== item) return;
+    const { starred } = item;
+    this.menuOwner = openMessageMenu({ anchor, at, label: 'Trashed dossier', sheet: true, doc: this.doc, win: this.doc.defaultView,
+      items: [
+        { label: 'Move out of trash', glyph: 'back', act: () => this.act(item, 'restore') },
+        { label: starred ? 'Unstar' : 'Star', glyph: starred ? 'starred' : 'star', act: () => this.act(item, 'star') },
+      ] });
+  }
+
   close() {
     if (this.loaded && this.cursor === null && this.rows.size === 0 && this.loadedAt === this.epoch) {
       this.confirmedEmpty = true;
@@ -62,12 +88,13 @@ export class ArchiveTrash {
   }
 
   clear() {
+    this.menuOwner?.close(false); this.menuOwner = null;
     this.attempt = null;
     this.cursor = null;
     this.loaded = false;
     this.loadedAt = null;
     this.failed = false;
-    this.rows.clear();
+    this.rows.clear(); this.records.clear();
     this.removals.clear();
     this.list.replaceChildren();
     this.paint();
@@ -79,7 +106,8 @@ export class ArchiveTrash {
     const row = this.rows.get(id);
     if (removal.kind === 'unsent') {
       row?.remove();
-      this.rows.delete(id);
+      this.rows.delete(id); this.records.delete(id);
+      if (this.menuOwner && row?.contains(this.menuOwner.anchor)) { this.menuOwner.close(false); this.menuOwner = null; }
     } else if (row) this.paintTerminal(row, removal);
     this.paint();
   }
@@ -114,7 +142,27 @@ export class ArchiveTrash {
         row.title = title;
         const words = element(this.doc, 'span', 'archive-trash-title', title);
         words.dataset.sourceExcerpt = String(!name && Boolean(excerpt));
-        row.append(glyph('trash', this.doc, 13), words);
+        const icon = glyph('trash', this.doc, 13);
+        if (this.act) {
+          const action = element(this.doc, 'button', 'archive-trash-action');
+          action.type = 'button';
+          action.setAttribute('aria-haspopup', 'menu');
+          action.setAttribute('aria-label', 'Actions for ' + title);
+          const more = element(this.doc, 'span', 'archive-trash-more-symbol');
+          more.setAttribute('aria-hidden', 'true');
+          action.append(icon, words, more);
+          row.append(action); row.dataset.id = item.message_id;
+          this.records.set(item.message_id, item);
+          action.onclick = () => this.menu(action, item);
+          action.oncontextmenu = event => {
+            event.preventDefault();
+            this.menu(action, item, event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : null);
+          };
+          action.onkeydown = event => {
+            if (!(event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') || event.ctrlKey || event.altKey || event.metaKey) return;
+            event.preventDefault(); this.menu(action, item);
+          };
+        } else row.append(icon, words);
         this.paintTerminal(row, removal);
         this.rows.set(item.message_id, row);
         this.list.append(row);
@@ -125,7 +173,8 @@ export class ArchiveTrash {
       await this.afterRead();
       if (!current()) return;
       if (['forbidden', 'authority', 'reconnect'].includes(readFailure(error).kind)) {
-        this.rows.clear();
+        this.menuOwner?.close(false); this.menuOwner = null;
+        this.rows.clear(); this.records.clear();
         this.list.replaceChildren();
         this.loaded = false;
         this.cursor = null;

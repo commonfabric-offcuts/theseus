@@ -113,7 +113,7 @@ try {
       const firstCards = await page.evaluate(() => window.firstCards);
       assert.ok(firstCards.length >= 2 && firstCards.every(card => card && card !== 'rgba(0, 0, 0, 0)'), 'on the first drawing each replica takes its card\'s colour: ' + JSON.stringify(firstCards)); seen.push('replica colours on first drawing');
       await page.locator(`.shelf-dossier[data-id="${ids.one}"]`).click({ button: 'right' });
-      assert.deepEqual(await page.locator('.message-menu-list [role^=menuitem]').allTextContents(), ['Bring back'], 'the right-click menu: Bring back alone');
+      assert.deepEqual(await page.locator('.message-menu-list [role^=menuitem]').allTextContents(), ['Bring back', 'Move to trash'], 'the Archived context menu offers both actions');
       await page.keyboard.press('Escape');
       d = await drawn(page); assert.equal(d.replicas.length, 2, 'opening the menu brings nothing back');
       // The menu goes away with any other action (1027): a wheel or trackpad swipe over the feed, the window losing focus.

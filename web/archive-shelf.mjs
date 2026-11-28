@@ -50,7 +50,8 @@ export class ArchiveShelf {
   // restore brings a dossier back; undo is the feed's one-key undo; changed says the shelf began or stopped being
   // drawn (the rail moved beside the page or away), outside any redraw of the feed.
   constructor({ doc, restore, undo = () => {}, changed = () => {}, unread = () => false, read = null, readTrash = null,
-    allows = () => true, afterRead = () => {} }) {
+    allows = () => true, afterRead = () => {}, moveToTrash = null, trashAction = null }) {
+    this.moveToTrash = moveToTrash;
     this.doc = doc; this.restore = restore; this.undo = undo; this.changed = changed; this.unread = unread;
     this.read = read; this.allows = allows; this.afterRead = afterRead; this.projected = new Map(); this.given = [];
     this.suppress = new Set(); this.cursor = null; this.remaining = null; this.epoch = 0;
@@ -73,7 +74,7 @@ export class ArchiveShelf {
     this.notice.setAttribute('role', 'status');
     this.root.append(head, this.row, this.more, this.notice);
     if (readTrash) {
-      this.trash = new ArchiveTrash({ doc, read: readTrash, afterRead, folded: () => this.trashFolded() });
+      this.trash = new ArchiveTrash({ doc, read: readTrash, afterRead, act: trashAction, folded: () => this.trashFolded() });
       this.root.append(this.trash.root);
     }
     const replicaOf = event => event.target.closest?.('.shelf-dossier') ?? null;
@@ -81,9 +82,9 @@ export class ArchiveShelf {
       const replica = replicaOf(event); if (!replica) return;
       event.preventDefault(); this.menu(replica, event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : null);
     });
-    this.row.addEventListener('keydown', event => {
+    this.root.addEventListener('keydown', event => {
       // The undo that worked at More works at the replica the focus went to after Archive.
-      if (keyAction(event) === 'undo' && replicaOf(event)) { event.preventDefault(); this.undo(); return; }
+      if (keyAction(event) === 'undo' && (replicaOf(event) || event.target.closest?.('.archive-trash'))) { event.preventDefault(); this.undo(); return; }
       if (!(event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) || event.ctrlKey || event.altKey || event.metaKey) return;
       const replica = replicaOf(event); if (replica) { event.preventDefault(); this.menu(replica, null); }
     });
@@ -93,7 +94,7 @@ export class ArchiveShelf {
   }
   // Gone with its page: a feed left behind that still hears Core draws nothing in the rail.
   leave() {
-    this.trash?.show(false);
+    this.trash?.show(false); this.closeMenu?.(false);
     this.gone = true; this.root.remove(); this.watching?.disconnect(); this.panelWatching?.disconnect(); this.wide?.removeEventListener?.('change', this.recheck);
     if (this.drawn) delete this.doc.body.dataset.archiveShelf;
   }
@@ -114,6 +115,14 @@ export class ArchiveShelf {
     this.remaining = null;
     this.paint(this.given.filter(each => dossierOf(each.stack) !== id), this.suppress, true);
     this.refresh();
+  }
+  trashChanged({ message_id, trashed }) {
+    if (trashed) {
+      this.trashEmpty = false;
+      if (this.projected.delete(message_id)) this.remaining = null;
+    }
+    this.refresh();
+    this.trash?.reload();
   }
   // The rail is drawn again by the page as it moves; the shelf goes back in at its foot.
   place() {
@@ -274,7 +283,16 @@ export class ArchiveShelf {
     });
     // A replica leaving the shelf (brought back, or the archive undone) takes its flight, if still in the air, with it.
     // Its copy goes at once, before a flight back can start from the same spot.
-    for (const [id, replica] of this.replicas) if (!live.has(id)) { this.land(id); replica.parentElement.remove(); this.replicas.delete(id); this.stacks.delete(id); }
+    const active = this.doc.activeElement;
+    let lostFocus = false;
+    for (const [id, replica] of this.replicas) if (!live.has(id)) {
+      this.land(id);
+      lostFocus ||= replica.parentElement.contains(active);
+      replica.parentElement.remove(); this.replicas.delete(id); this.stacks.delete(id);
+    }
+    if (lostFocus && (!this.doc.activeElement || this.doc.activeElement === this.doc.body)) {
+      (this.row.querySelector('.shelf-dossier') ?? this.trash?.summary)?.focus({ preventScroll: true });
+    }
     // Its replica gone from the shelf (brought back elsewhere), its menu goes too.
     if (this.menuOn && !this.menuOn.isConnected) {
       const held = this.doc.activeElement?.closest?.('.message-menu-list');
@@ -319,6 +337,12 @@ export class ArchiveShelf {
   make(id) {
     const doc = this.doc, item = element(doc, 'div', 'shelf-item'), replica = element(doc, 'button', 'shelf-dossier'); replica.type = 'button';
     item.setAttribute('role', 'listitem'); item.append(replica);
+    if (this.moveToTrash) {
+      const action = element(doc, 'button', 'shelf-menu', '⋯'); action.type = 'button';
+      action.setAttribute('aria-haspopup', 'menu');
+      action.onclick = () => this.menu(replica, null, action);
+      item.append(action);
+    }
     replica.dataset.id = id;
     const folder = element(doc, 'span', 'shelf-folder'); folder.setAttribute('aria-hidden', 'true');
     for (let index = 0; index < SHEETS; index += 1) {
@@ -345,6 +369,7 @@ export class ArchiveShelf {
   }
   dress(replica, { title, starred, count, fresh, colours }) {
     replica.querySelector('.shelf-title').textContent = title;
+    replica.parentElement.querySelector('.shelf-menu')?.setAttribute('aria-label', 'Actions for ' + title);
     const replies = Math.max(0, count - 1), replyWords = replies === 1 ? '1 reply' : `${replies} replies`;
     const size = replica.querySelector('.shelf-size');
     if (size) {
@@ -362,11 +387,12 @@ export class ArchiveShelf {
     replica.dataset.folder = String(count > 1);
     for (const [property, value] of colours) if (value && replica.style.getPropertyValue(property) !== value) replica.style.setProperty(property, value);
   }
-  menu(replica, at) {
+  menu(replica, at, anchor = replica) {
     const stack = this.stacks.get(replica.dataset.id); if (!stack) return;
     const win = this.doc.defaultView;
-    const menu = openMessageMenu({ anchor: replica, at, label: 'Archived dossier', doc: this.doc, win,
-      items: [{ label: 'Bring back', glyph: 'back', act: () => this.restore(stack) }] });
+    const items = [{ label: 'Bring back', glyph: 'back', act: () => this.restore(stack) }];
+    if (this.moveToTrash) items.push({ label: 'Move to trash', glyph: 'trash', act: () => this.moveToTrash(stack) });
+    const menu = openMessageMenu({ anchor, at, items, label: 'Archived dossier', sheet: true, doc: this.doc, win });
     if (!menu?.root) return;
     // It goes away with any other action, as a menu on the Mac does (1027): a pointer press outside it closes it
     // already; so does a wheel or trackpad swipe anywhere else (swiping a dossier away, scrolling the feed), the

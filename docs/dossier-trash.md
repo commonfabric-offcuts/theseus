@@ -54,3 +54,18 @@ Archived excludes trashed roots while preserving their saved place and
 stars. A star stays in the outline and can open its dossier in the Reader.
 The existing live acts and positions refresh updates the feed and the
 active Archive shelf when this reader changes Trash on another device.
+
+## Menu actions
+
+The dossier and Archived menus offer “Move to trash.” A Trash row opens
+“Move out of trash” and “Star” or “Unstar” for its first message. Right-click,
+the menu key and the phone action sheet use the same commands. An archived
+replica that lacks a Trash revision reads its one canonical root before
+sending the command. Loaded feed positions and Trash rows already carry
+their fences.
+
+The page updates placement after Core confirms the act. Undo of a Trash
+move or restore uses the resulting revision to put back the previous
+state. A newer change on another device causes a revision refusal.
+Opening an already folded Trash list remains the only way to read its
+pages. A local Trash move refreshes the first page when that fold is open.

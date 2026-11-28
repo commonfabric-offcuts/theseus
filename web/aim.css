@@ -1590,6 +1590,8 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 
 /* A topic menu opened from the phone drawer stays above that drawer. */
 @media(max-width:760px){body:has(.rail.open)>.message-menu-list.menu-sheet{z-index:26}}
+/* Menus opened in the Things panel sit above its rail and backdrop. */
+html[data-things-open] body>.message-menu-list{z-index:26}
 
 /* 1025: a reason reply's basis is a quiet mark; its words remain in title/ARIA. */
 .reply-basis-mark{display:block;width:14px;height:14px;margin:0 0 .35rem;color:var(--muted);user-select:none;-webkit-user-select:none}

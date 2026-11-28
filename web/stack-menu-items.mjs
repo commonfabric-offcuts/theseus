@@ -7,6 +7,7 @@ export function stackMenuItems(s, act) {
   if (s.cover) items.push({ ...s.cover, key: 'cover-refresh' });
   if (s.head) items.push(choice('rename', 'Rename', 'pencil'));
   if (s.position) items.push(choice('aside', s.below ? 'Bring back' : 'Archive', s.below ? 'back' : 'archive', [!s.below], { keys: !s.below && !s.reader ? '⌘→' : '' }));
+  if (s.trash) items.push(choice('trash', 'Move to trash', 'trash'));
   if (s.folded) items.push(choice('fold', 'Unfold', 'unfold', [false]));
   else items.push(choice('fold', s.starred ? `Fold — ${STARRED_FOLD_REASON}` : 'Fold', 'fold', [true], { disabled: Boolean(s.starred) }));
   if (s.reader || !s.found) return { first: items, last: [] };

@@ -38,7 +38,7 @@ import { ArchiveShelf } from './archive-shelf.mjs';
 const LINES = [':scope > .stack-head', ':scope > .message-author', ':scope > .message-folded', ':scope > .message-earlier'];
 const lineOf = card => LINES.map(selector => card?.querySelector(selector)).find(line => line?.getClientRects().length) ?? card;
 const NOTE_FOLD = 'Fold saved; your private note keeps this message whole';
-const FIELD = { 'stack.level': 'level', 'stack.aside': 'aside', 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'message.fold_through': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
+const FIELD = { 'stack.level': 'level', 'stack.aside': 'aside', 'stack.trash': 'trash', 'message.star': 'star', 'message.deal': 'deal', 'message.fold': 'fold', 'message.fold_through': 'fold', 'stack.place': 'place', 'stack.name': 'name', 'stack.join': 'join' };
 // Feed and rail commands share the same revision fence and envelope.
 export function stackActEnvelope({ instanceId, authority, kind, item, args, operationId = crypto.randomUUID() }) {
   const field = FIELD[kind];
@@ -72,6 +72,7 @@ const swipeFolds = across => across < 0;
 function learned(kind, result, viewer, now) {
   const field = FIELD[kind], revision = { [`${field}_revision`]: result[`${field}_revision`] };
   if (kind === 'stack.aside') return { aside: result.through, ...revision };
+  if (kind === 'stack.trash') return { trashed: result.trashed, ...revision };
   if (kind === 'message.star') return { starred: result.starred, ...revision };
   if (kind === 'message.deal') return { dealt: result.dealt, ...revision };
   if (kind === 'message.fold' || kind === 'message.fold_through') return { folded: result.folded, ...revision };
@@ -87,6 +88,7 @@ const CARD_WORDS = 40;
 const DOING = {
   'stack.level': args => args.level === null ? 'restoring the default view of' : args.level === 'open' ? 'opening' : 'collapsing',
   'stack.aside': args => args.through === null ? 'bringing back' : 'archiving',
+  'stack.trash': args => args.trashed ? 'moving to Trash' : 'moving out of Trash',
   'message.star': args => args.starred ? 'starring' : 'unstarring',
   'message.deal': () => 'marking as dealt with',
   'message.fold': args => args.folded ? 'folding' : 'unfolding',
@@ -149,6 +151,7 @@ const AGAIN = { 'message.thumb': 'Press again: Core keeps one of each.', 'messag
 // What an act shows at once, before Core answers.
 function shownAct(kind, args, viewer, now) {
   if (kind === 'stack.level') return { level: args.level };
+  if (kind === 'stack.trash') return { trashed: args.trashed };
   if (kind === 'stack.aside') return { aside: args.through, ...(typeof args.key === 'number' ? { order_key: args.key } : {}) };
   if (kind === 'message.star') return { starred: args.starred };
   if (kind === 'message.deal') return { dealt: args.dealt };
@@ -312,6 +315,9 @@ export class StackFeed {
   // and deferred gestures use the ordinary current provider after it returns.
   paintArrangement() {
     const messages = this.arrangeMessages ?? this.messages();
+    const active = this.doc.activeElement;
+    const focusedEntry = this.list.contains(active) && (entryOf(this.list, active) ??
+      this.entryFor(active?.closest?.('.reply-stack')?.dataset.stack));
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, coordinationHost: this.filterHost, doc: this.doc, on: {
       arrange: () => this.arrange(),
       navigate: () => this.navigate(), more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), renameFinished: stack => { this.arrange(); this.focusOn(stack.id); }, cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
@@ -355,6 +361,10 @@ export class StackFeed {
       menu: (stack, anchor, first) => { const item = this.messages().get(stack.id); if (item) this.menu(item, anchor, first); },
       landedBelow: (id, mark) => this.landedBelow(id, mark),
     } }));
+    if (focusedEntry && this.state.trashed?.has(focusedEntry.dataset.id) &&
+        [active, this.doc.body, null].includes(this.doc.activeElement)) {
+      this.focusAfterTrash(Number(focusedEntry.dataset.seq));
+    }
     for (const entry of entries(this.list)) {
       const card = cardIn(entry), item = messages.get(card.dataset.id);
       if (item) { this.paintStar(card.querySelector(':scope > .message-author'), item); this.paintFoldedThumb(card, item); }
@@ -362,6 +372,21 @@ export class StackFeed {
     this.readingMembers = new Set(messages.keys());
     this.redrawn();
     this.moreChanged();
+  }
+  focusAfterTrash(seq) {
+    // Keep the keys in the feed when the focused dossier disappears. Use a
+    // nearby drawn message, or the feed itself when all its messages are hidden.
+    let nearest = null, distance = Infinity;
+    for (const entry of entries(this.list)) {
+      if (!drawn(this.list, entry.dataset.id) || !entry.getClientRects().length) continue;
+      const away = Math.abs(Number(entry.dataset.seq) - seq);
+      if (away < distance) { nearest = entry; distance = away; }
+    }
+    if (nearest) this.focusOn(nearest.dataset.id);
+    else {
+      this.list.tabIndex = -1;
+      this.list.focus({ preventScroll: true });
+    }
   }
   // A read-only paint must not hide an admission/retirement or current key,
   // place, join or head change. Current records and renderer preflight decide.
@@ -581,7 +606,10 @@ export class StackFeed {
   // Sends an act, or sends again the exact request of one not settled (made).
   async send(kind, item, args, made = null) {
     const current = this.messages().get(item.id) ?? item;
-    const envelope = made ?? stackActEnvelope({ instanceId: this.instanceId, authority: this.authority(), kind, item: current, args });
+    // Trash uses the revision of the choice, including the receipt an Undo
+    // reverses. An intervening remote change must reach Core as a conflict.
+    const envelope = made ?? stackActEnvelope({ instanceId: this.instanceId, authority: this.authority(), kind,
+      item: kind === 'stack.trash' ? item : current, args });
     const clearing = kind === 'stack.aside' && envelope.args.clear_new === true;
     let finishArchive = null;
     if (clearing) {
@@ -605,7 +633,8 @@ export class StackFeed {
     const answer = learned(kind, receipt.result, this.viewer, this.clock());
     // The answer goes to the message the page holds now as well: a read that landed while the act was out (a
     // 👍's reactions, a page of messages) can have put a new copy of it in the page (item 433).
-    for (const each of new Set([item, current, this.messages().get(item.id)])) if (each) each.acts = laterActs(each.acts, answer);
+    const held = kind === 'stack.trash' ? this.standIns.get(item.id) : null;
+    for (const each of new Set([item, current, this.messages().get(item.id), held])) if (each) each.acts = laterActs(each.acts, answer);
     if (clearing && !this.gone) finishArchive?.();
     // Option's fold says each message it folded: one the page holds, or a stand-in for one it has not loaded.
     if (kind === 'message.fold_through') for (const { message_id, fold_revision } of receipt.result.folds) {
@@ -1164,6 +1193,58 @@ export class StackFeed {
   }
   // The archive shelf, at the foot of the right rail: none where the page has no right rail, and
   // there the feed keeps its own Archived (N).
+  async trashStack(stack) {
+    const position = positionOf(stack);
+    if (!position || this.gone) return;
+    const id = position.root_id, topic_id = stack.head.topic_id;
+    try {
+      let item = { id, topic_id, body: stack.head.body,
+        acts: { trashed: position.trashed, trash_revision: position.trash_revision } };
+      if (stack.archivedProjection) {
+        const page = checkedView(await this.readNamed('topic_messages', { topic_id, message_ids: [id] }), this.instanceId);
+        if (this.gone) return;
+        item = page.items?.[0];
+        if (page.items?.length !== 1 || item?.id !== id || item.topic_id !== topic_id || item.withheld ||
+            item.stack_position?.root_id !== id) throw Error('The dossier changed. Open its menu again.');
+      }
+      this.setTrash(item, true);
+    } catch (error) { if (!this.gone) this.status(error); }
+  }
+  setTrash(item, trashed, { undoable = true } = {}) {
+    if (this.gone || this.trashPending(item.id, 'stack.trash', 'trashed')) return false;
+    if (!this.messages().has(item.id) && !this.standIns.has(item.id)) {
+      this.standIns.set(item.id, { id: item.id, acts: {} });
+    }
+    this.act('stack.trash', item, { trashed }, [], { quiet: true, committed: result => {
+      if (this.gone) return;
+      if (undoable && result.changed) {
+        const saved = { ...item, acts: { trashed: result.trashed, trash_revision: result.trash_revision } };
+        this.remember(() => {
+          this.setTrash(saved, !result.trashed, { undoable: false });
+          return false; // Trash announces the reversal on confirmation.
+        });
+      }
+      this.shelf?.trashChanged(result);
+      this.press.after('stacks', () => this.arrange());
+      this.say(trashed ? 'Moved to Trash' : 'Moved out of Trash');
+    } }).catch(() => { if (!this.gone) this.shelf?.trash?.reload(); });
+    return true;
+  }
+  trashPending(id, kind, field) {
+    return this.pending.get(id)?.some(mark => field in mark) ||
+      [...this.doubts.values()].some(act => act.kind === kind && act.item.id === id);
+  }
+  actOnTrash(row, choice) {
+    const item = { id: row.message_id, topic_id: this.archiveTopic, body: row.excerpt,
+      acts: { trashed: true, trash_revision: row.trash_revision, starred: row.starred, star_revision: row.star_revision } };
+    if (choice === 'restore') return this.setTrash(item, false);
+    if (this.gone || this.trashPending(item.id, 'message.star', 'starred')) return;
+    this.act('message.star', item, { starred: !row.starred }, [], { quiet: true, committed: result => {
+      if (this.gone) return;
+      this.shelf?.trash?.learnStar(result);
+      this.say(result.starred ? 'Starred, for you only' : 'Star taken off');
+    } }).catch(() => { if (!this.gone) this.shelf?.trash?.reload(); });
+  }
   archiveShelf() {
     if (!this.shelf && !this.list.ownerDocument.getElementById('things')) return null;
     // Brought back from the shelf, the dossier keeps the keys, as the feed's own Bring back does.
@@ -1176,7 +1257,9 @@ export class StackFeed {
         const next = page.next_cursor;
         if (page.topic_id !== topicId || !Array.isArray(page.items) || page.items.length > limit ||
             page.items.some(item => !item || typeof item.message_id !== 'string' || !item.message_id ||
-              typeof item.name !== 'string' || typeof item.excerpt !== 'string' || typeof item.withheld !== 'boolean') ||
+              typeof item.name !== 'string' || typeof item.excerpt !== 'string' || typeof item.withheld !== 'boolean' ||
+              !Number.isSafeInteger(item.trash_revision) || item.trash_revision < 1 ||
+              !Number.isSafeInteger(item.star_revision) || item.star_revision < 0 || typeof item.starred !== 'boolean') ||
             next !== null && (!Number.isSafeInteger(next) || next < 1 || cursor !== null && next >= cursor))
           throw Error('Could not confirm the trashed dossiers.');
         return page;
@@ -1192,6 +1275,8 @@ export class StackFeed {
           throw Error('Could not confirm the archived dossiers.');
         return page;
       } : null,
+      moveToTrash: stack => this.trashStack(stack),
+      trashAction: (row, choice) => this.actOnTrash(row, choice),
       allows: row => {
         const queued = this.pending.get(row.message_id)?.at(-1);
         const held = this.standIns.get(row.message_id)?.acts;
@@ -1295,7 +1380,7 @@ export class StackFeed {
     const action = keyAction(event);
     if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return;
     if (!at || !this.list.contains(at)) return;
-    if (action === 'undo' && at === this.state.more) {
+    if (action === 'undo' && (at === this.state.more || at === this.list)) {
       event.preventDefault();
       this.undo(); return;
     }
@@ -1341,13 +1426,14 @@ export class StackFeed {
   // first: what the message offers; last: its stack's moves and joins.
   menuItems(item, { phone = false, more = () => {}, reader = false, at = null, rename = act => act() } = {}) {
     const entry = this.entryFor(item.id), found = entry && stackOf(this.list, entry);
-    const stack = found?.stack, level = stack && levelOf(this.state, stack.id);
+    const stack = found?.stack, level = stack && levelOf(this.state, stack.id), position = stack && positionOf(stack);
     const line = () => at ?? lineOf(this.entryFor(item.id) && cardIn(this.entryFor(item.id)));
     const dossierStarred = found?.head && positionOf(stack)?.starred?.length > 0;
     const acts = this.actsOf(item.id, item);
     const folded = acts.folded && (acts.starred || !this.hasOpenCardReply(item.id));
     return stackMenuItems({ starred: dossierStarred || Boolean(acts.starred), folded,
-      head: found?.head, hasReplies: Boolean(stack?.replies.length), position: stack && positionOf(stack), below: stack && positionOf(stack)?.below,
+      trash: Boolean(found?.head && position && !position.trashed),
+      head: found?.head, hasReplies: Boolean(stack?.replies.length), position, below: position?.below,
       found: Boolean(found), reader, phone, open: level === 'open', joined: stack?.joins.has(item.id), placed: stack?.placed != null,
       splitSources: Boolean(found && this.readNamed),
       undo: this.undos.length > 0, foldable: stack && foldStep({ level }, 'fold'), openable: stack && foldStep({ level }, 'open'),
@@ -1355,6 +1441,7 @@ export class StackFeed {
       if (key === 'star') return dossierStarred ? this.unstarDossier(item, stack) : this.star(item);
       if (key === 'rename') return rename(() => this.startRename(stack));
       if (key === 'aside') return this.setAside(stack, value, { at: line(), focus: !reader });
+      if (key === 'trash') return this.trashStack(stack);
       if (key === 'fold') return this.setFold(item, value, { focus: !reader });
       if (key === 'level') { setLevel(this.state, stack, value, { save: true }); this.arrange(); this.focusOn(stack.id); return; }
       if (key === 'split') return this.split(item);
