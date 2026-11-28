@@ -220,7 +220,8 @@ class Covers:
                 if wait.get("message_id") is not None:
                     self._cover_payload(db, actor, message, wait["message_id"], what="wait source")
         owner = self._cover_owner(db, message["topic_id"])
-        if value["payload"] is not None:
+        # A section patch leaves the stored acceptance in place unless it also sets the payload.
+        if value["payload"] is not None and (section_patch is None or "payload" in fields):
             payload = value["payload"]
             if "payload" in fields:
                 payload = dict(payload, seq=self._cover_payload(db, actor, message, payload["message_id"])["seq"])

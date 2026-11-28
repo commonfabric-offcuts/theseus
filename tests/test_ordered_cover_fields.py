@@ -126,6 +126,10 @@ class OrderedCoverCase(test_agent_verbs.AgentVerbCase):
         self.assertEqual((after["owner"], after["owner_name"]), ("other-reader", "Other fixture reader"))
         self.assertEqual(after["payload"]["done"], before["payload"]["done"])
         self.assertEqual(after["accepted_by_name"], before["owner_name"])
+        self.committed(self.write({"sections": {"why": "Prepare for fall"}}, revision=2))
+        updated = self.read()["cover"]
+        self.assertEqual(updated["payload"], after["payload"])
+        self.assertEqual(updated["accepted_by_name"], before["owner_name"])
 
     def test_sections_only_complete_a_refresh_when_there_are_still_cover_words(self):
         self.committed(self.write({"sections": {"what": "Plant Saturday"}}))

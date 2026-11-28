@@ -56,6 +56,8 @@ With a payload, `owner_name` gives the current owner's display name. A
 pending payload has `done: null`. An accepted payload carries its existing
 `done.by` and `done.at_ms`. When an earlier owner accepted it, the cover also
 provides `accepted_by_name` so the receipt stays attributed to that person.
+A section patch preserves the stored payload and acceptance unless it sets
+the payload in the same write.
 
 ## Done
 
