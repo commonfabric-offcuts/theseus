@@ -1112,6 +1112,12 @@ def main():
                             assert "error" not in source, source
                             expected = {"source_topic_id": source["topic_id"],
                                         "move_revision": source["dossier"]["move_revision"]}
+                        elif request["kind"] == "stack.birth":
+                            # 1385: the actual birth command, fenced on both the dossier's name and cover revisions.
+                            with sqlite3.connect(str(path)) as db:
+                                db.row_factory = sqlite3.Row
+                                acts = current_acts(db, request["sender"], [request["message_id"]]).get(request["message_id"], {})
+                            expected = {"name_revision": acts.get("name_revision", 0), "cover_revision": acts.get("cover_revision", 0)}
                         else:
                             field = "cover_revision" if request["kind"] in ("stack.cover", "stack.cover_refresh") else STACK_KINDS[request["kind"]][1]
                             with sqlite3.connect(str(path)) as db:

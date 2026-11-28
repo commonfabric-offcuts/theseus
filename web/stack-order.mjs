@@ -371,11 +371,16 @@ export function newestNew(stack, unread) {
 // tab too; where the page holds that message, its own acts say it. Null for a
 // dossier with none, and for a message on its own unless alone: true asks for
 // the cover its pills show (dossier-cover.mjs).
+const presentable = cover => cover && (cover.stands || cover.waiting?.length || cover.payload || cover.items?.length) ? cover : null;
+
 export function stackCover(stack, { alone = false, provenance = false } = {}) {
   if (stack.sourceStack) return stackCover(stack.sourceStack, { alone, provenance });
   const position = positionOf(stack), acts = actsOf(stack.head);
   const shown = (value, revision) => {
-    const cover = currentQuestionCover(value ?? null);
+    // 1385: Core projects a cover that holds only birth facts (nature, done_when), or one whose ordinary fields were
+    // cleared while its birth facts stay. This page does not present birth facts yet, so such a cover shows as no
+    // cover, exactly as before birth facts existed; a cover with words, waits, a payload or items is unchanged.
+    const cover = currentQuestionCover(presentable(value ?? null));
     return provenance && cover ? { ...cover, revision } : cover;
   };
   if (position && position.root_id !== stack.head.id) return shown(position.cover, position.cover_revision);

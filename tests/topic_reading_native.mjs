@@ -26,6 +26,7 @@ import { reading785Checks } from './reading_785_native.mjs';
 import { createHash } from 'node:crypto';
 import { dossierSelectionQuoteChecks } from './dossier_selection_quote_native.mjs';
 import { coverRefreshChecks } from './cover_refresh_native.mjs';
+import { coverBirth1385Checks } from './cover_birth_1385_native.mjs';
 import { onboardingChecks790 } from './onboarding_790_native.mjs';
 import { stackChecks } from './stack_native.mjs';
 import { readingItem757Checks } from './reading_item_757_native.mjs';
@@ -183,8 +184,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
       { seed, open, centre, press, card });
     return;
   }
-  await onboardingChecks790({check,page,until,control,shot,facts,observations,grant,engine});
-  await waitingQuestions372Checks({check,page,until,view,control,shot,facts,observations,engine});
+  // 1385's dedicated phase (AIM_COVER_BIRTH_1385_ONLY=1) skips the other phases and runs after openReader is defined.
+  const only1385 = process.env.AIM_COVER_BIRTH_1385_ONLY === '1';
+  if (!only1385) await onboardingChecks790({check,page,until,control,shot,facts,observations,grant,engine});
+  if (!only1385) await waitingQuestions372Checks({check,page,until,view,control,shot,facts,observations,engine});
   const lit = p => p.evaluate(`[...document.querySelectorAll('#messages .lit[data-id]')].map(e=>e.dataset.id)`);
   const bar = p => p.evaluate(`(()=>{const b=document.querySelector('${BAR}');return b&&!b.hidden?Object.fromEntries([...b.querySelectorAll('button')].filter(x=>!x.hidden).map(x=>[x.dataset.act,x.getAttribute('aria-pressed')])):null})()`);
   const readerOn = p => p.evaluate(`document.querySelector('#reader').open ? document.querySelector('#source-body').textContent : null`);
@@ -252,6 +255,10 @@ export async function readingChecks({ check, page, until, view, control, shot, f
     }
     await until(async () => (await readerOn(p))?.startsWith(starts), `${device}: the Reader opens on "${starts}"`);
   };
+  if (only1385) {
+    await coverBirth1385Checks({ check, until, control, view, shot, observations }, { seed, open, openReader, closeReader, centre, press, card });
+    return;
+  }
   // The Reader opened to be read: a click on the lit message, or a phone's second tap. The cursor is never put
   // in the reply, which is one quiet line.
   const readerByClick = async (p, device, id, starts) => {

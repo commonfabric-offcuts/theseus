@@ -184,3 +184,19 @@ test('864 cover written query link stays active alongside 963 formatted words', 
   assert.equal(words.text, 'Discussed: literal\nNext: The smoke checks', 'labels and link words remain exact');
   assert.equal([...words.descendants()].find(node => node.tag === 'strong').text, 'literal');
 });
+
+// Item 1385: a cover that holds only birth facts, or whose ordinary fields were cleared while birth facts stay, shows
+// as no cover here (no 'Cover' line, no sheet), while a cover with words keeps its birth facts and shows as before.
+test('a birth-only or cleared cover shows as none, and a cover with words still shows with its birth facts', () => {
+  const at = (cover, extra = {}) => ({ root_id: 'm-root', through: null, aside_revision: 0, below: false, name: null, name_revision: 0,
+    at: { messages: 9, acts: 4 }, cover, cover_revision: 2, ...extra });
+  const reply = (id, reply_to, cover) => ({ id, reply_to, acts: { cover: null, cover_revision: 0 }, stack_position: at(cover) });
+  const birthOnly = { stands: null, waiting: [], payload: null, by: 'agent-a', at_ms: 1, owner: 'owner', birth: { nature: 'question' } };
+  assert.equal(stackCover({ head: reply('m-r1', 'm-root', birthOnly), replies: [] }), null, 'birth facts alone draw no cover');
+  assert.equal(stackCover({ head: reply('m-r1', 'm-root', { ...birthOnly, birth: { done_when: 'the date is set' } }), replies: [] }, { alone: true }), null,
+    'nor do they draw pills on their own');
+  const cleared = { ...COVER, stands: null, waiting: [], payload: null, birth: { nature: 'decision', done_when: 'agreed' } };
+  assert.equal(stackCover({ head: reply('m-r1', 'm-root', cleared), replies: [] }), null, 'a cover cleared while birth facts stay draws none');
+  const worded = { ...COVER, birth: { nature: 'question' } };
+  assert.deepEqual(stackCover({ head: reply('m-r1', 'm-root', worded), replies: [] }), worded, 'a cover with words shows, birth facts kept');
+});

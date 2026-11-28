@@ -20,8 +20,8 @@ import json
 import re
 
 from .contract import Refusal
-from .cover_values import DONE_REFUSED, done_of, owners_word, shown, stored_value, written
-from .stacks import EMPTY, MEMBERS, StackRoots, current_acts
+from .cover_values import DONE_REFUSED, _line, done_of, owners_word, shown, stored_value, written
+from .stacks import EMPTY, MEMBERS, NOT_THE_NAMER, StackRoots, _value, current_acts, dossier_namer
 from .whispers import STAYS, VISIBLE
 
 
@@ -138,6 +138,61 @@ class Covers:
                                                {"id": word["id"], "actor": actor}).fetchone()
         if not seen:
             raise Refusal("DONE_BY_OWNER", DONE_REFUSED)
+
+    def _command_stack_birth(self, db, actor, envelope):
+        root, topic = self._acted_message(db, actor, envelope["target"])
+        args, expected = envelope["args"], envelope["expected"]
+        if "reply_id" not in args or set(args) - {"reply_id", "name", "nature", "done_when", "stands"}:
+            raise Refusal("INVALID_ARGUMENT", "Name the first reply and optional name, nature, completion criterion and rough cover")
+        if "cover_revision" not in expected:
+            raise Refusal("INVALID_ARGUMENT", "An explicit cover_revision is required")
+        reply, _ = self._acted_message(db, actor, {"message_id": args["reply_id"]})
+        if root["private_to"] is not None or reply["private_to"] is not None:
+            raise Refusal(STAYS, "Birth facts require a dossier and reply on the record")
+        roots = StackRoots(db, actor)
+        if roots.root(root["id"]) != root["id"] or roots.root(reply["id"]) != root["id"]:
+            raise Refusal("STACK_CHANGED", "This reply's dossier changed; read its root again")
+        closed = self._closed(db, topic["workspace_id"])
+        if closed is not None:
+            raise self._closed_refusal(db, actor, topic["workspace_id"], closed)
+        revisions = {kind + "_revision": self._act_revision(db, root["id"], kind, "") for kind in ("name", "cover")}
+        if any(expected[key] != revision for key, revision in revisions.items()):
+            raise Refusal("REVISION_CONFLICT", "The name or cover changed; read both again", revisions)
+
+        before = stored_value(self._act_value(db, root["id"], "cover", ""))
+        if before.get("birth"):
+            raise Refusal("BIRTH_RECORDED", "The dossier already has its birth facts")
+        first = db.execute(
+            MEMBERS + " SELECT m.id FROM members p CROSS JOIN messages m ON m.id=p.id "
+            "JOIN actors a ON a.id=m.author_id WHERE m.id<>:root AND m.reply_to IS NOT NULL "
+            "AND a.kind='agent' ORDER BY m.seq LIMIT 1",
+            {"root": root["id"], "actor": ""}).fetchone()
+        if reply["author_id"] != actor or first is None or first["id"] != reply["id"]:
+            raise Refusal("NOT_FIRST_RESPONDER", "The first agent to reply on the record writes the birth facts")
+
+        birth = {"reply_id": reply["id"]}
+        for field, label, limit in (("nature", "The dossier's nature", 200), ("done_when", "What counts as completion", 500)):
+            if field in args:
+                birth[field] = _line(args[field], label, limit)
+        stands = written({"stands": args["stands"]})["stands"] if "stands" in args else None
+        if len(birth) == 1 and stands is None:
+            raise Refusal("INVALID_ARGUMENT", "Supply a nature, completion criterion or rough cover")
+        value = dict(before, birth=birth, stands=before["stands"] or stands)
+
+        if "name" in args and revisions["name_revision"] == 0:
+            namer, why = dossier_namer(db, root["id"])
+            if namer != actor:
+                code, words = NOT_THE_NAMER[why]
+                raise Refusal(code, words % namer if "%s" in words else words)
+            name = _value("name", {"name": args["name"], "minted": True})
+            self._record_act(db, "name", root, "", actor, name, 1, tell=False)
+            revisions["name_revision"] = 1
+        revisions["cover_revision"] += 1
+        version = self._record_act(db, "cover", root, "", actor, value, revisions["cover_revision"])
+        version = self._cover_refreshed(db, actor, root, before, value, revisions["cover_revision"], version)
+        cover = current_acts(db, actor, [root["id"]])[root["id"]]["cover"]
+        return dict(revisions, message_id=root["id"], topic_id=root["topic_id"], cover=cover, acts_version=version), [
+            {"kind": "acts", "id": root["topic_id"], "version": version}]
 
     def _command_stack_cover(self, db, actor, envelope):
         message, topic = self._acted_message(db, actor, envelope["target"])
