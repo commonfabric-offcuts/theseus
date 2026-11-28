@@ -9,7 +9,7 @@ fold under it as they always have.
 
 ## What a cover holds
 
-A cover has three fields. Each is set or cleared on its own.
+A cover holds its standing words, waits and payload. It can also hold ordered sections.
 
 - **Where it stands**: at most 32,000 characters, including line breaks (913). LF
   separates lines and stays a line break through command, storage and the
@@ -31,6 +31,25 @@ A cover has three fields. Each is set or cleared on its own.
   (http or https) and a kind: answer, decision, preview, page or release.
 
 A cover with every field clear is no cover, and the page shows none.
+
+### Ordered sections
+
+A cover write can add `sections` as an object with any of `why`, `what`,
+`how`, `when`, `who`, and `where`. Words use the same line handling as
+standing words, with up to 32,000 characters across the sections. Each
+supplied key changes that section. Null or empty words clear it. The same
+cover revision fences the whole write.
+
+```sh
+aim-next cover ROOT --expected 2 --why "Keep the north beds watered" \
+  --what "Two beds are ready" --when "Saturday morning"
+```
+
+Readers see the written sections as an ordered array of `key` and `text`
+objects. It is present when there are sections. The CLI prints each under
+its heading. The existing standing words, waits, payload, and acceptance
+remain readable through their usual fields. The following page slice uses
+this contract for the cover header, sections, and delivery phase.
 
 ## Done
 

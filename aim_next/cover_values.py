@@ -4,11 +4,12 @@ from __future__ import annotations
 read from the owner's record, and what each reader is shown. No effects: covers.py records the acts.
 
 A cover is the newest `cover` act on a dossier's first message (message_acts, owner ''), so it keeps every revision
-and is fenced like any other act. It holds three fields, each set or cleared on its own:
+and is fenced like any other act. Each field can be set or cleared on its own:
 
 - `stands`: lines of where things stand (item 769);
 - `waiting`: what waits on the outcome's owner, each with the default that holds if they say nothing;
 - `payload`: what the dossier produced, in words, optionally a link and a kind, and the message that delivered it.
+- `sections`: optional text for Why, What, How, When, Who and Where, shown in that order.
 
 Done is never written by anyone. It is read from the owner's record whenever a cover is written or the owner gives or
 takes back a 👍 on the payload's message: their 👍 on it, or a reply of theirs to it that the cover's writer names as
@@ -23,7 +24,8 @@ from .whispers import VISIBLE
 
 # What an empty cover stands at: the act's value before anyone wrote one, and after every field is cleared.
 EMPTY_COVER = {"stands": None, "waiting": [], "payload": None}
-FIELDS = ("stands", "waiting", "payload")
+FIELDS = ("stands", "waiting", "payload", "sections")
+COVER_SECTIONS = ("why", "what", "how", "when", "who", "where")
 STANDS_CHARS = 32000
 WAIT_CHARS = 300
 DEFAULT_CHARS = 200
@@ -37,12 +39,12 @@ DONE_REFUSED = ("Done is the owner's to give: their 👍 on the payload's messag
 
 
 def _line(value, name, limit, required=True, keep_lines=False):
-    """Fold whitespace to spaces, retaining LF boundaries only for stands. Empty is None unless required."""
+    """Fold whitespace to spaces, optionally retaining LF boundaries. Empty is None unless required."""
     if value is None and not required:
         return None
     if not isinstance(value, str):
         raise Refusal("INVALID_ARGUMENT", "%s is words" % name)
-    # Stands keeps LF boundaries; all other fields retain their one-line contract.
+    # Standing words and section text keep LF boundaries.
     # CRLF becomes LF as CR is folded with whitespace within each line.
     folded = ("\n".join(" ".join(line.split()) for line in value.split("\n")).strip()
               if keep_lines else " ".join(value.split()))
@@ -104,11 +106,11 @@ def written(args):
     """The fields a write sets, validated: {field: value}, each present field set (None or [] clears it). Done is
     refused wherever it is named, and a write names at least one field."""
     if not isinstance(args, dict) or not args:
-        raise Refusal("INVALID_ARGUMENT", "A cover write sets or clears stands, waiting or payload")
+        raise Refusal("INVALID_ARGUMENT", "A cover write sets or clears stands, waiting, payload or sections")
     if "done" in args:
         raise Refusal("DONE_BY_OWNER", DONE_REFUSED)
     if set(args) - set(FIELDS):
-        raise Refusal("INVALID_ARGUMENT", "A cover holds stands, waiting and payload only")
+        raise Refusal("INVALID_ARGUMENT", "A cover holds stands, waiting, payload and sections")
     fields = {}
     if "stands" in args:
         fields["stands"] = _line(args["stands"], "Where it stands", STANDS_CHARS, required=False, keep_lines=True)
@@ -116,15 +118,25 @@ def written(args):
         fields["waiting"] = _waiting(args["waiting"])
     if "payload" in args:
         fields["payload"] = _payload(args["payload"])
+    if "sections" in args:
+        sections = args["sections"]
+        if not isinstance(sections, dict) or not sections or set(sections) - set(COVER_SECTIONS):
+            raise Refusal("INVALID_ARGUMENT", "Cover sections are Why, What, How, When, Who and Where")
+        fields["sections"] = {key: _line(text, key.title(), STANDS_CHARS, required=False, keep_lines=True)
+                              for key, text in sections.items()}
     return fields
 
 
 def stored_value(raw):
-    """A stored cover act's value, every field present."""
+    """A stored cover act with the original fields and any optional fields."""
     value = dict(EMPTY_COVER, waiting=[])
     if raw:
         value.update(json.loads(raw) if isinstance(raw, str) else raw)
     return value
+
+
+def has_cover_words(value):
+    return bool(value["stands"] or value["waiting"] or value["payload"] or value.get("sections"))
 
 
 def owners_word(db, owner, message_id, done_by):
@@ -155,7 +167,7 @@ def shown(db, actor, value, by, at_ms, owner, archived=False):
     outcome's owner (whose 👍 or word gives Done). A word given in a whisper actor is outside shows as given, with no
     message to open."""
     birth = value.get("birth")
-    if not birth and not value["stands"] and not value["waiting"] and value["payload"] is None:
+    if not birth and not has_cover_words(value):
         return None
     payload = value["payload"]
     # done_by is what the writer named; a reader is told Done, which carries the word when they can open it.
@@ -201,6 +213,9 @@ def shown(db, actor, value, by, at_ms, owner, archived=False):
              "payload": dict(payload) if payload is not None else None, "by": by, "at_ms": at_ms, "owner": owner}
     if birth:
         cover["birth"] = {key: birth[key] for key in ("nature", "done_when") if key in birth}
+    if value.get("sections"):
+        sections = value["sections"]
+        cover["sections"] = [{"key": key, "text": sections[key]} for key in COVER_SECTIONS if key in sections]
     if quote_wait_indices:
         cover["quote_wait_indices"] = quote_wait_indices
     return cover

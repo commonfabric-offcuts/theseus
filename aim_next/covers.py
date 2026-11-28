@@ -20,7 +20,7 @@ import json
 import re
 
 from .contract import Refusal
-from .cover_values import DONE_REFUSED, _line, done_of, owners_word, shown, stored_value, written
+from .cover_values import COVER_SECTIONS, DONE_REFUSED, STANDS_CHARS, _line, done_of, owners_word, shown, stored_value, written
 from .stacks import EMPTY, MEMBERS, NOT_THE_NAMER, StackRoots, _value, current_acts, dossier_namer, first_public_agent_reply
 from .whispers import STAYS, VISIBLE
 
@@ -204,7 +204,17 @@ class Covers:
         before = stored_value(self._act_value(db, message["id"], "cover", ""))
         if "waiting" in fields:
             fields["waiting"] += [w for w in before["waiting"] if w.get("ask_id")]
+        section_patch = fields.pop("sections", None)
         value = dict(before, **fields)
+        if section_patch is not None:
+            combined = dict(before.get("sections", {}), **section_patch)
+            sections = {key: combined[key] for key in COVER_SECTIONS if combined.get(key)}
+            if sum(map(len, sections.values())) > STANDS_CHARS:
+                raise Refusal("INVALID_ARGUMENT", "Cover sections are at most %d characters together" % STANDS_CHARS)
+            if sections:
+                value["sections"] = sections
+            else:
+                value.pop("sections", None)
         if "waiting" in fields:
             for wait in fields["waiting"]:
                 if wait.get("message_id") is not None:
