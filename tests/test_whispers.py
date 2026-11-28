@@ -852,7 +852,8 @@ class WhisperCLICase(verbs.AgentVerbCase):
         code, out, err = self.run_cli("whisper", "t1", "--to", "owner", "--reply-to", asked, "-", stdin=b"Tomorrow.")
         self.assertEqual((code, err), (0, ""))
         answer = self.latest()
-        self.assertEqual(out, "whispered %s to owner in t1\n" % answer[0])
+        self.assertEqual(out, ("whispered %s to owner in t1\n"
+                               "to add or correct: aim-next edit %s --expected 1 -\n") % (answer[0], answer[0]))
         self.assertEqual(self.sql("SELECT private_to,reply_to,intent FROM messages WHERE id=?", (answer[0],)), [("owner", asked, None)])
         # The person reads the agent's answer with no words about acting on it: only a person's whisper counts as a Tell.
         self.profiles["owner"] = Path(self.temp.name).resolve() / "owner.json"
@@ -919,6 +920,8 @@ VIEW_PATHS = {
     "stack_namer": "the message named through _acted_message, which applies visible(); its root walked up through parents each "
                    "checked by visible(), and its name under the whisper rule; its namer found from replies on the record only, "
                    "so a whisper never names one",
+    "post_edit_hint": "the posted message must be editable by the agent through _editable and _message_access; the recent "
+                      "lookup requires an admitted public reply target and considers only the agent's public posts in its topic",
     "dossier_cover": "the message named through _acted_message, which applies visible(); its dossier's root walked up through parents "
                      "each checked by visible(), and the root's cover as message_acts reads it, under the whisper rule; a word that made "
                      "its payload Done shows its message only to a reader who may see it",
@@ -979,7 +982,9 @@ MESSAGE_READS = {
                                  "the author kind and sequence of messages so marked, to record an exposure; and an edited message's "
                                  "sequence and its author's kind against the horizon or the first post recording agents' messages; "
                                  "and, for an agent's edit (item 614), the edited message's addressees and the author of the message it "
-                                 "answers, to leave a message between others as it was; none of them shown", 10),
+                                 "answers, to leave a message between others as it was; none of them shown; the edit hint reads "
+                                 "only the revision of a message checked by _editable, or bounded own public ids and send times "
+                                 "in the topic of an admitted public reply target", 12),
     "aim_next/standing_conversation.py": ("a conversation's items and asks, which a whisper never is, the about links of a page already read through VISIBLE, a pipeline item's message sources, which _source_rows read through _message_access, the message a person's whisper replies to, to see that it goes to that message's author, and an answer take's reply, shown through visible(); removal follows only the checked owned reply's exact parent id to recompute its indexed surviving takes; that internal update returns no message words or hidden identity", 11),
     "aim_next/marks.py": ("the reader's own marks, or a row checked by visible()", 4),
     "aim_next/reactions.py": ("a row checked by visible() before a reaction or its view, the occupied probe, and go-ahead flags of messages the caller checked; "

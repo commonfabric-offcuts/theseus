@@ -62,7 +62,8 @@ class PostAndOutboxCase(AgentVerbCase):
         self.assertEqual((code, err), (0, ""))
         message = self.latest()
         self.assertEqual(message[2:5], ("agent-a", "Hello from the CLI", '["owner"]'))
-        self.assertEqual(out, "posted %s in t1 (1 deliveries queued)\n" % message[0])
+        self.assertEqual(out, ("posted %s in t1 (1 deliveries queued)\n"
+                               "to add or correct: aim-next edit %s --expected 1 -\n") % (message[0], message[0]))
         [request] = seen[0]
         operation = request[:-len(".request.json")]
         self.assertTrue(request.endswith(".request.json"))

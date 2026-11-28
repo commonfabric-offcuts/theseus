@@ -1625,12 +1625,38 @@ class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs,
             args["blocks"] = {"kind": kind.strip(), "ref": ref.strip()}
         if options.asks is not None and options.ask_wait is None:
             self.default_ask_wait(args, operation)
+        if options.reply_to and not self.out.as_json and (operation is None or
+                not (self.outbox() / (operation + ".request.json")).exists()):
+            self.post_edit_hint({"topic_id": options.topic, "reply_to": options.reply_to})
         result = self.command("message.post", {"topic_id": options.topic}, args, operation=operation)
         held = result.get("blocks")
         self.out.plain("posted %s in %s (%s deliveries queued)%s" % (result["message_id"], result["topic"]["id"], result["delivery"]["queued"],
                                                                      "; it holds %s %s until it is answered" % (held["kind"], held["ref"]) if held else ""))
         if options.reply_to:
             self.namer_hint(result["message_id"])
+        self.post_edit_hint({"message_id": result["message_id"]})
+
+    def post_edit_hint(self, args):
+        if self.out.as_json:
+            return
+        before = "reply_to" in args
+        try:
+            found = self.store.view(self.actor, "post_edit_hint", args)
+        except (StoreError, OSError):
+            return
+        error = found.get("error")
+        if error and error.get("code") in ("AUTHORITY_CHANGED", "BINDING_MISMATCH"):
+            if before:
+                self.fail(error)
+            self.out.problem("The post was recorded. Its edit fence could not be read (%s): %s" %
+                             (error["code"], error.get("message", "")))
+        hint = found.get("edit")
+        if hint:
+            command = "aim-next edit %s --expected %s -" % (hint["message_id"], hint["revision"])
+            if before:
+                self.out.problem("You posted in this dossier recently. %s instead?" % command)
+            else:
+                self.out.plain("to add or correct: " + command)
 
     def default_ask_wait(self, args, operation):
         """Keep ordinary CLI asks usable without inventing choices or promises.
@@ -1729,6 +1755,7 @@ class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs,
         self.reply_choice(args)
         result = self.command("message.post", {"topic_id": options.topic}, args)
         self.out.plain("whispered %s to %s in %s" % (result["message_id"], ", ".join(args["addressees"]), result["topic"]["id"]))
+        self.post_edit_hint({"message_id": result["message_id"]})
 
     def started_from(self, source, seen):
         """Refuses, saving nothing, when topics were already started from source that seen does not name; lists them first."""
