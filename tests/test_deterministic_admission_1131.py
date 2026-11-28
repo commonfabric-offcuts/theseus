@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 from types import SimpleNamespace
@@ -17,6 +18,17 @@ from unittest import mock
 
 from aim_next import reply_passages
 from tools import deploy, deterministic_admission as proof, train, releases
+
+
+def py(text):
+    """A small verbose unittest log in the layout unittest writes: each FAIL/ERROR outcome has its detail block,
+    and the '-' rule precedes Ran. Item 1389's whole-log reader requires both, as real unittest output has."""
+    ran = re.search(r'^Ran \d+ tests? in ', text, re.M)
+    listing, tail = text[:ran.start()].rstrip('\n'), text[ran.start():]
+    details = ''.join('%s\n%s: %s\n%s\nTraceback (most recent call last):\nAssertionError: scratch\n\n'
+                      % ('=' * 70, found[2], found[1], '-' * 70)
+                      for found in re.finditer(r'^(\S+ \([^)]+\)) \.\.\. (FAIL|ERROR)$', listing, re.M))
+    return (listing + '\n\n' if listing else '') + details + '-' * 70 + '\n' + tail
 
 
 class Deterministic1131(unittest.TestCase):
@@ -122,8 +134,8 @@ else:
                 argv = ['node', '--test', '--test-reporter=tap', path]
                 stdout, stderr = text, ''
             else:
-                text = ('test_behavior (test_core.Scratch) ... %s\n\nRan 1 test in 0.01s\n\n%s\n' %
-                        ('FAIL' if fail else 'ok', 'FAILED (failures=1)' if fail else 'OK'))
+                text = py('test_behavior (test_core.Scratch) ... %s\n\nRan 1 test in 0.01s\n\n%s\n' %
+                          ('FAIL' if fail else 'ok', 'FAILED (failures=1)' if fail else 'OK'))
                 counts = {'tests': 1, 'status': 'FAILED' if fail else 'OK'}
                 if fail: counts['failures'] = 1
                 argv = ['python3', '-m', 'unittest', '-v', path]
@@ -162,7 +174,7 @@ else:
             argv = ['/usr/bin/nice', '-n', '15', '/usr/bin/python3', '-I', '-B', '-m', 'unittest',
                     'discover', '-s', str(self.repo/'tests'), '-p', 'test_*.py', '-v']
             stdout = ''
-            stderr = 'test_behavior (test_core.Scratch) ... ok\ntest_chain (test_migrations.Scratch) ... ok\n\nRan 2 tests in 0.01s\n\nOK\n'
+            stderr = py('test_behavior (test_core.Scratch) ... ok\ntest_chain (test_migrations.Scratch) ... ok\n\nRan 2 tests in 0.01s\n\nOK\n')
             counts = {'tests': 2, 'status': 'OK'}
         return self.raw({'run': ('grouped-node-' if node else 'grouped-core-')+head, 'attempt': 1,
             'head': head, 'tree': self.git('rev-parse', head+'^{tree}').stdout.strip(),
@@ -451,7 +463,7 @@ else:
             ("test_chain (test_migrations.Scratch) ... skipped 'reason'\n\nRan 2 tests in 0.01s\n\nOK (skipped=2)\n",
              {'tests': 2, 'status': 'OK', 'skipped': 2}, 0)):
             def mismatch(d):
-                d['grouped'].update(stderr=self.raw('test_behavior (test_core.Scratch) ... ok\n'+tail),
+                d['grouped'].update(stderr=self.raw(py('test_behavior (test_core.Scratch) ... ok\n'+tail)),
                                     counts=counts, exit=status)
             run = self.change_document(self.grouped(self.head, False), mismatch)
             self.value['core_cohort'] = self.change_document(original, lambda d: d.update(run=run)); self.bind_audit()
@@ -646,7 +658,7 @@ else:
                     'test_chain (test_migrations.Scratch) ... %s\n\nRan 2 tests in 0.01s\n\n' %
                     ('FAIL' if piece_fail else 'ok', 'FAIL' if new_fail else 'ok'))
             failures = int(piece_fail) + int(new_fail)
-            row['stderr'] = self.raw(text + ('FAILED (failures=%d)\n' % failures if failures else 'OK\n'))
+            row['stderr'] = self.raw(py(text + ('FAILED (failures=%d)\n' % failures if failures else 'OK\n')))
             row['counts'] = {'tests':2, 'status':'FAILED' if failures else 'OK'}
             if failures: row['counts']['failures'] = failures
             row['exit'] = int(bool(failures)); own = self.raw(capture)
@@ -708,7 +720,7 @@ else:
         self.r3_migration_evidence(grouped=True)
         run = json.loads(Path(json.loads(Path(self.value['core_cohort']['path']).read_text())['run']['path']).read_text())
         row = run['grouped']
-        row.update(stderr=self.raw('test_chain (test_migrations.Scratch) ... FAIL\n\nRan 1 test in 0.01s\n\nFAILED (failures=1)\n'),
+        row.update(stderr=self.raw(py('test_chain (test_migrations.Scratch) ... FAIL\n\nRan 1 test in 0.01s\n\nFAILED (failures=1)\n')),
                    counts={'tests':1,'status':'FAILED','failures':1})
         self.value['core_cohort'] = self.change_document(self.value['core_cohort'], lambda d: d.update(run=self.raw(run)))
         self.bind_audit()
@@ -730,7 +742,7 @@ else:
             run = json.loads(Path(pair['carry']['path']).read_text())
             row = run['files'][0]
             if mode == 'zero':
-                row.update(stderr=self.raw('Ran 0 tests in 0.01s\n\nOK\n'),
+                row.update(stderr=self.raw(py('Ran 0 tests in 0.01s\n\nOK\n')),
                            counts={'tests':0,'status':'OK'},exit=0)
             elif mode == 'cancelled':
                 row['exit'] = -15
@@ -760,8 +772,8 @@ else:
                 for side, head in (('base', self.base), ('carry', self.head)):
                     run = json.loads(Path(self.grouped(head, False)['path']).read_text())
                     if side in omitted:
-                        run['grouped'].update(stderr=self.raw(
-                            'test_behavior (test_core.Scratch) ... ok\n\nRan 1 test in 0.01s\n\nOK\n'),
+                        run['grouped'].update(stderr=self.raw(py(
+                            'test_behavior (test_core.Scratch) ... ok\n\nRan 1 test in 0.01s\n\nOK\n')),
                             counts={'tests':1, 'status':'OK'})
                     pair[side] = self.raw(run)
                 self.value['python_comparisons'] = [self.raw(pair)]; self.bind_audit()
@@ -797,11 +809,46 @@ else:
                 if skipped: counts['skipped'] = skipped
                 summary = ('FAILED (failures=%d%s)' % (failures, ', skipped=1' if skipped else '')
                            if failures else 'OK')
-                run['grouped'].update(stderr=self.raw('\n'.join(cases) +
-                    '\n\nRan %d tests in 0.01s\n\n%s\n' % (len(cases), summary)),
+                run['grouped'].update(stderr=self.raw(py('\n'.join(cases) +
+                    '\n\nRan %d tests in 0.01s\n\n%s\n' % (len(cases), summary))),
                     counts=counts, exit=int(bool(failures)))
                 cohort['run'] = self.raw(run); self.value['core_cohort'] = self.raw(cohort); self.bind_audit()
                 with self.assertRaisesRegex(deploy.Refused, reason): self.admit()
+
+    def subtest_migration_evidence(self, base_steps, carry_steps):
+        """Item 1389: test_chain's subTests fail on both sides; its method outcome comes only from their detail events."""
+        self.r3_migration_evidence()
+        pair = json.loads(Path(self.value['python_comparisons'][0]['path']).read_text())
+        for side, steps in (('base', base_steps), ('carry', carry_steps)):
+            run = json.loads(Path(pair[side]['path']).read_text())
+            details = ''.join("%s\nFAIL: test_chain (test_migrations.Scratch) (step='%s')\n%s\n"
+                              "Traceback (most recent call last):\nAssertionError: scratch\n\n" % ('=' * 70, step, '-' * 70)
+                              for step in steps)
+            run['files'][0].update(stderr=self.raw('test_chain (test_migrations.Scratch) ... \n\n' + details + '-' * 70 +
+                                                   '\nRan 1 test in 0.01s\n\nFAILED (failures=%d)\n' % len(steps)),
+                                   counts={'tests': 1, 'status': 'FAILED', 'failures': len(steps)}, exit=1)
+            pair[side] = self.raw(run)
+        self.value['python_comparisons'] = [self.raw(pair)]; self.bind_audit()
+
+    def test_1389_same_subtest_failures_under_a_failing_parent_are_not_new(self):
+        self.subtest_migration_evidence(['a', 'b'], ['b', 'a'])
+        self.assertEqual(self.admit()['deterministic']['core_cohort']['result'], 'PASS')
+
+    def test_1389_changed_subtest_failure_with_equal_totals_refuses(self):
+        for carry in (['a', 'c'], ['a', 'a']):
+            with self.subTest(carry=carry):
+                self.subtest_migration_evidence(['a', 'b'], carry)
+                with self.assertRaisesRegex(deploy.Refused, 'subtest failure is new or changed'): self.admit()
+
+    def test_1389_unit_run_keeps_method_outcomes_apart_from_events(self):
+        self.subtest_migration_evidence(['a', 'b'], ['a', 'b'])
+        pair = json.loads(Path(self.value['python_comparisons'][0]['path']).read_text())
+        run = proof.unit_run(pair['carry'], self.git, self.head, node=False, expected=['tests/test_migrations.py'])
+        identity = ('tests/test_migrations.py', None, 'test_chain (test_migrations.Scratch)')
+        self.assertEqual(run['failures'], {identity: 1})
+        self.assertEqual(run['events'], {('tests/test_migrations.py', 'test_chain (test_migrations.Scratch)', "(step='%s')" % s, 'FAIL'): 1
+                                         for s in 'ab'})
+        self.assertEqual(run['counts'], {'tests': 1, 'failures': 2})
 
     def test_1131_r4_complete_train_prepares_and_verifies_release_record(self):
         self.r3_migration_evidence(grouped=True)

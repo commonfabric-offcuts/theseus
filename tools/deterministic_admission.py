@@ -190,8 +190,11 @@ def command_files(argv, cwd, inputs, node):
     return set(names)
 
 
-def outcomes(text, rows, counts, node):
-    """Reconcile case distributions, excluding explicitly typed TAP suites."""
+def outcomes(text, rows, counts, node, events=()):
+    """Reconcile case distributions, excluding explicitly typed TAP suites.
+
+    unittest counts failures and errors per event: a method whose subTests failed contributes one event per failed
+    subTest. Python method rows are reconciled with 'tests', and failure/error events with 'failures'/'errors'."""
     details = [''] * len(rows)
     if node:
         ends = list(re.finditer(r'^( *)(?:ok|not ok) \d+ - .+$', text, re.M))
@@ -214,10 +217,12 @@ def outcomes(text, rows, counts, node):
                     (('pass', 'ok'), ('fail', 'not ok'), ('skipped', 'skip'))),
                 'Node pass/fail/skip counts differ from individual outcomes')
     else:
+        kinds = Counter(kind for _, _, kind in events)
         require(set(measured) <= {'ok', 'FAIL', 'ERROR', 'skip'} and
-                all(counts.get(k, 0) == measured[s] for k, s in
-                    (('failures', 'FAIL'), ('errors', 'ERROR'), ('skipped', 'skip'))),
-                'Python failure/error/skip counts differ from individual outcomes')
+                counts.get('failures', 0) == kinds['FAIL'] and counts.get('errors', 0) == kinds['ERROR'] and
+                counts.get('skipped', 0) == measured['skip'] and
+                {case['name'] for case, status in rows if status in ('FAIL', 'ERROR')} == {p for p, _, _ in events},
+                'Python failure/error/skip counts differ from individual outcomes and events')
     return details
 
 
@@ -256,6 +261,7 @@ def unit_run(ref, git, head, *, node, expected=None):
     executions = [data['grouped']] if grouped else data['files']
     require(isinstance(executions, list) and bool(executions), 'unit run has no file results')
     seen, cases, failures, skipped, failed_files, totals = set(), Counter(), Counter(), Counter(), set(), Counter()
+    events = Counter()
     for row in executions:
         if grouped:
             fields(row, 'files cwd argv exit stdout stderr counts')
@@ -277,10 +283,13 @@ def unit_run(ref, git, head, *, node, expected=None):
             stdout, stderr = artifact(row['stdout']).decode('utf-8'), artifact(row['stderr']).decode('utf-8')
             text = stdout if node else stdout + '\n' + stderr
             counts, good = release_check.node_counts(text) if node else release_check.python_counts(text)
-            # The shared reader accepts arbitrary names before '(...)'. A
-            # unittest terminal summary with failure/skip counts is not a case.
-            individual = text if node else re.sub(r'^(?:OK|FAILED)(?: \([^\n]*\))?$', '', text, flags=re.M)
-            rows = ci_known_reds.unit_records(individual, node=node)
+            # A whole unittest log is read by unit_log: headings only in the result listing, failure events (with
+            # subTest identities) only in the detail section, completeness from Ran and the terminal summary.
+            if node:
+                rows, found = ci_known_reds.unit_records(text, node=True), []
+            else:
+                log = ci_known_reds.unit_log(text)
+                rows, found = log['rows'], log['events']
         except (UnicodeError, ci_known_reds.Refused) as error:
             raise Refused('deterministic admission: unreadable unit result: ' + str(error))
         require(bool(counts) and counts == row['counts'] and counts.get('tests', 0) > 0,
@@ -293,7 +302,7 @@ def unit_run(ref, git, head, *, node, expected=None):
                     'Node result omits its complete outcome summary')
         require(not any(counts.get(k, 0) for k in ('cancelled', 'todo', 'expected failures', 'unexpected successes')),
                 'unit run has incomplete or nonstandard outcomes')
-        details = outcomes(text, rows, counts, node)
+        details = outcomes(text, rows, counts, node, found)
         file_failed = False
         for (case, status), detail in zip(rows, details):
             # Whole TAP does not identify the file of a passing case. Preserve
@@ -308,6 +317,8 @@ def unit_run(ref, git, head, *, node, expected=None):
                 failed_files.add(path); file_failed = True
             elif status != 'ok':
                 skipped[identity] += 1
+        for parent, subtest, kind in found:
+            events[(origin({'name': parent}, '', paths, row.get('cwd'), False), parent, subtest, kind)] += 1
         if row['exit']:
             require(file_failed and not good, 'nonzero unit exit has no raw failing result')
         else:
@@ -315,7 +326,7 @@ def unit_run(ref, git, head, *, node, expected=None):
         totals.update({k: v for k, v in counts.items() if type(v) is int})
     require(seen == expected, 'whole suite/cohort omits files: ' + ', '.join(sorted(expected - seen)))
     return {'run': data['run'], 'attempt': data['attempt'], 'head': head, 'tree': tree,
-            'files': seen, 'cases': cases, 'failures': failures, 'skipped': skipped,
+            'files': seen, 'cases': cases, 'failures': failures, 'skipped': skipped, 'events': events,
             'failed_files': failed_files, 'counts': dict(totals)}
 
 
@@ -328,6 +339,7 @@ def comparison(ref, git, base, carry, *, node):
     require(old['files'] <= new['files'] and not old['cases'] - new['cases'], 'carry omits live file/case coverage')
     require(not new['failures'] - old['failures'] and not new['failed_files'] - old['failed_files'],
             'a deterministic case/file is newly failing on carry')
+    require(not new['events'] - old['events'], 'a deterministic subtest failure is new or changed on carry')
     require(not new['skipped'] - old['skipped'], 'carry adds skipped or incomplete cases')
     return {'base': {k: old[k] for k in ('run', 'attempt', 'head', 'tree', 'counts')},
             'carry': {k: new[k] for k in ('run', 'attempt', 'head', 'tree', 'counts')},

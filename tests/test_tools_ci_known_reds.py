@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from collections import Counter
 import copy
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -1322,6 +1324,136 @@ class TheRepositorysOwnChecks(unittest.TestCase):
         self.assertIn('test_python_units_run_each_check_once (test_tools_ci_known_reds.TheRepositorysOwnChecks)', found)
         twice = sorted({name for name in found if found.count(name) > 1})
         self.assertEqual(twice, [])
+
+
+
+UNITS_1389 = Path(__file__).resolve().parent / 'fixtures' / 'units_1389'
+RULE, DASHES = '=' * 70, '-' * 70
+IDENTITY = 'test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase)'
+PROJECTION = ('test_projection_boundary_refuses_unsent_content_even_if_a_producer_omits_access_check '
+              '(tests.test_removal_inventory_151.BoundaryCase)')
+
+
+def unit_fixture(name):
+    """A retained raw capture (item 1385 packet-2), joined as deterministic admission joins it: stdout, newline, stderr."""
+    stdout = (UNITS_1389 / (name + '.stdout')).read_text()
+    stderr = (UNITS_1389 / (name + '.stderr')).read_text()
+    return stdout + '\n' + stderr
+
+
+def unittest_log(listing, events=(), ran=None, summary=None):
+    """A small verbose unittest log in the layout unittest writes it."""
+    text = '\n'.join(listing) + '\n\n'
+    for kind, name, subtest in events:
+        text += '%s\n%s: %s%s\n%s\nTraceback (most recent call last):\nAssertionError: scratch\n\n' % (
+            RULE, kind, name, ' ' + subtest if subtest else '', DASHES)
+    fails = sum(kind == 'FAIL' for kind, _, _ in events)
+    errors = sum(kind == 'ERROR' for kind, _, _ in events)
+    if summary is None:
+        parts = (['failures=%d' % fails] if fails else []) + (['errors=%d' % errors] if errors else [])
+        summary = 'FAILED (%s)' % ', '.join(parts) if parts else 'OK'
+    return text + '%s\nRan %d tests in 0.01s\n\n%s\n' % (DASHES, len(listing) if ran is None else ran, summary)
+
+
+class UnitLog1389(unittest.TestCase):
+    """Item 1389: whole unittest logs read without treating diagnostics as checks."""
+
+    def test_retained_logs_read_every_method_failed_parent_and_event(self):
+        for side in ('py0-live-a1', 'py0-carry-a1'):
+            with self.subTest(side=side):
+                text = unit_fixture(side)
+                log = ci.unit_log(text)
+                statuses = Counter(status for _, status in log['rows'])
+                self.assertEqual(len(log['rows']), 383)
+                self.assertEqual(statuses, Counter({'ok': 338, 'FAIL': 45}))
+                self.assertEqual(len(log['events']), 55)
+                self.assertEqual(log['counts'], {'tests': 383, 'status': 'FAILED', 'failures': 55})
+                self.assertEqual(log['counts'], release_check.python_counts(text)[0])
+                names = {case['name']: status for case, status in log['rows']}
+                self.assertEqual(len(names), 383)
+                self.assertTrue(all(re.fullmatch(r'\w+ \([\w.]+\)', name) for name in names), 'a diagnostic line was read as a method')
+                # The joined line: the parent's failed subTests leave it without an outcome; the next method keeps its own ok.
+                self.assertEqual(names[IDENTITY], 'FAIL')
+                self.assertEqual(names[PROJECTION], 'ok')
+                self.assertEqual(sum(parent == IDENTITY for parent, _, _ in log['events']), 11)
+                self.assertIn((IDENTITY, "(view='workspace_topics')", 'FAIL'), log['events'])
+                # A method whose docstring line carries its outcome.
+                self.assertEqual(names['test_upgrade_keeps_an_open_edit_session_and_what_agents_were_handed_and_the_session_stays_live '
+                                       '(tests.test_migrations.JudgmentStepCase)'], 'ok')
+                self.assertEqual({p for p, _, _ in log['events']}, {n for n, s in names.items() if s == 'FAIL'})
+
+    def test_retained_live_and_carry_logs_have_the_same_methods_and_events(self):
+        live, carry = ci.unit_log(unit_fixture('py0-live-a1')), ci.unit_log(unit_fixture('py0-carry-a1'))
+        self.assertEqual(Counter(c['name'] for c, _ in live['rows']), Counter(c['name'] for c, _ in carry['rows']))
+        self.assertEqual(live['rows'], carry['rows'])
+        self.assertEqual(Counter(live['events']), Counter(carry['events']))
+
+    def test_retained_core_cohort_log_passes(self):
+        log = ci.unit_log(unit_fixture('core-a1'))
+        self.assertEqual(len(log['rows']), 249)
+        self.assertTrue(all(status == 'ok' for _, status in log['rows']))
+        self.assertEqual((log['events'], log['counts']), ([], {'tests': 249, 'status': 'OK'}))
+
+    def test_listing_reader_contract_is_unchanged(self):
+        # unit_records still reads a listing only; given the whole retained log it still stops at a diagnostic line.
+        text = re.sub(r'^(?:OK|FAILED)(?: \([^\n]*\))?$', '', unit_fixture('py0-live-a1'), flags=re.M)
+        with self.assertRaisesRegex(ci.Refused, 'final check outcome missing'):
+            ci.unit_records(text)
+        listing = 'test_a (m.C) ... ok\ntest_b (m.C) ... FAIL\n'
+        self.assertEqual(ci.unit_records(listing), [({'name': 'test_a (m.C)'}, 'ok'), ({'name': 'test_b (m.C)'}, 'FAIL')])
+
+    def test_a_changed_subtest_under_an_already_failing_parent_is_a_different_event(self):
+        text = unit_fixture('py0-carry-a1')
+        changed = text.replace("FAIL: %s (view='workspace_topics')" % IDENTITY, "FAIL: %s (view='workspace_other')" % IDENTITY)
+        self.assertNotEqual(changed, text)
+        old, new = ci.unit_log(text), ci.unit_log(changed)
+        self.assertEqual((old['rows'], old['counts']), (new['rows'], new['counts']))
+        self.assertEqual(Counter(new['events']) - Counter(old['events']), Counter({(IDENTITY, "(view='workspace_other')", 'FAIL'): 1}))
+
+    def test_diagnostics_after_the_listing_are_not_methods(self):
+        text = unittest_log(['test_a (m.C) ... FAIL', 'test_b (m.C) ... ok'], [('FAIL', 'test_a (m.C)', None)])
+        text = text.replace('AssertionError: scratch', "AssertionError: Tuples differ\n+ (0, '')\ntest_c (m.C) ... ok")
+        log = ci.unit_log(text)
+        self.assertEqual(log['rows'], [({'name': 'test_a (m.C)'}, 'FAIL'), ({'name': 'test_b (m.C)'}, 'ok')])
+        self.assertEqual(log['events'], [('test_a (m.C)', None, 'FAIL')])
+
+    def test_joined_docstring_stdout_and_last_subtest_parents(self):
+        listing = ['test_a (m.C) ... test_b (m.C)', 'B docstring ... test_c (m.C) ... {"proof":true}ok',
+                   'test_d (m.C) ... ']
+        events = [('FAIL', 'test_a (m.C)', '(k=1)'), ('ERROR', 'test_a (m.C)', '(k=2)'),
+                  ('ERROR', 'test_b (m.C)', '[msg] (k=3)'), ('FAIL', 'test_d (m.C)', '(k=4)'), ('FAIL', 'test_d (m.C)', '(k=4)')]
+        log = ci.unit_log(unittest_log(listing, events, ran=4))
+        self.assertEqual(log['rows'], [({'name': 'test_a (m.C)'}, 'FAIL'), ({'name': 'test_b (m.C)'}, 'ERROR'),
+                                       ({'name': 'test_c (m.C)'}, 'ok'), ({'name': 'test_d (m.C)'}, 'FAIL')])
+        self.assertEqual(Counter(log['events'])[('test_d (m.C)', '(k=4)', 'FAIL')], 2)
+        self.assertEqual(log['counts'], {'tests': 4, 'status': 'FAILED', 'failures': 3, 'errors': 2})
+
+    def test_incomplete_unmatched_or_miscounted_logs_refuse(self):
+        good = unittest_log(['test_a (m.C) ... ok', 'test_b (m.C) ... FAIL'], [('FAIL', 'test_b (m.C)', None)])
+        self.assertEqual(len(ci.unit_log(good)['rows']), 2)
+        live = unit_fixture('py0-live-a1')
+        cases = {
+            'no outcome and no marker': (unittest_log(['test_a (m.C)', 'test_b (m.C) ... ok']), 'check outcome missing'),
+            'subtest parent without event': (unittest_log(['test_a (m.C) ... test_b (m.C) ... ok']), 'check outcome missing for test_a'),
+            'last parent without event': (unittest_log(['test_a (m.C) ... ok', 'test_b (m.C) ... ']), 'check outcome missing for test_b'),
+            'FAIL without its event': (unittest_log(['test_a (m.C) ... FAIL'], summary='FAILED (failures=1)'), 'without its detail event'),
+            'event for an unlisted method': (unittest_log(['test_a (m.C) ... FAIL'], [('FAIL', 'test_a (m.C)', None),
+                                             ('FAIL', 'test_z (m.C)', None)]), 'names no listed method'),
+            'event for a passing method': (unittest_log(['test_a (m.C) ... ok'], [('FAIL', 'test_a (m.C)', None)]), 'outcome is ok'),
+            'fewer methods than Ran': (unittest_log(['test_a (m.C) ... ok'], ran=2), '1 method outcomes but Ran 2'),
+            'failure count differs': (good.replace('FAILED (failures=1)', 'FAILED (failures=2)'), 'counts differ from individual'),
+            'event kind differs': (good.replace('FAILED (failures=1)', 'FAILED (errors=1)'), 'counts differ from individual'),
+            'events under OK': (good.replace('FAILED (failures=1)', 'OK'), 'counts differ from individual'),
+            'cut before Ran': (good.split(DASHES + '\nRan')[0], 'no Ran line'),
+            'no terminal summary': (good.rsplit('FAILED', 1)[0], 'no single terminal summary'),
+            'unreadable terminal': (good.replace('FAILED (failures=1)', 'FAILED (failures=one)'), 'unreadable terminal'),
+            'retained log truncated': (live[:len(live) // 2], 'no Ran line'),
+            'retained log missing one event': (live.replace(RULE + "\nFAIL: %s (view='workspace')\n" % IDENTITY, RULE + '\n', 1),
+                                               'counts differ from individual'),
+        }
+        for name, (text, reason) in cases.items():
+            with self.subTest(case=name), self.assertRaisesRegex(ci.Refused, reason):
+                ci.unit_log(text)
 
 
 if __name__ == '__main__':

@@ -3109,6 +3109,22 @@
     }
   },
   "tests/test_tools_ci_known_reds.py": {
+    "98afd99e85ba09385d9d2e970eed0c01d4fa284f393084a330f5a04448ec957d": {
+      "inputs": [
+        "tests/fixtures/units_1389/core-a1.stderr",
+        "tests/fixtures/units_1389/py0-carry-a1.stderr",
+        "tests/fixtures/units_1389/py0-live-a1.stderr"
+      ],
+      "scope": "repository"
+    },
+    "b669588ae915eece9036bb06102f4665d88e0fc9e1f3158191327f111d59d86f": {
+      "inputs": [
+        "tests/fixtures/units_1389/core-a1.stdout",
+        "tests/fixtures/units_1389/py0-carry-a1.stdout",
+        "tests/fixtures/units_1389/py0-live-a1.stdout"
+      ],
+      "scope": "repository"
+    },
     "00bf1a6c0d562f48b79ef7f0907fb2952d4e6cd19559c26321a3af7f04d44ddb": {
       "inputs": [
         "docs/tools.md"

@@ -306,6 +306,114 @@ def unit_records(text, node=False):
     return rows
 
 
+RULE = '=' * 70
+DASHES = '-' * 70
+# A method heading joined onto the previous method's line: unittest writes a heading and ' ... ' without a newline, and a
+# method whose subTests failed prints no outcome of its own, so the next heading follows on that same line.
+JOINED = re.compile(r'(\w+ \([\w.]+\))(?:\s+\.\.\.\s*(.*))?$')
+EVENT = re.compile(r'^(FAIL|ERROR): (\S+ \([^)]+\))(?: (.+))?$')
+STATUS = re.compile(r'(?:^|[^A-Za-z0-9_])(ok|skipped .+|expected failure|unexpected success|FAIL|ERROR)$')
+
+
+def unit_log(text):
+    """Method outcomes and failure events from one complete verbose unittest log (stdout, newline, stderr).
+
+    unit_records reads only a result listing and keeps its contract for the callers that pass a listing; this reader
+    takes the whole log. Headings are read only in the listing, never in the failure details after it. A heading
+    joined onto the previous method's line is its own method, and a method left without an outcome by its failed
+    subTests takes FAIL or ERROR only from the detail events that name it. Each event keeps its parent, its subTest
+    description and its kind, with multiplicity. Truncated, unmatched or miscounted logs refuse.
+    """
+    lines = text.split('\n')
+    ends = [i for i in range(len(lines) - 1) if lines[i] == DASHES and re.match(r'^Ran (\d+) tests? in \S+s$', lines[i + 1])]
+    require(bool(ends), 'python-units: incomplete log, no Ran line')
+    end = ends[-1]
+    ran = int(re.match(r'^Ran (\d+) ', lines[end + 1])[1])
+    tail = [line for line in lines[end + 2:] if line.strip()]
+    require(len(tail) == 1, 'python-units: incomplete log, no single terminal summary')
+    terminal = re.fullmatch(r'(OK|FAILED)(?: \((.*)\))?', tail[0])
+    require(bool(terminal), 'python-units: unreadable terminal summary')
+    summary = {'tests': ran, 'status': terminal[1]}
+    for part in terminal[2].split(', ') if terminal[2] else ():
+        key, _, value = part.partition('=')
+        require(value.isdigit() and key not in summary, 'python-units: unreadable terminal summary')
+        summary[key] = int(value)
+
+    def header(i):
+        """The event a detail separator at i opens: '=' rule, FAIL:/ERROR: header, optional docstring, '-' rule."""
+        if lines[i] != RULE or i + 2 >= end:
+            return None
+        event = EVENT.match(lines[i + 1])
+        if event and (lines[i + 2] == DASHES or (i + 3 < end and lines[i + 3] == DASHES)):
+            return event
+        return None
+    starts = [i for i in range(end) if header(i)]
+    listing = lines[:starts[0] if starts else end]
+
+    # As in unit_records, a repeated identity is kept with its multiplicity (comparison counts it).
+    rows, pending, marked = [], None, False
+    for line in listing:
+        head = re.match(r'^(\S+ \([^)]+\))(?:\s+\.\.\.\s*(.*))?$', line)
+        if head:
+            if pending is not None:
+                # Only a method that printed its ' ... ' marker may be left without an outcome by failed subTests.
+                require(marked, 'python-units: check outcome missing')
+                rows.append(({'name': pending}, 'subtests'))
+            pending, marked, rest = head[1], head[2] is not None, head[2] or ''
+        elif pending and not marked:
+            # A docstring line; its own ' ... ' marker may be followed by a joined heading.
+            joined = re.search(r'\s\.\.\.\s+(?=\w+ \([\w.]+\)(?:\s+\.\.\.|$))', line)
+            if joined:
+                marked, rest = True, line[joined.end():]
+            else:
+                status = STATUS.search(line.strip())
+                if status:
+                    rows.append(({'name': pending}, status[1])); pending = None
+                continue
+        else:
+            rest = line.strip()
+        while pending and marked:
+            joined = JOINED.match(rest)
+            if joined:
+                rows.append(({'name': pending}, 'subtests'))
+                pending, marked, rest = joined[1], joined[2] is not None, joined[2] or ''
+                continue
+            status = STATUS.search(rest)
+            if status:
+                rows.append(({'name': pending}, status[1])); pending = None
+            break
+    if pending is not None:
+        require(marked, 'python-units: final check outcome missing')
+        rows.append(({'name': pending}, 'subtests'))
+
+    events = []
+    for i in starts:
+        event = header(i)
+        events.append((event[2], event[3], event[1]))
+    kinds = Counter(kind for _, _, kind in events)
+    parents = {}
+    for parent, _, kind in events:
+        parents.setdefault(parent, set()).add(kind)
+    statuses = {case['name']: status for case, status in rows}
+    require(set(parents) <= set(statuses), 'python-units: a failure event names no listed method')
+    final = []
+    for case, status in rows:
+        seen = parents.get(case['name'], set())
+        if status == 'subtests':
+            require(bool(seen), 'python-units: check outcome missing for ' + case['name'])
+            status = 'FAIL' if 'FAIL' in seen else 'ERROR'
+        elif status in ('FAIL', 'ERROR'):
+            require(status in seen, 'python-units: %s outcome without its detail event for %s' % (status, case['name']))
+        else:
+            require(not seen, 'python-units: failure event for a method whose outcome is ' + status)
+        final.append((case, status))
+    require(len(final) == ran, 'python-units: %d method outcomes but Ran %d' % (len(final), ran))
+    require(summary.get('failures', 0) == kinds['FAIL'] and summary.get('errors', 0) == kinds['ERROR'],
+            'python-units: failure/error counts differ from individual failure events')
+    require(not events or summary['status'] == 'FAILED', 'python-units: terminal status disagrees with failure events')
+    return {'rows': final, 'events': events, 'counts': summary}
+
+
 def unit_evidence(step, out, expected):
     name = step['name']
     text = (out / (name + '.log')).read_text()

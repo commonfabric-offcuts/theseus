@@ -1,0 +1,1232 @@
+test_a_cut_marker_is_never_returned (tests.test_message_marking.SweepCase) ... FAIL
+test_a_persons_own_characters_survive_and_are_recorded (tests.test_message_marking.SweepCase) ... FAIL
+test_each_tight_page_fits_with_less_room_than_a_marker (tests.test_message_marking.SweepCase) ... FAIL
+test_marking_is_invisible (tests.test_message_marking.SweepCase) ... FAIL
+test_nothing_escapes (tests.test_message_marking.SweepCase) ... FAIL
+test_plain_stays_inside (tests.test_message_marking.SweepCase) ... FAIL
+test_the_sweep_covers_every_view (tests.test_message_marking.SweepCase) ... FAIL
+test_step_back_refuses_once_an_ask_blocks_something_and_changes_nothing (tests.test_migrations.BlocksStepCase) ... ok
+test_step_back_restores_the_frozen_layout_and_every_row_while_no_ask_blocks_anything (tests.test_migrations.BlocksStepCase) ... ok
+test_the_step_is_the_blocks_and_the_folds_step_follows_it (tests.test_migrations.BlocksStepCase) ... ok
+test_upgrade_keeps_every_row_matches_a_fresh_instance_and_older_asks_hold_nothing (tests.test_migrations.BlocksStepCase) ... ok
+test_step_back_refuses_once_an_outcome_is_started_or_given_a_target_through_its_commands (tests.test_migrations.ChecksStepCase) ... ok
+test_step_back_refuses_while_any_record_of_the_step_is_kept_and_changes_nothing (tests.test_migrations.ChecksStepCase) ... ok
+test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_kept (tests.test_migrations.ChecksStepCase) ... ok
+test_the_step_follows_the_pipelines_and_the_settling_step_follows_it (tests.test_migrations.ChecksStepCase) ... ok
+test_upgrade_keeps_every_row_matches_its_frozen_layout_and_the_new_tables_start_empty (tests.test_migrations.ChecksStepCase) ... ok
+test_upgrade_writes_the_pipeline_as_facts_and_the_first_write_after_it_derives_the_state (tests.test_migrations.ChecksStepCase) ... ok
+test_business_refusal_is_recorded_without_partial_state (tests.test_migrations.CommitIdentityCase) ... ok
+test_changed_retry_is_attempt_error_and_cannot_replace_recorded_result (tests.test_migrations.CommitIdentityCase) ... ok
+test_concurrent_public_send_is_one_message_and_one_delivery_per_recipient (tests.test_migrations.CommitIdentityCase) ... ok
+test_contended_attempt_is_not_a_recorded_refusal (tests.test_migrations.CommitIdentityCase) ... ok
+test_deliveries_are_previews_and_full_source_retains_exact_writing (tests.test_migrations.CommitIdentityCase) ... ok
+test_each_damaged_form_is_refused (tests.test_migrations.CommitIdentityCase) ... ok
+test_hand_built_predecessors_keep_message_identity_immutable (tests.test_migrations.CommitIdentityCase) ... ok
+test_old_save_conflicts_and_preparation_retries_return_same_successor (tests.test_migrations.CommitIdentityCase) ... ok
+test_participant_changes_between_prepare_and_send_control_subscription_delivery (tests.test_migrations.CommitIdentityCase) ... ok
+test_prepare_is_private_and_rotates_draft_without_clearing_new_writing_on_send (tests.test_migrations.CommitIdentityCase) ... ok
+test_public_send_cannot_override_frozen_text_and_operation_stays_pending (tests.test_migrations.CommitIdentityCase) ... ok
+test_removal_cancels_subscription_reason_without_erasing_addressed_reason (tests.test_migrations.CommitIdentityCase) ... ok
+test_remove_and_readd_does_not_revive_old_subscription_deliveries (tests.test_migrations.CommitIdentityCase) ... ok
+test_reserved_send_operation_cannot_be_consumed_by_another_command (tests.test_migrations.CommitIdentityCase) ... ok
+test_runtime_and_capabilities_are_actual_and_authoritative (tests.test_migrations.CommitIdentityCase) ... ok
+test_stale_save_within_generation_cannot_replace_newer_text (tests.test_migrations.CommitIdentityCase) ... ok
+test_the_sequence_stops_where_the_store_would_stop_accepting_it (tests.test_migrations.CommitIdentityCase) ... ok
+test_two_private_openings_have_distinct_saved_drafts_and_do_not_deliver (tests.test_migrations.CommitIdentityCase) ... ok
+test_workspace_and_outcome_commit_once_across_concurrent_callers (tests.test_migrations.CommitIdentityCase) ... ok
+test_workspace_team_does_not_grant_operation_or_draft_visibility (tests.test_migrations.CommitIdentityCase) ... ok
+test_wrong_instance_and_unknown_operation_do_not_invent_outcomes (tests.test_migrations.CommitIdentityCase) ... ok
+test_before_the_step_a_cover_cannot_be_kept (tests.test_migrations.CoverStepCase) ... ok
+test_item_641_covers_45_to_46_precedes_positions_46_to_47 (tests.test_migrations.CoverStepCase) ... ok
+test_step_back_refuses_once_a_cover_was_written_even_cleared_and_changes_nothing (tests.test_migrations.CoverStepCase) ... ok
+test_step_back_restores_the_frozen_layout_and_every_row_while_no_cover_was_written (tests.test_migrations.CoverStepCase) ... ok
+test_the_step_follows_the_ends_and_topic_positions_follow_it (tests.test_migrations.CoverStepCase) ... ok
+test_upgrade_keeps_every_act_and_its_ids_matches_a_fresh_instance_and_a_cover_is_kept (tests.test_migrations.CoverStepCase) ... ok
+test_current_writer_adds_an_unmarked_revision (tests.test_migrations.DraftStepCase) ... ok
+test_step_back_refuses_once_a_revision_is_marked_and_changes_nothing (tests.test_migrations.DraftStepCase) ... ok
+test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_marked (tests.test_migrations.DraftStepCase) ... ok
+test_the_step_follows_355s_and_the_edits_step_follows_it (tests.test_migrations.DraftStepCase) ... ok
+test_upgrade_keeps_every_revision_unmarked_and_matches_a_fresh_instance (tests.test_migrations.DraftStepCase) ... ok
+test_migrate_finishes_the_step_and_orders_what_waits (tests.test_migrations.EarlySchema12Case) ... ok
+test_opening_refuses_it_and_names_migrate (tests.test_migrations.EarlySchema12Case) ... ok
+test_step_back_to_11_finishes_the_step_first (tests.test_migrations.EarlySchema12Case) ... ok
+test_step_back_refuses_once_a_message_is_edited_and_changes_nothing (tests.test_migrations.EditStepCase) ... ok
+test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_edited (tests.test_migrations.EditStepCase) ... ok
+test_the_step_follows_the_drafts_and_comes_just_before_the_sessions (tests.test_migrations.EditStepCase) ... ok
+test_upgrade_keeps_every_delivery_its_seq_and_reasons_and_matches_a_fresh_instance (tests.test_migrations.EditStepCase) ... ok
+test_step_back_is_refused_once_an_outcome_has_ended_even_brought_back_and_restores_the_layout_while_none_has (tests.test_migrations.EndsStepCase) ... ok
+test_the_step_follows_the_tools_and_the_covers_step_follows_it (tests.test_migrations.EndsStepCase) ... ok
+test_upgrade_keeps_every_row_reads_every_outcome_open_and_matches_a_fresh_instance (tests.test_migrations.EndsStepCase) ... ok
+test_before_the_step_a_fold_cannot_be_kept (tests.test_migrations.FoldStepCase) ... ok
+test_step_back_refuses_once_a_message_is_folded_and_changes_nothing (tests.test_migrations.FoldStepCase) ... ok
+test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_folded (tests.test_migrations.FoldStepCase) ... ok
+test_the_step_follows_the_blocks_and_the_head_is_its_version (tests.test_migrations.FoldStepCase) ... ok
+test_upgrade_keeps_every_act_and_its_ids_matches_a_fresh_instance_and_a_fold_is_kept (tests.test_migrations.FoldStepCase) ... ok
+test_step_back_refuses_once_theseus_has_posted_a_notice_and_changes_nothing (tests.test_migrations.HealthStepCase) ... ok
+test_step_back_restores_the_frozen_layout_and_every_row_while_no_notice_is_posted (tests.test_migrations.HealthStepCase) ... ok
+test_the_step_follows_the_settling_steps_and_the_reactions_step_follows_it (tests.test_migrations.HealthStepCase) ... ok
+test_upgrade_counts_every_claim_it_kept_as_its_own_since_which_turn_one_came_from_was_never_kept (tests.test_migrations.HealthStepCase) ... ok
+test_upgrade_counts_one_wake_per_turn_whatever_was_steered_into_it_and_a_turn_the_agent_acted_in_got_through (tests.test_migrations.HealthStepCase) ... ok
+test_upgrade_dates_a_turn_the_agent_wrote_in_by_its_message_so_its_late_end_clears_no_failure_after_it (tests.test_migrations.HealthStepCase) ... ok
+test_upgrade_folds_a_claim_that_began_before_an_act_and_failed_after_it_after_the_act (tests.test_migrations.HealthStepCase) ... ok
+test_upgrade_keeps_every_row_matches_a_fresh_instance_and_works_out_the_wake_facts (tests.test_migrations.HealthStepCase) ... ok
+test_upgrade_takes_the_schedulers_count_as_an_act_in_the_turns_it_left_out (tests.test_migrations.HealthStepCase) ... ok
+test_a_fresh_soren_invited_after_the_upgrade_gets_525s_id (tests.test_migrations.InviteStepCase) ... ok
+test_a_name_invited_under_324s_id_rule_is_given_back_under_its_id_not_checked_at_the_new_rules_place (tests.test_migrations.InviteStepCase) ... ok
+test_a_receipt_that_never_committed_fills_no_invitation_and_the_step_keeps_every_row (tests.test_migrations.InviteStepCase) ... ok
+test_a_store_release_81_left_at_42_gains_the_invitations_once_upgraded (tests.test_migrations.InviteStepCase) ... ok
+test_an_agent_invited_at_42_is_given_back_to_its_inviter_after_the_upgrade_with_its_sign_in (tests.test_migrations.InviteStepCase) ... ok
+test_someone_elses_file_at_the_invited_agents_own_place_is_refused_before_core_is_asked (tests.test_migrations.InviteStepCase) ... ok
+test_step_back_is_refused_once_an_agent_is_invited_and_restores_the_layout_while_none_is (tests.test_migrations.InviteStepCase) ... ok
+test_the_step_follows_the_judgments_and_the_tools_step_follows_it (tests.test_migrations.InviteStepCase) ... ok
+test_upgrade_keeps_every_row_knows_no_invitation_and_matches_a_fresh_instance (tests.test_migrations.InviteStepCase) ... ok
+test_step_back_refuses_once_a_judgment_is_attached_and_changes_nothing (tests.test_migrations.JudgmentStepCase) ... ok
+test_step_back_restores_the_frozen_layout_and_every_row_while_no_judgment_is_attached (tests.test_migrations.JudgmentStepCase) ... ok
+test_the_step_follows_the_sessions_and_the_invitations_step_follows_it (tests.test_migrations.JudgmentStepCase) ... ok
+test_upgrade_keeps_an_open_edit_session_and_what_agents_were_handed_and_the_session_stays_live (tests.test_migrations.JudgmentStepCase)
+A store at 41 with an edit session open, its delivery held, an exposure and the horizon: the step up keeps ... ok
+test_upgrade_keeps_every_row_matches_a_fresh_instance_and_takes_a_judgment (tests.test_migrations.JudgmentStepCase) ... ok
+test_a_copy_of_a_live_shaped_release_19_instance_goes_up_back_and_up_again (tests.test_migrations.LiveShapedChainCase) ... ok
+test_a_copy_of_a_live_shaped_release_19_instance_reaches_current_and_keeps_later_order (tests.test_migrations.LiveShapedChainCase) ... ok
+test_a_live_shaped_copy_takes_the_checks_step_up_and_back_and_holds_once_a_target_is_kept (tests.test_migrations.LiveShapedChainCase) ... ok
+test_a_live_shaped_copy_takes_the_pipelines_step_up_and_back_and_holds_once_a_pipeline_is_kept (tests.test_migrations.LiveShapedChainCase) ... ok
+test_day_one_on_the_live_shaped_copy_closes_the_replaced_topics_and_no_step_back_runs_after (tests.test_migrations.LiveShapedChainCase) ... ok
+test_once_a_whisper_exists_on_the_live_shaped_copy_no_step_back_runs (tests.test_migrations.LiveShapedChainCase) ... ok
+test_a_commit_error_after_the_commit_point_is_unconfirmed (tests.test_migrations.MigrationCase) ... ok
+test_a_database_newer_than_this_code_names_the_code_and_never_moves (tests.test_migrations.MigrationCase) ... ok
+test_a_failure_mid_upgrade_commits_nothing (tests.test_migrations.MigrationCase) ... ok
+test_a_missing_or_malformed_version_is_unsupported_not_newer (tests.test_migrations.MigrationCase) ... ok
+test_a_version_mismatch_names_both_versions_and_the_command (tests.test_migrations.MigrationCase) ... ok
+test_admin_migrates_then_registers_an_actor (tests.test_migrations.MigrationCase) ... ok
+test_backup_and_recovery_validation_accept_only_the_current_version (tests.test_migrations.MigrationCase) ... ok
+test_busy_refusals_are_retryable_and_change_nothing (tests.test_migrations.MigrationCase) ... ok
+test_current_upgrade_keeps_populated_dossier_order_and_refuses_the_older_chain (tests.test_migrations.MigrationCase) ... ok
+test_damaged_commit_identity_is_unsupported_at_any_version_and_migrate_never_moves_it (tests.test_migrations.MigrationCase) ... ok
+test_one_database_gets_one_remedy_from_the_store_and_from_migrate (tests.test_migrations.MigrationCase) ... ok
+test_reads_and_opening_never_migrate (tests.test_migrations.MigrationCase) ... ok
+test_refuses_while_the_runner_guard_is_held (tests.test_migrations.MigrationCase) ... ok
+test_rerun_at_the_current_version_changes_nothing (tests.test_migrations.MigrationCase) ... ok
+test_step_back_is_fenced_like_an_upgrade (tests.test_migrations.MigrationCase) ... ok
+test_step_back_refuses_while_any_opening_exists (tests.test_migrations.MigrationCase) ... ok
+test_step_back_restores_version_8_while_no_opening_exists (tests.test_migrations.MigrationCase) ... ok
+test_unknown_and_newer_versions_refuse (tests.test_migrations.MigrationCase) ... ok
+test_upgrade_keeps_every_record_and_fences_old_versions (tests.test_migrations.MigrationCase) ... ok
+test_wrong_instance_or_binding_refuses (tests.test_migrations.MigrationCase) ... ok
+test_ask_intent (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_cleared_cover (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_cleared_fold (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_cleared_mark (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_conversation (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_discarded_opening (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_earlier_marked_page_revision (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_ended_then_reopened_outcome (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_handed_attempt_alone (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_hosted_child_alone (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_hosted_route_pin_alone (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_hosted_turn_alone (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_judgment (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_message_revision (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_message_time (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_open_opening (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_page_read (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_published_opening (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_release_record (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_reopened_topic (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_reset_color (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_responsibility_revision (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_tell_intent (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_topic_source (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_topic_state (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_topic_turn (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_whisper (tests.test_migrations.OccupiedBoundaryCase) ... ok
+test_current_order_writer_keeps_a_revision_when_the_order_is_emptied (tests.test_migrations.OrderStepCase) ... ok
+test_step_back_refuses_once_an_order_is_kept_even_emptied_and_changes_nothing (tests.test_migrations.OrderStepCase) ... ok
+test_step_back_restores_the_frozen_layout_and_every_row_while_nobody_has_placed_an_order (tests.test_migrations.OrderStepCase) ... ok
+test_the_step_follows_the_reactions_and_the_stacks_step_follows_it (tests.test_migrations.OrderStepCase) ... ok
+test_upgrade_keeps_every_row_matches_a_fresh_instance_and_an_order_is_kept (tests.test_migrations.OrderStepCase) ... ok
+test_step_back_refuses_once_the_pipeline_is_turned_on_through_its_command (tests.test_migrations.PipelineStepCase) ... ok
+test_step_back_refuses_while_any_pipeline_record_is_kept_and_changes_nothing (tests.test_migrations.PipelineStepCase) ... ok
+test_step_back_restores_the_frozen_layout_and_every_row_while_no_pipeline_is_kept (tests.test_migrations.PipelineStepCase) ... ok
+test_the_step_is_the_pipelines_and_the_checks_step_follows_it (tests.test_migrations.PipelineStepCase) ... ok
+test_upgrade_keeps_every_row_matches_its_frozen_layout_and_the_pipeline_works (tests.test_migrations.PipelineStepCase) ... ok
+test_step_back_refuses_a_go_ahead_message_without_reactions_and_changes_nothing (tests.test_migrations.ReactionStepCase) ... ok
+test_step_back_refuses_while_a_reaction_or_a_go_ahead_ask_is_kept_and_changes_nothing (tests.test_migrations.ReactionStepCase) ... ok
+test_step_back_restores_the_frozen_layout_and_every_row_while_none_is_kept (tests.test_migrations.ReactionStepCase) ... ok
+test_the_step_follows_the_health_page_and_the_order_step_follows_it (tests.test_migrations.ReactionStepCase) ... ok
+test_upgrade_keeps_every_row_matches_a_fresh_instance_and_a_thumb_is_kept (tests.test_migrations.ReactionStepCase) ... ok
+test_release_19_upgrades_through_the_complete_current_chain_without_losing_its_records (tests.test_migrations.Release19ChainCase) ... ok
+test_the_whole_chain_runs_up_and_down_from_release_19 (tests.test_migrations.Release19ChainCase) ... ok
+test_step_back_refuses_while_any_topic_says_where_it_stands (tests.test_migrations.Schema10Case) ... ok
+test_step_back_to_10_restores_its_frozen_layout_while_no_topic_says_where_it_stands (tests.test_migrations.Schema10Case) ... ok
+test_upgrade_from_10_keeps_records_matches_a_fresh_instance_and_states_topics (tests.test_migrations.Schema10Case) ... ok
+test_step_back_refuses_once_a_message_has_a_time (tests.test_migrations.Schema11Case) ... ok
+test_step_back_to_11_keeps_who_a_topic_waits_on (tests.test_migrations.Schema11Case) ... ok
+test_step_back_to_11_restores_its_frozen_layout_while_no_message_has_a_time (tests.test_migrations.Schema11Case) ... ok
+test_upgrade_from_11_keeps_records_matches_a_fresh_instance_and_times_new_messages (tests.test_migrations.Schema11Case) ... ok
+test_upgrade_from_11_orders_what_waits_and_drops_who_cannot_read_it (tests.test_migrations.Schema11Case) ... ok
+test_step_back_refuses_while_any_mark_exists_cleared_or_not (tests.test_migrations.Schema12Case) ... ok
+test_step_back_to_12_restores_its_frozen_layout_while_no_mark_exists (tests.test_migrations.Schema12Case) ... ok
+test_upgrade_from_12_keeps_records_matches_a_fresh_instance_and_marks (tests.test_migrations.Schema12Case) ... ok
+test_a_wait_said_before_the_upgrade_stays_said_and_survives_a_step_back (tests.test_migrations.Schema13Case) ... ok
+test_step_back_refuses_once_a_message_asks_or_tells (tests.test_migrations.Schema13Case) ... ok
+test_step_back_to_13_restores_its_frozen_layout_while_no_message_says_ask_or_tell (tests.test_migrations.Schema13Case) ... ok
+test_upgrade_from_13_keeps_records_matches_a_fresh_instance_and_records_intent (tests.test_migrations.Schema13Case) ... ok
+test_step_back_refuses_once_a_turn_in_a_topic_is_recorded (tests.test_migrations.Schema14Case) ... ok
+test_step_back_to_14_restores_its_frozen_layout_while_no_turn_is_recorded (tests.test_migrations.Schema14Case) ... ok
+test_upgrade_from_14_keeps_records_matches_a_fresh_instance_and_reads_work (tests.test_migrations.Schema14Case) ... ok
+test_step_back_to_15_restores_its_frozen_layout_even_with_replies (tests.test_migrations.Schema15Case) ... ok
+test_upgrade_from_15_keeps_records_and_matches_a_fresh_instance (tests.test_migrations.Schema15Case) ... ok
+test_upgrade_to_16_works_out_where_each_readers_unanswered_messages_begin (tests.test_migrations.Schema15Case) ... ok
+test_step_back_refuses_while_any_choice_exists_reset_or_not (tests.test_migrations.Schema16Case) ... ok
+test_step_back_to_16_restores_its_frozen_layout_while_no_choice_exists (tests.test_migrations.Schema16Case) ... ok
+test_upgrade_from_16_keeps_records_matches_a_fresh_instance_and_keeps_choices (tests.test_migrations.Schema16Case) ... ok
+test_upgrade_makes_no_earlier_writer_a_participant (tests.test_migrations.Schema16Case) ... ok
+test_current_reply_writer_keeps_its_fold_and_downgrade_refuses_without_removing_it (tests.test_migrations.Schema17Case) ... ok
+test_step_back_to_17_restores_its_frozen_layout_and_works_out_the_horizons_again (tests.test_migrations.Schema17Case) ... ok
+test_upgrade_from_17_keeps_records_matches_a_fresh_instance_and_finds_the_oldest_unread (tests.test_migrations.Schema17Case) ... ok
+test_upgrade_from_17_keeps_who_has_written_in_each_topic (tests.test_migrations.Schema17Case) ... ok
+test_step_back_refuses_once_a_message_reopened_a_topic (tests.test_migrations.Schema18Case) ... ok
+test_step_back_to_18_restores_its_frozen_layout_while_no_topic_was_reopened (tests.test_migrations.Schema18Case) ... ok
+test_upgrade_from_18_keeps_records_and_activity_but_orders_by_stable_creation (tests.test_migrations.Schema18Case) ... ok
+test_step_back_refuses_while_anyone_has_read_a_page (tests.test_migrations.Schema19Case) ... ok
+test_step_back_to_19_restores_its_frozen_layout_while_nobody_has_read_a_page (tests.test_migrations.Schema19Case) ... ok
+test_upgrade_from_19_keeps_records_matches_a_fresh_instance_and_keeps_reads (tests.test_migrations.Schema19Case) ... ok
+test_step_back_refuses_once_a_note_has_a_revision (tests.test_migrations.Schema20Case) ... ok
+test_step_back_refuses_once_a_topic_or_an_open_opening_names_its_message (tests.test_migrations.Schema20Case) ... ok
+test_step_back_to_20_restores_its_frozen_layout_while_no_note_has_a_revision (tests.test_migrations.Schema20Case) ... ok
+test_upgrade_from_20_keeps_records_and_notes_matches_a_fresh_instance_and_fences_notes (tests.test_migrations.Schema20Case) ... ok
+test_current_runner_stop_records_its_end (tests.test_migrations.Schema21Case) ... ok
+test_step_back_to_21_drops_the_unanswered_counts_which_are_nobodys_records (tests.test_migrations.Schema21Case) ... ok
+test_step_back_to_21_restores_its_frozen_layout_while_every_wake_is_answered (tests.test_migrations.Schema21Case) ... ok
+test_step_back_to_21_says_a_stopped_runner_is_idle (tests.test_migrations.Schema21Case) ... ok
+test_upgrade_from_21_keeps_records_matches_a_fresh_instance_and_counts_from_zero (tests.test_migrations.Schema21Case) ... ok
+test_step_back_refuses_once_a_release_is_recorded (tests.test_migrations.Schema22Case) ... ok
+test_step_back_to_22_restores_its_frozen_layout_while_no_release_is_recorded (tests.test_migrations.Schema22Case) ... ok
+test_upgrade_from_22_keeps_records_matches_a_fresh_instance_and_records_releases (tests.test_migrations.Schema22Case) ... ok
+test_step_back_to_23_restores_its_frozen_layout_with_activity_recorded (tests.test_migrations.Schema23Case) ... ok
+test_upgrade_counts_a_completed_turn_by_someone_else_from_when_it_ended (tests.test_migrations.Schema23Case) ... ok
+test_upgrade_from_23_keeps_records_matches_a_fresh_instance_and_works_out_the_others (tests.test_migrations.Schema23Case) ... ok
+test_a_person_whose_only_unread_was_between_others_is_left_with_nothing_due (tests.test_migrations.Schema24Case) ... ok
+test_step_back_to_24_restores_its_frozen_layout (tests.test_migrations.Schema24Case) ... ok
+test_upgrade_from_24_keeps_records_matches_a_fresh_instance_and_needs_a_topic (tests.test_migrations.Schema24Case) ... ok
+test_upgrade_gives_a_delivery_version_24_kept_with_no_topic_its_message_topic (tests.test_migrations.Schema24Case) ... ok
+test_upgrade_settles_what_version_24_left_pending_for_a_person_between_others (tests.test_migrations.Schema24Case) ... ok
+test_step_back_to_25_works_activity_out_again_by_its_rule_with_turns_recorded (tests.test_migrations.Schema25Case) ... ok
+test_upgrade_from_25_matches_a_fresh_instance_and_raises_activity_to_the_latest_turn (tests.test_migrations.Schema25Case) ... ok
+test_upgrade_keeps_a_post_newer_than_the_latest_turn (tests.test_migrations.Schema25Case) ... ok
+test_step_back_is_refused_once_a_whisper_exists_and_changes_nothing (tests.test_migrations.Schema26Case) ... ok
+test_step_back_without_a_whisper_gives_26_its_layout_and_every_row_and_up_again_is_the_same (tests.test_migrations.Schema26Case) ... ok
+test_the_trigger_refuses_a_whisper_of_the_wrong_shape_whatever_code_inserts_it (tests.test_migrations.Schema26Case) ... ok
+test_upgrade_from_26_matches_whispers_layout_and_keeps_every_row (tests.test_migrations.Schema26Case) ... ok
+test_step_back_is_refused_once_a_conversation_exists_and_changes_nothing (tests.test_migrations.Schema27Case) ... ok
+test_step_back_without_a_conversation_gives_27_its_layout_and_every_row_and_up_again_is_the_same (tests.test_migrations.Schema27Case) ... ok
+test_upgrade_from_27_matches_a_fresh_instance_keeps_every_row_and_starts_no_conversation (tests.test_migrations.Schema27Case) ... ok
+test_a_queue_route_pin_does_not_hold_the_step_back (tests.test_migrations.Schema9Case) ... ok
+test_a_step_back_never_runs_an_upgrade_step (tests.test_migrations.Schema9Case) ... ok
+test_step_back_refuses_while_a_handed_seq_is_set (tests.test_migrations.Schema9Case) ... ok
+test_step_back_refuses_while_a_hosted_child_is_recorded (tests.test_migrations.Schema9Case) ... ok
+test_step_back_refuses_while_a_hosted_route_pin_exists (tests.test_migrations.Schema9Case) ... ok
+test_step_back_refuses_while_a_hosted_turn_exists (tests.test_migrations.Schema9Case) ... ok
+test_step_back_refuses_while_an_attempt_carries_a_handed_seq (tests.test_migrations.Schema9Case) ... ok
+test_step_back_to_9_restores_its_frozen_layout_while_nothing_is_hosted (tests.test_migrations.Schema9Case) ... ok
+test_upgrade_from_9_keeps_records_matches_a_fresh_instance_and_hosts (tests.test_migrations.Schema9Case) ... ok
+test_a_saved_or_closed_session_does_not_hold_the_step_back_and_a_held_row_alone_does (tests.test_migrations.SessionStepCase) ... ok
+test_current_session_writer_holds_and_releases_deliveries (tests.test_migrations.SessionStepCase) ... ok
+test_step_back_is_refused_while_a_session_is_open_held_or_lapsed_or_a_delivery_is_held (tests.test_migrations.SessionStepCase) ... ok
+test_the_horizon_is_set_again_by_the_next_step_up (tests.test_migrations.SessionStepCase) ... ok
+test_the_step_follows_the_edits_and_the_judgments_step_follows_it (tests.test_migrations.SessionStepCase) ... ok
+test_upgrade_keeps_every_row_sets_the_horizon_and_matches_a_fresh_instance (tests.test_migrations.SessionStepCase) ... ok
+test_the_step_runs_again_without_writing_twice_and_steps_back_keeping_what_it_wrote (tests.test_migrations.SettleStepCase) ... ok
+test_the_step_settles_and_the_health_pages_step_follows_it (tests.test_migrations.SettleStepCase) ... ok
+test_upgrade_answers_each_item_an_answerer_asked_its_author_back_on_and_leaves_the_rest_as_they_were (tests.test_migrations.SettleStepCase) ... ok
+test_step_back_refuses_once_anything_is_recorded_and_changes_nothing (tests.test_migrations.StacksStepCase) ... ok
+test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_recorded (tests.test_migrations.StacksStepCase) ... ok
+test_the_step_follows_the_order_and_the_blocks_step_follows_it (tests.test_migrations.StacksStepCase) ... ok
+test_upgrade_keeps_every_row_matches_a_fresh_instance_and_a_star_is_kept (tests.test_migrations.StacksStepCase) ... ok
+test_step_back_restores_the_layout_while_nothing_is_said_and_is_refused_once_anything_is (tests.test_migrations.ToolsStepCase) ... ok
+test_the_step_follows_the_invitations_and_the_ends_step_follows_it (tests.test_migrations.ToolsStepCase) ... ok
+test_upgrade_keeps_every_row_adds_the_tables_empty_and_matches_a_fresh_instance (tests.test_migrations.ToolsStepCase) ... ok
+test_historical_positions_roundtrip_rebuilds_the_same_order_and_keeps_saved_order (tests.test_migrations.TopicPositionStepCase) ... ok
+test_item_641_an_empty_instance_steps_back_and_up_without_inventing_topics (tests.test_migrations.TopicPositionStepCase) ... ok
+test_item_641_upgrade_reads_never_migrate_and_keeps_saved_orders_and_creation_positions (tests.test_migrations.TopicPositionStepCase) ... ok
+test_a_reached_outcome_refuses_every_change_but_a_readers_own_state_saves (tests.test_outcome_kinds.ReachedCase) ... ok
+test_every_exempt_command_is_a_command (tests.test_outcome_kinds.ReachedCase) ... ok
+test_in_a_reached_outcome_each_reader_still_keeps_their_own_place_marks_and_notes (tests.test_outcome_kinds.ReachedCase) ... ok
+test_only_the_owner_says_reached_in_his_own_words_and_only_for_an_outcome_to_reach (tests.test_outcome_kinds.ReachedCase) ... ok
+test_reached_closes_every_topic_clears_every_wait_and_folds_the_outcome_away (tests.test_outcome_kinds.ReachedCase) ... FAIL
+test_when_every_check_is_met_no_confirm_is_needed (tests.test_outcome_kinds.ReachedCase) ... ok
+test_with_nothing_met_he_confirms_first_and_the_checks_not_met_are_kept (tests.test_outcome_kinds.ReachedCase) ... ok
+test_an_outcome_from_before_release_21_reads_to_keep_and_changes_from_there (tests.test_outcome_kinds.StartAndChangeCase) ... ok
+test_every_outcome_starts_with_one_start_record_of_its_kind (tests.test_outcome_kinds.StartAndChangeCase) ... ok
+test_only_the_owner_changes_the_kind_and_every_change_is_kept (tests.test_outcome_kinds.StartAndChangeCase) ... ok
+test_the_kinds_past_cannot_be_rewritten (tests.test_outcome_kinds.StartAndChangeCase) ... ok
+test_a_held_account_is_withheld_and_recorded_nowhere (tests.test_removal_inventory_151.AccountInventoryCase) ... ok
+test_account_fetch_records_its_exact_identity (tests.test_removal_inventory_151.AccountInventoryCase) ... ok
+test_account_is_first_exposure_and_unsent_account_is_absent (tests.test_removal_inventory_151.AccountInventoryCase) ... ok
+test_the_account_hands_its_words_and_its_reader_is_corrected_once (tests.test_removal_inventory_151.AccountInventoryCase) ... ok
+test_without_the_read_the_account_corrects_nobody (tests.test_removal_inventory_151.AccountInventoryCase) ... ok
+test_a_late_unread_mark_on_unsent_identity_is_refused (tests.test_removal_inventory_151.BoundaryCase) ... ok
+test_complete_registry_has_one_projection_dispatch_and_two_reviewed_special_cases (tests.test_removal_inventory_151.BoundaryCase) ... FAIL
+test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase) ... test_projection_boundary_refuses_unsent_content_even_if_a_producer_omits_access_check (tests.test_removal_inventory_151.BoundaryCase) ... ok
+test_unsent_join_root_does_not_leak_through_another_messages_titlebar (tests.test_removal_inventory_151.BoundaryCase) ... ok
+test_a_person_reads_every_line_with_its_words (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_attention_blocking_hands_the_ask (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_check_asks_through_check_readings_hand_the_ask (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_check_asks_through_outcome_checks_hand_the_ask (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_conversation_waits_hand_the_ask (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_held_asks_are_withheld_in_every_line_and_recorded_nowhere (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_light_counts_keep_message_identity_without_handing_its_words (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_pipeline_asks_hand_the_ask (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_pipeline_item_words_cross_the_same_first_exposure_boundary (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_retracted_block_cannot_hold_work_when_another_question_keeps_the_topic_waiting (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_stars_hand_the_message (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_the_held_line_hands_the_ask (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_unsent_item_source_and_gathering_leave_no_placeholder_or_count (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_without_a_read_no_line_corrects_anyone_and_the_light_hands_nothing (tests.test_removal_inventory_151.OutcomeInventoryCase) ... FAIL
+test_1038_actual_startup_raise_sites_preserve_314_fixed_codes (tests.test_runner_faults_1038.StartupRulesCase) ... ok
+test_1038_startup_exact_type_and_fixed_code_boundaries (tests.test_runner_faults_1038.StartupRulesCase) ... ok
+test_1038_kept_class_contract_does_not_expand_with_runtime_classes (tests.test_runner_faults_1038.StartupRulesCase) ... ok
+test_1038_kept_class_contract_does_not_shrink_on_another_reader_runtime (tests.test_runner_faults_1038.StartupRulesCase) ... ok
+test_1038_startup_real_missing_route_root_keeps_binding_reason (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_startup_real_schema_refusal_survives_store_and_profile_wrappers (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_startup_real_instance_refusal_survives_store_and_profile_wrappers (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_startup_real_runner_identifier_refusal_keeps_reason (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_storage_wait_uses_injected_clock_without_real_sleep (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_nonbusy_cause_is_kept_in_pause_and_health (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_pause_write_failure_keeps_both_safe_causes_in_output (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_real_writer_releases_after_confirmed_busy_and_same_act_recovers (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_exhaustion_is_six_attempts_with_bounded_backoff (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_unknown_busy_named_error_is_never_retried (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_real_nonbusy_sqlite_error_with_busy_in_its_table_name_is_not_retried (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_committed_then_busy_is_uncertain_and_never_replayed (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_resume_keeps_prior_fault_without_changing_version_fence (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_safe_diagnostics_never_copy_adversarial_exception_text_or_names (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_core_refuses_unsanitized_diagnostic_without_mutating_pause (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_foreground_retains_real_invalid_host_directory_reason (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_foreground_retains_real_conflicting_host_executable_reason (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_cli_health_says_current_safe_pause_fault (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_cli_health_says_prior_safe_pause_fault_after_actual_resume (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_startup_fault_retains_safe_class_without_exposing_profile_input (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_old_code_reacquisition_cannot_reuse_a_stale_diagnostic (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_startup_cannot_echo_unknown_codes_or_trust_unknown_busy_classes (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_later_cleanup_fault_preserves_the_actual_saved_pause_and_first_cause (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_actual_continuing_writer_exhausts_without_partial_mutation (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_real_writer_prevents_pause_without_inventing_a_kept_record (tests.test_runner_faults_1038.FaultCase) ... ok
+test_1038_added_source_query_work_does_not_grow_with_duplicate_history (tests.test_runner_faults_1038.FanoutCase) ... ok
+test_1038_source_add_does_not_reinvalidate_item_source_history (tests.test_runner_faults_1038.FanoutCase) ... ok
+test_1038_32_added_sources_keep_individual_keys (tests.test_runner_faults_1038.FanoutCase) ... ok
+test_1038_33_added_sources_use_topic_and_bulk_clock (tests.test_runner_faults_1038.FanoutCase) ... ok
+test_1038_large_added_source_group_uses_existing_bulk_clock (tests.test_runner_faults_1038.FanoutCase) ... ok
+test_1038_source_notification_failure_rolls_back_relation_and_item_revision (tests.test_runner_faults_1038.FanoutCase) ... ok
+test_1038_added_batch_preserves_addressed_only_reader_and_destination_privacy (tests.test_runner_faults_1038.FanoutCase) ... ok
+test_bulk_configuration_writes_one_key_per_reader_topic_not_source (tests.test_source_cover_cost_757.SourceCoverCostCase) ... ok
+test_bulk_retains_addressed_only_reader_of_nonrepresentative_source (tests.test_source_cover_cost_757.SourceCoverCostCase) ... ok
+test_generated_cover_requests_first_authored_cover (tests.test_source_cover_cost_757.SourceCoverCostCase) ... ok
+test_membership_change_invalidates_only_affected_reader_once (tests.test_source_cover_cost_757.SourceCoverCostCase) ... ok
+test_one_foreground_page_shares_root_projections_and_topic_clock (tests.test_source_cover_cost_757.SourceCoverCostCase) ... ok
+test_real_reply_to_300_messages_and_ten_readers_has_no_item_projection (tests.test_source_cover_cost_757.SourceCoverCostCase) ... ok
+test_release_only_invalidates_the_shipping_pipeline (tests.test_source_cover_cost_757.SourceCoverCostCase) ... ok
+test_unsourced_roots_skip_item_projection_and_three_dossier_walks (tests.test_source_cover_cost_757.SourceCoverCostCase) ... ok
+test_unlinked_message_growth_does_not_expand_complete_view_vm_work (tests.test_source_cover_scale_1251.CostCase) ... ok
+test_applied_unsent_retracted_and_restored_member_match_reference (tests.test_source_cover_scale_1251.ProjectionCase) ... ok
+test_full_own_window_and_other_dossier_keep_exact_aggregate_fallback (tests.test_source_cover_scale_1251.ProjectionCase) ... ok
+test_join_split_and_private_source_preserve_exact_projection_clocks (tests.test_source_cover_scale_1251.ProjectionCase) ... ok
+test_withdrawn_question_and_destination_access_preserve_membership (tests.test_source_cover_scale_1251.ProjectionCase) ... ok
+test_a_private_dossier_can_link_its_own_private_source (tests.test_wait_source_770.WaitSource770Case) ... ok
+test_cli_records_the_supplied_reply_before_resolving_its_root (tests.test_wait_source_770.WaitSource770Case) ... ok
+test_existing_ask_and_answer_fence_survive_manual_wait_writes (tests.test_wait_source_770.WaitSource770Case) ... ok
+test_membership_and_whisper_refusals_are_atomic (tests.test_wait_source_770.WaitSource770Case) ... ok
+test_omitted_and_null_sources_are_not_backfilled (tests.test_wait_source_770.WaitSource770Case) ... ok
+test_projection_filters_both_sources_without_mutating_the_record (tests.test_wait_source_770.WaitSource770Case) ... ok
+test_recorded_source_roundtrips_all_cover_views_and_partial_updates (tests.test_wait_source_770.WaitSource770Case) ... ok
+test_no_answer_is_said_on_the_viewers_own_whisper_until_its_other_person_whispers_back (tests.test_whispers.AnsweredCase) ... FAIL
+test_a_whispers_attachment_opens_for_its_two_people_alone (tests.test_whispers.AttachmentCase) ... ok
+test_a_whisper_delivery_is_named_in_cores_words_and_the_agents_instructions_say_how_to_answer (tests.test_whispers.HostedWordsCase) ... ok
+test_every_read_of_messages_is_one_this_file_classifies (tests.test_whispers.PathAuditCase) ... FAIL
+test_every_view_is_classified_for_whispers (tests.test_whispers.PathAuditCase) ... FAIL
+test_a_page_of_one_never_stalls_on_whispers_between_others (tests.test_whispers.ReadPathCase) ... ok
+test_a_persons_whisper_answers_only_the_asks_of_the_agent_it_goes_to (tests.test_whispers.ReadPathCase) ... FAIL
+test_a_persons_whisper_counts_as_their_writing_in_the_topic_and_moves_nothing_that_points_at_it (tests.test_whispers.ReadPathCase) ... ok
+test_a_reply_says_how_its_parent_begins_only_to_a_reader_who_may_see_the_parent (tests.test_whispers.ReadPathCase) ... ok
+test_a_topic_names_the_whisper_that_reopened_or_started_it_only_to_its_two_people (tests.test_whispers.ReadPathCase) ... ok
+test_an_agents_whisper_leaves_every_shared_fact_alone (tests.test_whispers.ReadPathCase) ... FAIL
+test_an_agents_whisper_never_answers_an_ask_on_the_agent (tests.test_whispers.ReadPathCase) ... FAIL
+test_marks_treat_a_whisper_someone_is_outside_as_an_unknown_message (tests.test_whispers.ReadPathCase) ... FAIL
+test_one_delivery_reaches_the_one_other_person_and_nobody_elses_counts_move (tests.test_whispers.ReadPathCase) ... FAIL
+test_outside_a_whisper_every_read_by_its_id_is_refused_exactly_as_an_unknown_id (tests.test_whispers.ReadPathCase) ... ok
+test_the_changes_feed_names_a_whisper_only_in_its_two_peoples_own_scopes (tests.test_whispers.ReadPathCase) ... FAIL
+test_topic_pages_hold_a_whisper_for_its_two_people_alone_in_every_audience_and_direction (tests.test_whispers.ReadPathCase) ... FAIL
+test_when_the_wait_is_from_the_ask_a_whisper_replies_to_it_moves_to_the_next_ask_nobody_has_answered (tests.test_whispers.ReadPathCase) ... FAIL
+test_a_reply_in_the_topic_and_a_thumbs_up_still_answer_an_ask (tests.test_whispers.WhisperAnswersAskCase) ... FAIL
+test_a_whisper_answers_the_one_ask_it_replies_to_and_the_wait_moves_to_the_next_open_one (tests.test_whispers.WhisperAnswersAskCase) ... FAIL
+test_a_whisper_replying_to_an_ask_answers_it_and_waiting_on_you_goes_out_while_its_words_stay_private (tests.test_whispers.WhisperAnswersAskCase) ... FAIL
+test_a_whisper_that_replies_to_no_ask_of_theirs_answers_nothing (tests.test_whispers.WhisperAnswersAskCase) ... FAIL
+test_a_whisper_to_someone_elses_ask_answers_nothing_for_the_asker_or_the_one_asked (tests.test_whispers.WhisperAnswersAskCase) ... FAIL
+test_a_watch_says_a_whisper_by_its_delivery_and_skips_the_bare_change (tests.test_whispers.WhisperCLICase) ... ok
+test_an_agent_reads_a_whisper_with_how_to_answer_and_answers_with_the_whisper_verb_and_others_see_nothing (tests.test_whispers.WhisperCLICase) ... FAIL
+test_the_owner_is_told_of_work_in_their_outcome_only_from_what_they_can_read (tests.test_whispers.WhisperPausedWakesCase) ... ok
+test_the_person_who_whispered_sees_the_agent_waiting_on_it_and_is_told_so_and_nobody_else_is (tests.test_whispers.WhisperPausedWakesCase) ... ok
+test_a_turn_handed_only_a_whisper_in_a_topic_is_not_work_or_activity_there (tests.test_whispers.WhisperTurnCase) ... ok
+test_a_delivery_left_unread_in_a_topic_the_agent_left_never_shows_its_whispers_wake (tests.test_whispers.WhisperWakeHealthCase) ... ok
+test_an_agent_with_only_a_whisper_waiting_is_parked_but_shown_to_nobody_else (tests.test_whispers.WhisperWakeHealthCase) ... ok
+test_everyone_counts_what_waits_on_the_record_as_the_agent_does_after_it_left_and_came_back (tests.test_whispers.WhisperWakeHealthCase) ... ok
+test_others_count_only_what_waits_on_the_record_and_the_agent_counts_its_whispers_too (tests.test_whispers.WhisperWakeHealthCase) ... ok
+test_the_time_a_whispers_wake_went_unanswered_is_never_shown_to_anyone_else (tests.test_whispers.WhisperWakeHealthCase) ... ok
+test_a_draft_saved_before_a_new_message_started_as_a_tell_keeps_the_whisper_it_showed (tests.test_whispers.WritingCase) ... ok
+test_a_person_whispers_to_one_agent_by_post_or_by_the_prepared_send_and_it_asks_and_tells_nothing (tests.test_whispers.WritingCase) ... ok
+test_a_persons_whisper_may_be_notebook_evidence_or_a_topics_source_to_its_two_people_and_an_agents_never (tests.test_whispers.WritingCase) ... FAIL
+test_a_persons_whisper_may_be_where_a_pipeline_item_came_from_and_outside_it_shows_as_a_message_you_cannot_open (tests.test_whispers.WritingCase) ... FAIL
+test_a_reply_the_writer_cannot_see_is_refused_as_one_that_does_not_exist (tests.test_whispers.WritingCase) ... ok
+test_a_tell_written_about_a_whisper_goes_on_the_record_answering_nothing_and_quotes_only_what_was_chosen (tests.test_whispers.WritingCase) ... FAIL
+test_a_whisper_never_opens_a_topic_by_any_writing_that_opens_one (tests.test_whispers.WritingCase) ... ok
+test_every_wrong_shape_is_refused_in_its_own_words_and_nothing_is_sent (tests.test_whispers.WritingCase) ... ok
+test_only_the_person_in_a_whisper_quotes_it_into_a_tell_and_its_two_into_another_whisper (tests.test_whispers.WritingCase) ... FAIL
+
+======================================================================
+FAIL: test_a_cut_marker_is_never_returned (tests.test_message_marking.SweepCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 152, in test_a_cut_marker_is_never_returned
+    self.seed()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 30, in seed
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_a_persons_own_characters_survive_and_are_recorded (tests.test_message_marking.SweepCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 139, in test_a_persons_own_characters_survive_and_are_recorded
+    self.seed()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 30, in seed
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_each_tight_page_fits_with_less_room_than_a_marker (tests.test_message_marking.SweepCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 113, in test_each_tight_page_fits_with_less_room_than_a_marker
+    self.seed()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 30, in seed
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_marking_is_invisible (tests.test_message_marking.SweepCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 98, in test_marking_is_invisible
+    self.seed()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 30, in seed
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_nothing_escapes (tests.test_message_marking.SweepCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 124, in test_nothing_escapes
+    self.seed()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 30, in seed
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_plain_stays_inside (tests.test_message_marking.SweepCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 131, in test_plain_stays_inside
+    self.seed()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 30, in seed
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_the_sweep_covers_every_view (tests.test_message_marking.SweepCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 94, in test_the_sweep_covers_every_view
+    self.seed()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_marking.py", line 30, in seed
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_reached_closes_every_topic_clears_every_wait_and_folds_the_outcome_away (tests.test_outcome_kinds.ReachedCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_outcome_kinds.py", line 108, in test_reached_closes_every_topic_clears_every_wait_and_folds_the_outcome_away
+    self.post("Is the deck ready to send?", addressees=["owner"], intent="ask")
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_targets.py", line 130, in post
+    return self.committed(self.command("message.post", dict({"body": body}, **args), {"topic_id": topic}, actor=actor))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-6', 'kind': 'message.post', 'status': 'rejected', 'recorded': False, 'result': None, 'affected': [], 'error': {'code': 'ASK_WAIT_REQUIRED', 'message': 'Supply ask_wait with root_id, cover_revision and questions: each asked person needs actor_id, text, options, default and reason. Use [] and null for no choices/no default, with a reason; nothing was sent', 'retryable': False}}
+
+======================================================================
+FAIL: test_complete_registry_has_one_projection_dispatch_and_two_reviewed_special_cases (tests.test_removal_inventory_151.BoundaryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 51, in test_complete_registry_has_one_projection_dispatch_and_two_reviewed_special_cases
+    self.assertEqual(set(VIEWS), set.union(*groups))
+AssertionError: Items in the first set but not the second:
+'hosted_seats'
+'submission_mention_reach'
+'hosted_seat'
+'pipeline_clock'
+'pipeline_freeze'
+'pipeline_predictions'
+'rail_dimming'
+
+======================================================================
+FAIL: test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase) (view='workspace_topics')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 46, in test_identity_only_views_do_not_fabricate_first_exposure
+    self.assertNotIn('Removal fixture exact words', json.dumps(answer))
+AssertionError: 'Removal fixture exact words' unexpectedly found in '{"instance_id": "test-instance", "items": [{"id": "t1", "workspace_id": "w1", "title": "Topic", "creator_id": "owner", "version": 2, "state": "active", "archived": false, "state_note": "", "state_by": null, "state_ms": null, "activity_ms": 1795856056959, "state_message_id": null, "source_message_id": null, "kind": "topic", "replaced_by": null, "list_position": 2, "message_count": 2, "latest_seq": 2, "latest_message": {"id": "m-edfcb4fb16ef4bb6977534ecc6e7a2f9", "revision": 1, "author_id": "owner", "author_kind": "human", "sent_ms": 1795856056959, "opening": "Removal fixture exact words", "truncated": false, "withheld": false, "removed": false}, "unread": 2, "addressed": 1, "waiting_on": [], "asks": [], "work": {"observed": true, "seen_ms": 1795856056959, "by": "owner", "how": "posted", "waits": false}, "cover_waiting": 0, "build": false}], "groups": {"done": 0, "archived": 0}, "next_cursor": null, "order": {"ids": [], "revision": 0}, "relevant_versions": {"workspace": 3}}'
+
+======================================================================
+FAIL: test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase) (view='workspace')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 47, in test_identity_only_views_do_not_fabricate_first_exposure
+    self.assertEqual(self.sql('SELECT * FROM message_first_exposures WHERE message_id=?', (message,)), [])
+AssertionError: Lists differ: [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)
+
+- [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)]
++ []
+
+======================================================================
+FAIL: test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase) (view='workspace_counts')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 47, in test_identity_only_views_do_not_fabricate_first_exposure
+    self.assertEqual(self.sql('SELECT * FROM message_first_exposures WHERE message_id=?', (message,)), [])
+AssertionError: Lists differ: [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)
+
+- [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)]
++ []
+
+======================================================================
+FAIL: test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase) (view='workspace_members')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 47, in test_identity_only_views_do_not_fabricate_first_exposure
+    self.assertEqual(self.sql('SELECT * FROM message_first_exposures WHERE message_id=?', (message,)), [])
+AssertionError: Lists differ: [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)
+
+- [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)]
++ []
+
+======================================================================
+FAIL: test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase) (view='actors')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 47, in test_identity_only_views_do_not_fabricate_first_exposure
+    self.assertEqual(self.sql('SELECT * FROM message_first_exposures WHERE message_id=?', (message,)), [])
+AssertionError: Lists differ: [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)
+
+- [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)]
++ []
+
+======================================================================
+FAIL: test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase) (view='reactions')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 47, in test_identity_only_views_do_not_fabricate_first_exposure
+    self.assertEqual(self.sql('SELECT * FROM message_first_exposures WHERE message_id=?', (message,)), [])
+AssertionError: Lists differ: [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)
+
+- [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)]
++ []
+
+======================================================================
+FAIL: test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase) (view='source_topics')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 47, in test_identity_only_views_do_not_fabricate_first_exposure
+    self.assertEqual(self.sql('SELECT * FROM message_first_exposures WHERE message_id=?', (message,)), [])
+AssertionError: Lists differ: [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)
+
+- [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)]
++ []
+
+======================================================================
+FAIL: test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase) (view='stack_positions')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 47, in test_identity_only_views_do_not_fabricate_first_exposure
+    self.assertEqual(self.sql('SELECT * FROM message_first_exposures WHERE message_id=?', (message,)), [])
+AssertionError: Lists differ: [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)
+
+- [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)]
++ []
+
+======================================================================
+FAIL: test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase) (view='message_acts')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 47, in test_identity_only_views_do_not_fabricate_first_exposure
+    self.assertEqual(self.sql('SELECT * FROM message_first_exposures WHERE message_id=?', (message,)), [])
+AssertionError: Lists differ: [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)
+
+- [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)]
++ []
+
+======================================================================
+FAIL: test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase) (view='dossier_cover')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 47, in test_identity_only_views_do_not_fabricate_first_exposure
+    self.assertEqual(self.sql('SELECT * FROM message_first_exposures WHERE message_id=?', (message,)), [])
+AssertionError: Lists differ: [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)
+
+- [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)]
++ []
+
+======================================================================
+FAIL: test_identity_only_views_do_not_fabricate_first_exposure (tests.test_removal_inventory_151.BoundaryCase) (view='stack_namer')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 47, in test_identity_only_views_do_not_fabricate_first_exposure
+    self.assertEqual(self.sql('SELECT * FROM message_first_exposures WHERE message_id=?', (message,)), [])
+AssertionError: Lists differ: [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)] != []
+
+First list contains 1 additional elements.
+First extra element 0:
+('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)
+
+- [('m-edfcb4fb16ef4bb6977534ecc6e7a2f9', 'agent-a', 1795856056973)]
++ []
+
+======================================================================
+FAIL: test_a_person_reads_every_line_with_its_words (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 447, in test_a_person_reads_every_line_with_its_words
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_attention_blocking_hands_the_ask (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 488, in test_attention_blocking_hands_the_ask
+    self.hands("attention blocking")
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 96, in hands
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_check_asks_through_check_readings_hand_the_ask (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 497, in test_check_asks_through_check_readings_hand_the_ask
+    self.hands("check asks (check_readings)")
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 96, in hands
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_check_asks_through_outcome_checks_hand_the_ask (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 494, in test_check_asks_through_outcome_checks_hand_the_ask
+    self.hands("check asks (outcome_checks)")
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 96, in hands
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_conversation_waits_hand_the_ask (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 479, in test_conversation_waits_hand_the_ask
+    self.hands("conversation waits")
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 96, in hands
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_held_asks_are_withheld_in_every_line_and_recorded_nowhere (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 433, in test_held_asks_are_withheld_in_every_line_and_recorded_nowhere
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_light_counts_keep_message_identity_without_handing_its_words (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 113, in test_light_counts_keep_message_identity_without_handing_its_words
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_pipeline_asks_hand_the_ask (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 482, in test_pipeline_asks_hand_the_ask
+    self.hands("pipeline asks")
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 96, in hands
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_pipeline_item_words_cross_the_same_first_exposure_boundary (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 106, in test_pipeline_item_words_cross_the_same_first_exposure_boundary
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_retracted_block_cannot_hold_work_when_another_question_keeps_the_topic_waiting (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 133, in test_retracted_block_cannot_hold_work_when_another_question_keeps_the_topic_waiting
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_stars_hand_the_message (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 485, in test_stars_hand_the_message
+    self.hands("stars")
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 96, in hands
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_the_held_line_hands_the_ask (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 491, in test_the_held_line_hands_the_ask
+    self.hands("held line")
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 96, in hands
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_unsent_item_source_and_gathering_leave_no_placeholder_or_count (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_removal_inventory_151.py", line 121, in test_unsent_item_source_and_gathering_leave_no_placeholder_or_count
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_without_a_read_no_line_corrects_anyone_and_the_light_hands_nothing (tests.test_removal_inventory_151.OutcomeInventoryCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 500, in test_without_a_read_no_line_corrects_anyone_and_the_light_hands_nothing
+    self.world()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_message_exposure.py", line 370, in world
+    self.piece = self.committed(self.start())["piece_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'pipeline.piece_start', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'PERSON_TOPIC', 'message': "A person's topic stays theirs; create a separate topic for the piece", 'retryable': False}}
+
+======================================================================
+FAIL: test_no_answer_is_said_on_the_viewers_own_whisper_until_its_other_person_whispers_back (tests.test_whispers.AnsweredCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 676, in test_no_answer_is_said_on_the_viewers_own_whisper_until_its_other_person_whispers_back
+    self.whisper("Not yet", actor="agent-a", to="owner", reply_to=asked)
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 40, in whisper
+    return self.committed(self.post(body, actor, addressees=[to], whisper=True, **args))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-7', 'kind': 'message.post', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'REPLY_PASSAGE_REQUIRED', 'message': 'Name reply_passage with its source revision, start and end, or reply_without_quote with the reason', 'retryable': False}}
+
+======================================================================
+FAIL: test_every_read_of_messages_is_one_this_file_classifies (tests.test_whispers.PathAuditCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 1055, in test_every_read_of_messages_is_one_this_file_classifies
+    self.assertEqual(found, {name: count for name, (_, count) in MESSAGE_READS.items()},
+AssertionError: {'aim_next/answer_delivery.py': 3, 'aim_next/answer_[1123 chars]': 6} != {'aim_next/changes.py': 1, 'aim_next/current_rule.py[1004 chars]: 10}
+Diff is 1586 characters long. Set self.maxDiff to None to see it. : a read of the messages table was added or moved: apply whispers.VISIBLE or visible(), then classify it here
+
+======================================================================
+FAIL: test_every_view_is_classified_for_whispers (tests.test_whispers.PathAuditCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 1045, in test_every_view_is_classified_for_whispers
+    self.assertEqual(sorted(validation.VIEWS), sorted(VIEW_PATHS), "a view was added or removed: classify how it keeps a whisper private")
+AssertionError: Lists differ: ['act[174 chars]r', 'dossier_move_targets', 'dossier_moves', '[856 chars]ces'] != ['act[174 chars]r', 'editor_state', 'health', 'health_light', [585 chars]ces']
+
+First differing element 13:
+'dossier_move_targets'
+'editor_state'
+
+First list contains 14 additional elements.
+First extra element 56:
+'topic'
+
+Diff is 1296 characters long. Set self.maxDiff to None to see it. : a view was added or removed: classify how it keeps a whisper private
+
+======================================================================
+FAIL: test_a_persons_whisper_answers_only_the_asks_of_the_agent_it_goes_to (tests.test_whispers.ReadPathCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 447, in test_a_persons_whisper_answers_only_the_asks_of_the_agent_it_goes_to
+    ask = self.committed(self.post("Can you confirm?", "agent-b", addressees=["owner"], intent="ask"))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-5', 'kind': 'message.post', 'status': 'rejected', 'recorded': False, 'result': None, 'affected': [], 'error': {'code': 'ASK_WAIT_REQUIRED', 'message': 'Supply ask_wait with root_id, cover_revision and questions: each asked person needs actor_id, text, options, default and reason. Use [] and null for no choices/no default, with a reason; nothing was sent', 'retryable': False}}
+
+======================================================================
+FAIL: test_an_agents_whisper_leaves_every_shared_fact_alone (tests.test_whispers.ReadPathCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 438, in test_an_agents_whisper_leaves_every_shared_fact_alone
+    result = self.committed(self.post("Not yet", "agent-a", addressees=["owner"], whisper=True, reply_to=asked))
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-8', 'kind': 'message.post', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'REPLY_PASSAGE_REQUIRED', 'message': 'Name reply_passage with its source revision, start and end, or reply_without_quote with the reason', 'retryable': False}}
+
+======================================================================
+FAIL: test_an_agents_whisper_never_answers_an_ask_on_the_agent (tests.test_whispers.ReadPathCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 496, in test_an_agents_whisper_never_answers_an_ask_on_the_agent
+    self.whisper("Checked.", actor="agent-a", to="owner", reply_to=asked)
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 40, in whisper
+    return self.committed(self.post(body, actor, addressees=[to], whisper=True, **args))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-7', 'kind': 'message.post', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'REPLY_PASSAGE_REQUIRED', 'message': 'Name reply_passage with its source revision, start and end, or reply_without_quote with the reason', 'retryable': False}}
+
+======================================================================
+FAIL: test_marks_treat_a_whisper_someone_is_outside_as_an_unknown_message (tests.test_whispers.ReadPathCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 554, in test_marks_treat_a_whisper_someone_is_outside_as_an_unknown_message
+    answer = self.whisper("Not yet", actor="agent-a", to="owner", reply_to=asked)
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 40, in whisper
+    return self.committed(self.post(body, actor, addressees=[to], whisper=True, **args))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-6', 'kind': 'message.post', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'REPLY_PASSAGE_REQUIRED', 'message': 'Name reply_passage with its source revision, start and end, or reply_without_quote with the reason', 'retryable': False}}
+
+======================================================================
+FAIL: test_one_delivery_reaches_the_one_other_person_and_nobody_elses_counts_move (tests.test_whispers.ReadPathCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 354, in test_one_delivery_reaches_the_one_other_person_and_nobody_elses_counts_move
+    answer = self.whisper("Not yet", actor="agent-a", to="owner", reply_to=asked)
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 40, in whisper
+    return self.committed(self.post(body, actor, addressees=[to], whisper=True, **args))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-6', 'kind': 'message.post', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'REPLY_PASSAGE_REQUIRED', 'message': 'Name reply_passage with its source revision, start and end, or reply_without_quote with the reason', 'retryable': False}}
+
+======================================================================
+FAIL: test_the_changes_feed_names_a_whisper_only_in_its_two_peoples_own_scopes (tests.test_whispers.ReadPathCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 523, in test_the_changes_feed_names_a_whisper_only_in_its_two_peoples_own_scopes
+    answer = self.whisper("Not yet", actor="agent-a", to="owner", reply_to=asked)
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 40, in whisper
+    return self.committed(self.post(body, actor, addressees=[to], whisper=True, **args))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-6', 'kind': 'message.post', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'REPLY_PASSAGE_REQUIRED', 'message': 'Name reply_passage with its source revision, start and end, or reply_without_quote with the reason', 'retryable': False}}
+
+======================================================================
+FAIL: test_topic_pages_hold_a_whisper_for_its_two_people_alone_in_every_audience_and_direction (tests.test_whispers.ReadPathCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 303, in test_topic_pages_hold_a_whisper_for_its_two_people_alone_in_every_audience_and_direction
+    asked, answer, told = self.exchange()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 45, in exchange
+    answer = self.whisper("Not yet; tomorrow.", actor="agent-a", to="owner", reply_to=asked)
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 40, in whisper
+    return self.committed(self.post(body, actor, addressees=[to], whisper=True, **args))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-6', 'kind': 'message.post', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'REPLY_PASSAGE_REQUIRED', 'message': 'Name reply_passage with its source revision, start and end, or reply_without_quote with the reason', 'retryable': False}}
+
+======================================================================
+FAIL: test_when_the_wait_is_from_the_ask_a_whisper_replies_to_it_moves_to_the_next_ask_nobody_has_answered (tests.test_whispers.ReadPathCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 473, in test_when_the_wait_is_from_the_ask_a_whisper_replies_to_it_moves_to_the_next_ask_nobody_has_answered
+    first = self.committed(self.post("Can you confirm?", "agent-a", addressees=["owner"], intent="ask"))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-5', 'kind': 'message.post', 'status': 'rejected', 'recorded': False, 'result': None, 'affected': [], 'error': {'code': 'ASK_WAIT_REQUIRED', 'message': 'Supply ask_wait with root_id, cover_revision and questions: each asked person needs actor_id, text, options, default and reason. Use [] and null for no choices/no default, with a reason; nothing was sent', 'retryable': False}}
+
+======================================================================
+FAIL: test_a_reply_in_the_topic_and_a_thumbs_up_still_answer_an_ask (tests.test_whispers.WhisperAnswersAskCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 645, in test_a_reply_in_the_topic_and_a_thumbs_up_still_answer_an_ask
+    ask = self.ask()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 570, in ask
+    return self.committed(self.post(body, actor, addressees=list(to), intent="ask"))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-5', 'kind': 'message.post', 'status': 'rejected', 'recorded': False, 'result': None, 'affected': [], 'error': {'code': 'ASK_WAIT_REQUIRED', 'message': 'Supply ask_wait with root_id, cover_revision and questions: each asked person needs actor_id, text, options, default and reason. Use [] and null for no choices/no default, with a reason; nothing was sent', 'retryable': False}}
+
+======================================================================
+FAIL: test_a_whisper_answers_the_one_ask_it_replies_to_and_the_wait_moves_to_the_next_open_one (tests.test_whispers.WhisperAnswersAskCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 630, in test_a_whisper_answers_the_one_ask_it_replies_to_and_the_wait_moves_to_the_next_open_one
+    first = self.ask("Can you confirm the date?")
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 570, in ask
+    return self.committed(self.post(body, actor, addressees=list(to), intent="ask"))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-5', 'kind': 'message.post', 'status': 'rejected', 'recorded': False, 'result': None, 'affected': [], 'error': {'code': 'ASK_WAIT_REQUIRED', 'message': 'Supply ask_wait with root_id, cover_revision and questions: each asked person needs actor_id, text, options, default and reason. Use [] and null for no choices/no default, with a reason; nothing was sent', 'retryable': False}}
+
+======================================================================
+FAIL: test_a_whisper_replying_to_an_ask_answers_it_and_waiting_on_you_goes_out_while_its_words_stay_private (tests.test_whispers.WhisperAnswersAskCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 583, in test_a_whisper_replying_to_an_ask_answers_it_and_waiting_on_you_goes_out_while_its_words_stay_private
+    ask = self.ask()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 570, in ask
+    return self.committed(self.post(body, actor, addressees=list(to), intent="ask"))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-5', 'kind': 'message.post', 'status': 'rejected', 'recorded': False, 'result': None, 'affected': [], 'error': {'code': 'ASK_WAIT_REQUIRED', 'message': 'Supply ask_wait with root_id, cover_revision and questions: each asked person needs actor_id, text, options, default and reason. Use [] and null for no choices/no default, with a reason; nothing was sent', 'retryable': False}}
+
+======================================================================
+FAIL: test_a_whisper_that_replies_to_no_ask_of_theirs_answers_nothing (tests.test_whispers.WhisperAnswersAskCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 603, in test_a_whisper_that_replies_to_no_ask_of_theirs_answers_nothing
+    ask = self.ask()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 570, in ask
+    return self.committed(self.post(body, actor, addressees=list(to), intent="ask"))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-5', 'kind': 'message.post', 'status': 'rejected', 'recorded': False, 'result': None, 'affected': [], 'error': {'code': 'ASK_WAIT_REQUIRED', 'message': 'Supply ask_wait with root_id, cover_revision and questions: each asked person needs actor_id, text, options, default and reason. Use [] and null for no choices/no default, with a reason; nothing was sent', 'retryable': False}}
+
+======================================================================
+FAIL: test_a_whisper_to_someone_elses_ask_answers_nothing_for_the_asker_or_the_one_asked (tests.test_whispers.WhisperAnswersAskCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 617, in test_a_whisper_to_someone_elses_ask_answers_nothing_for_the_asker_or_the_one_asked
+    mine = self.ask()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 570, in ask
+    return self.committed(self.post(body, actor, addressees=list(to), intent="ask"))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-5', 'kind': 'message.post', 'status': 'rejected', 'recorded': False, 'result': None, 'affected': [], 'error': {'code': 'ASK_WAIT_REQUIRED', 'message': 'Supply ask_wait with root_id, cover_revision and questions: each asked person needs actor_id, text, options, default and reason. Use [] and null for no choices/no default, with a reason; nothing was sent', 'retryable': False}}
+
+======================================================================
+FAIL: test_an_agent_reads_a_whisper_with_how_to_answer_and_answers_with_the_whisper_verb_and_others_see_nothing (tests.test_whispers.WhisperCLICase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 853, in test_an_agent_reads_a_whisper_with_how_to_answer_and_answers_with_the_whisper_verb_and_others_see_nothing
+    self.assertEqual((code, err), (0, ""))
+AssertionError: Tuples differ: (2, 'rejected REPLY_PASSAGE_REQUIRED: Name[142 chars])\n') != (0, '')
+
+First differing element 0:
+2
+0
+
++ (0, '')
+- (2,
+-  'rejected REPLY_PASSAGE_REQUIRED: Name reply_passage with its source '
+-  'revision, start and end, or reply_without_quote with the reason (operation '
+-  'cli-177e878648af45d881de4e809cf435a1)\n')
+
+======================================================================
+FAIL: test_a_persons_whisper_may_be_notebook_evidence_or_a_topics_source_to_its_two_people_and_an_agents_never (tests.test_whispers.WritingCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 232, in test_a_persons_whisper_may_be_notebook_evidence_or_a_topics_source_to_its_two_people_and_an_agents_never
+    answer = self.whisper("Not yet; tomorrow.", actor="agent-a", to="owner", reply_to=asked)
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 40, in whisper
+    return self.committed(self.post(body, actor, addressees=[to], whisper=True, **args))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-6', 'kind': 'message.post', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'REPLY_PASSAGE_REQUIRED', 'message': 'Name reply_passage with its source revision, start and end, or reply_without_quote with the reason', 'retryable': False}}
+
+======================================================================
+FAIL: test_a_persons_whisper_may_be_where_a_pipeline_item_came_from_and_outside_it_shows_as_a_message_you_cannot_open (tests.test_whispers.WritingCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 264, in test_a_persons_whisper_may_be_where_a_pipeline_item_came_from_and_outside_it_shows_as_a_message_you_cannot_open
+    asked, answer, told = self.exchange()
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 45, in exchange
+    answer = self.whisper("Not yet; tomorrow.", actor="agent-a", to="owner", reply_to=asked)
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 40, in whisper
+    return self.committed(self.post(body, actor, addressees=[to], whisper=True, **args))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-6', 'kind': 'message.post', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'REPLY_PASSAGE_REQUIRED', 'message': 'Name reply_passage with its source revision, start and end, or reply_without_quote with the reason', 'retryable': False}}
+
+======================================================================
+FAIL: test_a_tell_written_about_a_whisper_goes_on_the_record_answering_nothing_and_quotes_only_what_was_chosen (tests.test_whispers.WritingCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 201, in test_a_tell_written_about_a_whisper_goes_on_the_record_answering_nothing_and_quotes_only_what_was_chosen
+    answer = self.whisper("Not yet; tomorrow.", actor="agent-a", to="owner", reply_to=asked)
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 40, in whisper
+    return self.committed(self.post(body, actor, addressees=[to], whisper=True, **args))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-6', 'kind': 'message.post', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'REPLY_PASSAGE_REQUIRED', 'message': 'Name reply_passage with its source revision, start and end, or reply_without_quote with the reason', 'retryable': False}}
+
+======================================================================
+FAIL: test_only_the_person_in_a_whisper_quotes_it_into_a_tell_and_its_two_into_another_whisper (tests.test_whispers.WritingCase)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 228, in test_only_the_person_in_a_whisper_quotes_it_into_a_tell_and_its_two_into_another_whisper
+    self.whisper("Quoting you back", actor="agent-a", to="owner", reply_to=asked, quotes=quote)
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/test_whispers.py", line 40, in whisper
+    return self.committed(self.post(body, actor, addressees=[to], whisper=True, **args))["message_id"]
+  File "/Users/commonfabric/aim-worktrees/warp-live-525/tests/reader_fixture.py", line 30, in committed
+    self.assertEqual(receipt.get("status"), "committed", receipt)
+AssertionError: 'rejected' != 'committed'
+- rejected
++ committed
+ : {'instance_id': 'test-instance', 'operation_id': 'op-10', 'kind': 'message.post', 'status': 'rejected', 'recorded': True, 'result': None, 'affected': [], 'error': {'code': 'REPLY_PASSAGE_REQUIRED', 'message': 'Name reply_passage with its source revision, start and end, or reply_without_quote with the reason', 'retryable': False}}
+
+----------------------------------------------------------------------
+Ran 383 tests in 123.052s
+
+FAILED (failures=55)
