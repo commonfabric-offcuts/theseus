@@ -1,4 +1,5 @@
 import { wheelSwipe } from './message-fold-swipe.mjs';
+import { checkedView } from './freshness.mjs';
 import { stackMenuItems, STARRED_FOLD_REASON } from './stack-menu-items.mjs';
 import { archiveReadConfirmed } from './archive-new.mjs';
 import { unstarDossier } from './dossier-unstar.mjs';
@@ -324,6 +325,8 @@ export class StackFeed {
       earlier: (stack, count) => this.say(`${count === 1 ? 'The earlier message is' : `${count} earlier messages are`} shown, for this visit`),
       arranged: () => this.arranged(), acted: id => this.acted(id), newest: (stack, mark) => this.newest(stack, mark),
       landReply: id => this.landReply(id),
+      ...(this.readNamed && { readEditEcho: async ref =>
+        checkedView(await this.readNamed('source', { source_ref: ref }), this.instanceId) }),
       // Reply targets the newest loaded message; the menu remains the dossier's.
       reply: stack => {
         const latest = [stack.head, ...stack.replies].reduce((a, b) => b.seq > a.seq ? b : a);

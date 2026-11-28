@@ -17,7 +17,7 @@ from .removal import value as removal_value
 from .questions import record_exact_reply_start
 from .topic_reading import reading_fields, unread_groups, writing_fields
 from .stacks import MEMBERS, StackRoots, current_acts, act_fields, awaiting_fields, record_wait_start, source_dossier
-from .message_edit import (current_words, edit_echo_for_source, edit_echo_metadata, edited, is_held, mark, plain, quoted_revision, reading, record_agent_exposure_start, revision,
+from .message_edit import (current_words, edit_echo_for_source, edit_echo_summaries, edited, is_held, mark, plain, quoted_revision, reading, record_agent_exposure_start, revision,
                            struck, words, withheld)
 
 
@@ -765,12 +765,12 @@ class Conversation:
             # For a person who had read words its agent author has since changed, those within what the card shows,
             # struck through (item 614); measured with the item.
             item["struck"] = None if item["withheld"] else struck(db, actor, item["id"], item["revision"], whole, cut if item["preview"] else None)
-            echo = (edit_echo_metadata(db, item["id"], item["revision"])
-                    if item["revision"] > 1 and not item["withheld"] and not removal_value(db, item["id"]) else None)
-            if echo is not None:
-                if echo["revision"] != item["revision"]:
-                    echo["summary"] = "Revised wording"
-                item["edit_echo"] = echo
+            if item["revision"] > 1 and not item["withheld"] and not removal_value(db, item["id"]):
+                echoes = edit_echo_summaries(db, item["id"], item["revision"])
+                if echoes:
+                    item["edit_echo"] = echoes[0]
+                if len(echoes) > 1:
+                    item["previous_edit_echoes"] = echoes[1:]
             encoded = len(_json(plain(item)).encode("utf-8")) + 1
             if size + encoded > LIMITS["summary_utf8_bytes"]:
                 if args.get("message_ids") is not None:

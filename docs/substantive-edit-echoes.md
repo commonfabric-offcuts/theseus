@@ -24,3 +24,13 @@ revision. Current message access, edit holds, and removals apply. Only the
 message author or a person already handed the exact baseline can read removed
 words. Other readers can see changes to the current words. The dossier UI is
 item 64.
+
+An expanded dossier puts its edit rows below the messages. It uses the
+loaded message window and Core's existing per-message revision range. An
+older group shows its revision date and a neutral summary so its row cannot
+disclose earlier words. A quick re-edit updates the same row by its group
+revision.
+
+The row jumps to and focuses the revised message using the reply echo's
+landing. The Changes button asks Core for one exact message source on
+demand. Closing the dossier removes its rows and their opened diffs.

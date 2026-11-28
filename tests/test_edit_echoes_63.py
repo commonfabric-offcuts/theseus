@@ -60,6 +60,20 @@ class EditEchoCase(ConversationCase):
         summary = page["items"][0]["edit_echo"]
         self.assertEqual(summary, {key: value for key, value in echo.items() if key != "diff"})
 
+    def test_topic_summaries_include_older_groups_without_exposing_their_words(self):
+        mid = self.posted("Initial schedule.", actor="agent-a", topic="t1")
+        self.committed(self.edit(mid, "The press room is Maple."))
+        self.committed(self.edit(mid, "The press room is Cedar.", revision=2, at=1500))
+        self.committed(self.edit(mid, "The press room is Pine.", revision=3, at=122000))
+        page = self.store.view("owner", "topic_messages", {"topic_id": "t1", "message_ids": [mid]})
+        item = page["items"][0]
+        self.assertEqual(item["edit_echo"]["group_revision"], 4)
+        self.assertIn("Pine", item["edit_echo"]["summary"])
+        self.assertEqual(item["previous_edit_echoes"], [{
+            "group_revision": 2, "revision": 3, "edited_ms": 1500, "summary": "Revised wording",
+        }])
+        self.assertNotIn("Cedar", str(item["previous_edit_echoes"]))
+
     def test_named_echo_keeps_its_own_added_words_when_the_current_body_is_shorter(self):
         mid = self.posted("Alpha.", actor="agent-a", topic="t1")
         historical = "A much longer replacement sentence."

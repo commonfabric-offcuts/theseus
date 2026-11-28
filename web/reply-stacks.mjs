@@ -33,6 +33,7 @@ import { carriesNode, carriesOf } from './marks.mjs';
 import { coverKey, coverPreview, coverSheet, paintCoverPills, structuredCover } from './dossier-cover.mjs';
 import { AGENT_PALETTE } from './author-colors.mjs';
 import { showGlyph } from './glyphs.mjs';
+import { activateEditEcho, makeEditEcho } from './edit-echo.mjs';
 import { firstCoverTarget, firstCoverControl, refreshLine } from './cover-refresh.mjs';
 
 const ENTRIES = ':scope > [data-id], :scope > .reply-stack > [data-id], :scope > .reply-stack > .stack-replies > [data-id]';
@@ -663,6 +664,21 @@ function paintEchoColor(echo, colorOf) {
   echo.dataset.color = color ? 'agent' : '';
 }
 
+function makeEchoButton(doc) {
+  const button = element(doc, 'button', 'reply-echo');
+  button.type = 'button';
+  const heading = element(doc, 'span', 'reply-echo-heading');
+  const author = element(doc, 'span', 'reply-echo-author');
+  const detail = element(doc, 'span', 'reply-echo-detail');
+  const excerpt = element(doc, 'span', 'reply-echo-excerpt');
+  heading.setAttribute('aria-hidden', 'true');
+  excerpt.setAttribute('aria-hidden', 'true');
+  heading.append(author, detail);
+  button.append(heading, excerpt);
+  echoParts.set(button, { author, detail, excerpt });
+  return button;
+}
+
 function paintReplyEcho(section, entry, previous, { state, messages, nameOf, colorOf, doc }, visible) {
   const card = cardIn(entry), item = messages.get(entry.dataset.id), id = item.reply_to;
   const parent = id ? messages.get(id) : null;
@@ -673,20 +689,7 @@ function paintReplyEcho(section, entry, previous, { state, messages, nameOf, col
     return null;
   }
 
-  const echo = line(section, `reply-echo:${item.id}`, () => {
-    const button = element(doc, 'button', 'reply-echo');
-    button.type = 'button';
-    const heading = element(doc, 'span', 'reply-echo-heading');
-    const author = element(doc, 'span', 'reply-echo-author');
-    const detail = element(doc, 'span', 'reply-echo-detail');
-    const excerpt = element(doc, 'span', 'reply-echo-excerpt');
-    heading.setAttribute('aria-hidden', 'true');
-    excerpt.setAttribute('aria-hidden', 'true');
-    heading.append(author, detail);
-    button.append(heading, excerpt);
-    echoParts.set(button, { author, detail, excerpt });
-    return button;
-  });
+  const echo = line(section, `reply-echo:${item.id}`, () => makeEchoButton(doc));
   const parts = echoParts.get(echo);
   const name = nameOf(item.reply_to_author);
   const sent = parent?.sent_ms ?? item.reply_to_sent_ms;
@@ -714,6 +717,36 @@ function paintReplyEcho(section, entry, previous, { state, messages, nameOf, col
   };
   card.dataset.replyEcho = '';
   return echo;
+}
+
+function paintEditEchoes(section, stack, { state, nameOf, colorOf, doc }) {
+  if (!state.on?.readEditEcho) return [];
+  const rows = [];
+  for (const item of [stack.head, ...stack.replies]) {
+    if (item.withheld || item.removal || item.withdrawal ||
+        (!state.showCoordination && state.coordination.has(stack.id) && !state.coordinationHere.has(item.id))) continue;
+    for (const echo of [item.edit_echo, ...(item.previous_edit_echoes ?? [])]) {
+      if (!echo) continue;
+      rows.push({ item, echo, latest: echo === item.edit_echo });
+    }
+  }
+  rows.sort((a, b) => a.echo.edited_ms - b.echo.edited_ms || a.item.seq - b.item.seq || a.echo.revision - b.echo.revision);
+  return rows.map(({ item, echo, latest }) => {
+    const key = `edit-echo:${item.id}:${echo.group_revision}`;
+    const row = line(section, key, () => makeEditEcho(doc, key, makeEchoButton(doc)));
+    const jump = row.firstElementChild.firstElementChild, parts = echoParts.get(jump);
+    const name = nameOf(item.author_id);
+    parts.parent = item;
+    parts.author.dataset.words = name;
+    parts.detail.dataset.words = ` revised #${item.seq} · ${shownTime(echo.edited_ms)}`;
+    parts.excerpt.dataset.words = echo.summary;
+    paintEchoColor(jump, colorOf);
+    jump.setAttribute('aria-label', `Go to message #${item.seq}, revised by ${name}`);
+    jump.setAttribute('aria-description', echo.summary);
+    jump.onclick = () => state.on.landReply?.(item.id);
+    activateEditEcho(row, item, echo, latest, state.on.readEditEcho);
+    return row;
+  });
 }
 
 const replies = n => (n === 1 ? 'reply' : 'replies');
@@ -1156,6 +1189,8 @@ function paintStack(section, stack, byId, context) {
     if (!entry.hidden) previous = entry.dataset.id ? entry : null;
     withEchoes.push(entry);
   }
+  const editEchoes = level === 'open' && !state.only ? paintEditEchoes(section, stack, context) : [];
+  withEchoes.push(...editEchoes);
   const used = new Set([...withEchoes, headEcho]);
   for (const [key, node] of p.lines) if (!used.has(node)) { node.remove(); p.lines.delete(key); }
   reconcile(p.replies, withEchoes, moved);

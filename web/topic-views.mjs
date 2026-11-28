@@ -36,7 +36,12 @@ export function followEdits(items, edits) {
     if (held && revisionOf(held) >= revisionOf(edited)) continue;
     if (held) {
       const { body, preview, revision, edited_ms } = edited;
-      items.set(edited.id, { ...held, body, preview, revision, edited_ms });
+      const next = { ...held, body, preview, revision, edited_ms };
+      for (const key of ['edit_echo', 'previous_edit_echoes']) {
+        if (Object.hasOwn(edited, key)) next[key] = edited[key];
+        else delete next[key];
+      }
+      items.set(edited.id, next);
     }
     for (const [id, other] of items) {
       if (other.reply_to === edited.id && typeof other.reply_to_excerpt === 'string') items.set(id, { ...other, reply_to_excerpt: excerptOf(edited.body) });
