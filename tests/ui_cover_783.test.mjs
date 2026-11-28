@@ -44,7 +44,7 @@ test('783 exact generated expressions compile and execute below browser in delib
 });
 test('783 literal cover renderer preserves HTML-looking punctuation as text and cites the exact payload',()=>{
   const doc=miniDocument(),c=coverSheet(doc,{owner:'owner',stands:WORDS783.stands,waiting:[{text:WORDS783.wait,default:WORDS783.default}],payload:{text:WORDS783.payload,message_id:'answer',seq:12,kind:'answer'}},{viewer:'owner',nameOf:x=>x,topicId:'t'});
-  assert.equal(c.children[0].text,WORDS783.stands);assert.equal(c.children[1].children[0].text,good.payload);assert.equal(c.children[2].text,good.waits[0]);
+  assert.equal(c.children[0].text,WORDS783.stands);assert.equal(c.children[1].children[0].text,good.payload + ' #12');assert.equal(c.children[2].text,good.waits[0]);
   assert.equal([...c.descendants()].filter(n=>n.tag==='literal').length,0);
 });
 test('783 dry enumeration invokes no actions and owns precisely nine literal-prefix cases',async()=>{

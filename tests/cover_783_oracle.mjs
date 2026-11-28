@@ -41,9 +41,11 @@ export function assertLook783(at, { folder = true } = {}) {
 }
 export function assertWords783(at, words = WORDS783) {
   assert.equal(at.stands, words.stands, '783 literal stands');
-  assert.equal(at.payload, 'Payload · answer ' + words.payload + ' payload proposed', '783 literal payload');
-  assert.deepEqual(at.waits, ['Waits on you ' + words.wait + 'Default: ' + words.default + '.'], '783 literal wait/default');
   assert.equal(at.links.length, 1, '783 one payload citation');
+  const cite = ' ' + at.links[0].text;
+  const prose = at.payload.endsWith(cite) ? at.payload.slice(0, -cite.length) : at.payload;
+  assert.equal(prose, 'Payload · answer ' + words.payload + ' payload proposed', '783 literal payload');
+  assert.deepEqual(at.waits, ['Waits on you ' + words.wait + 'Default: ' + words.default + '.'], '783 literal wait/default');
 }
 export function assertLines783(at, stands=WORDS783.stands) {
   assert.equal(at.text,stands,'783 line source words');

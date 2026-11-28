@@ -10075,7 +10075,7 @@ export async function stackChecks({ check, until, view, control, shot, facts, ob
             `${device} ${level} ${theme}: the cover is the folder's first sheet, right after its first message's entry, under its tab and above the next part: ${JSON.stringify(at)}`);
           assert.deepEqual([at.stands, at.pill, at.waits, at.mine, at.cite], ['Answered: the second weekend, with the lake open', { state: 'proposed', words: 'payload proposed', glyph: 'payload' },
             ['Waits on you Book the cabin for that weekend?Default: booked on Friday if nothing is said.'], true, '#' + answerSeq], `${device} ${level} ${theme}: its words`);
-          assert.match(at.payload, /^Payload · answer The second weekend payload proposed$/);
+          assert.equal(at.payload, 'Payload · answer The second weekend payload proposed ' + at.cite);
           const alongside = await p.evaluate(`(s=>[...s.children].map(e=>e.dataset.id??e.className.split(' ')[0]))(document.querySelector('#messages .reply-stack[data-stack="${ids.root}"]'))`);
           assert.deepEqual(alongside.slice(0, 5), [ids.root, 'dossier-cover', 'stack-toggle', 'stack-tools', 'stack-replies'],
             `${device} ${level} ${theme}: the cover remains first, with the title tools beside the chevron and before the replies`);

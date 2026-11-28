@@ -363,11 +363,17 @@ export function coverSheet(doc, cover, context, previous = null) {
       try { shown = new URL(payload.link).host; } catch { /* the address as written */ }
       const anchor = linkNode(doc, shown, link); anchor.title = payload.link; words.append(' ', anchor);
     }
-    words.append(' ', payloadPill(doc, payload, ctx));
-    row.append(words);
-    if (Number.isSafeInteger(payload.seq)) row.append(cite(doc, ctx.topicId, payload.message_id, payload.seq, 'The message that delivered it'));
+    const acceptance = element(doc, 'span', 'cover-payload-acceptance');
+    acceptance.append(payloadPill(doc, payload, ctx));
+    if (Number.isSafeInteger(payload.seq)) {
+      acceptance.append(' ', cite(doc, ctx.topicId, payload.message_id, payload.seq, 'The message that delivered it'));
+    }
     const done = payload.done;
-    if (done?.how === 'word' && done.message_id && Number.isSafeInteger(done.seq)) row.append(cite(doc, ctx.topicId, done.message_id, done.seq, 'The word that made it done'));
+    if (done?.how === 'word' && done.message_id && Number.isSafeInteger(done.seq)) {
+      acceptance.append(' ', cite(doc, ctx.topicId, done.message_id, done.seq, 'The word that made it done'));
+    }
+    words.append(' ', acceptance);
+    row.append(words);
   };
   const structured = structuredCover(cover);
   const sections = writtenSections(cover);

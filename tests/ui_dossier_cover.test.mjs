@@ -56,6 +56,8 @@ test('the sheet says where it stands, its payload with its label, pill and the m
   assert.deepEqual(glyphs(sheet), ['payload'], 'a proposed payload is a box');
   const cite = of(sheet, 'cover-src')[0];
   assert.equal(cite.text, '#12', 'the payload\'s message, by its number');
+  const acceptance = of(sheet, 'cover-payload-acceptance')[0];
+  assert.deepEqual(acceptance.children, [of(sheet, 'row-pill')[0], ' ', cite]);
   assert.match(cite.getAttribute?.('href') ?? cite.href, /m-answer/, 'a link that opens that message');
   const wait = sheet.children[2];
   assert.equal(of(wait, 'topic-state')[0].text, 'Waits on you', 'the owner reads "you"');
