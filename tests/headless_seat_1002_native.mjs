@@ -188,13 +188,13 @@ for (const { engine, batch } of batches) {
     // A non-default model/effort pair, chosen by native keyboard type-ahead on the focused selects, must differ from
     // the template defaults the selects name, survive the lost answer, close/reopen and retry, and reach Core's seat
     // row, its host plan and the synthetic child's thread/start.
-    const choice = { model: 'gpt-6.1-terra', reasoning_effort: 'xhigh' };
+    const choice = { model: 'gpt-6.1-terra', reasoning_effort: 'medium' };  // fixture template: gpt-6.1-sol / xhigh
     const defaults = { model: await page.locator('#headless-seat-model option[value=""]').innerText(),
       reasoning_effort: await page.locator('#headless-seat-reasoning_effort option[value=""]').innerText() };
-    assert.ok(!defaults.model.includes('GPT-6.1 Terra') && !defaults.reasoning_effort.endsWith(' xhigh'),
+    assert.ok(!defaults.model.includes('GPT-6.1 Terra') && !defaults.reasoning_effort.endsWith(' medium'),
       'the chosen pair differs from the template defaults: ' + JSON.stringify(defaults));
     await press(page, '#headless-seat-model', false); await page.keyboard.press('Escape'); await page.keyboard.type('GPT-6.1');
-    await press(page, '#headless-seat-reasoning_effort', false); await page.keyboard.press('Escape'); await page.keyboard.type('x');
+    await press(page, '#headless-seat-reasoning_effort', false); await page.keyboard.press('Escape'); await page.keyboard.type('m');
     await until(async () => await page.locator('#headless-seat-model').inputValue() === choice.model &&
       await page.locator('#headless-seat-reasoning_effort').inputValue() === choice.reasoning_effort, 'native non-default model/effort choice');
     await until(async () => { const kept = await page.evaluate(async () => {
