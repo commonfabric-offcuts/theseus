@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from .contract import Refusal, _page_size
-from .marks import MARKED
+from .marks import MARKED_BY_MESSAGE
 from .message_edit import words
 from .stacks import MEMBERS, StackRoots, _dossier_totals, starred_in
 from .topic_reading import unread_groups
@@ -34,9 +34,10 @@ def _unread(db, actor, root, groups):
         " SELECT count(*) FROM members p CROSS JOIN messages m ON m.id=p.id"
         " JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id"
         " WHERE m.author_id<>:actor AND ("
-        " EXISTS(SELECT 1 FROM deliveries d WHERE d.message_id=m.id AND d.recipient_id=:actor"
+        " EXISTS(SELECT 1 FROM deliveries d INDEXED BY ordinary_message_delivery"
+        " WHERE d.message_id=m.id AND d.recipient_id=:actor AND d.answer_id IS NULL"
         " AND d.state='pending' AND d.group_id IN (SELECT value FROM json_each(:groups)))"
-        " OR EXISTS(SELECT 1 FROM message_marks k WHERE k.actor_id=:actor AND k.message_id=m.id AND " + MARKED + "))",
+        " OR EXISTS(SELECT 1 FROM message_marks k WHERE k.actor_id=:actor AND k.message_id=m.id AND " + MARKED_BY_MESSAGE + "))",
         {"actor": actor, "root": root, "groups": groups}).fetchone()[0]
 
 
