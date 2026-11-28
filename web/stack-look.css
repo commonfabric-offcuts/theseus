@@ -326,7 +326,7 @@
 .stack-replies:empty{display:none}
 .reply-echo{--echo-fill:var(--stack-read-sheet);--echo-hover:var(--stack-read-hover);
   --echo-tag:color-mix(in srgb,var(--ink) 7%,var(--echo-fill));align-self:stretch;display:grid;align-content:center;box-sizing:border-box;
-  min-width:0;min-height:2.6rem;margin:0;padding:.2rem 1.15rem;border:0;border-radius:var(--stack-r-sheet);
+  min-width:0;min-height:2.6rem;margin:var(--stack-sheet-gap) 0 0;padding:.2rem 1.15rem;border:0;border-radius:var(--stack-r-sheet);
   background:var(--echo-fill);color:var(--muted);font:inherit;font-size:.78rem;line-height:1rem;
   text-align:left;cursor:pointer;user-select:none;-webkit-user-select:none}
 .reply-echo[data-color=agent]{--echo-fill:color-mix(in srgb,var(--agent-card) 58%,var(--stack-read-sheet));
@@ -342,7 +342,8 @@
 .reply-echo-author::before,.reply-echo-excerpt::before,.reply-echo-detail::before{content:attr(data-words)}
 .reply-echo-detail{white-space:pre}
 .reply-echo+[data-id]{margin-top:.15rem}
-.message-card[data-reply-echo]>.message-reply-to{display:none}
+.message-card[data-reply-echo]>.message-reply-to,
+.message-card[data-reply-echo]>.message-preview>.reply-basis-mark{display:none}
 @media(max-width:640px),(pointer:coarse){.reply-echo{min-height:44px}}
 /* Later faces paint above earlier ones in DOM order. The root stays static:
    its absolutely positioned tab still belongs to the folder, not the card. */

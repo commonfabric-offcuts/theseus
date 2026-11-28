@@ -126,6 +126,7 @@ test('54 an unsent original keeps the cue and takes focus to its dossier', () =>
   section.scrollIntoView = options => { section.scrollRequested = options.block; };
   assert.equal(echo.querySelector('.reply-echo-excerpt').dataset.words, '');
   assert.match(echo.querySelector('.reply-echo-detail').dataset.words, /withdrawn/);
+  assert.match(echo.getAttribute('aria-label'), /^Go to the dossier for /);
   echo.onclick();
   assert.deepEqual(landed, []);
   assert.equal(section.scrollRequested, 'nearest');

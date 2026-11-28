@@ -698,7 +698,8 @@ function paintReplyEcho(section, entry, previous, { state, messages, nameOf, col
   parts.detail.dataset.words = `${time ? ` · ${time}` : ''}${withdrawn ? ' · withdrawn' : ''}`;
   parts.excerpt.dataset.words = words;
   paintEchoColor(echo, colorOf);
-  echo.setAttribute('aria-label', `Go to ${name === 'You' ? 'your' : `${name}'s`} message${time ? ` from ${time}` : ''}`);
+  const source = `${name === 'You' ? 'your' : `${name}'s`} message${time ? ` from ${time}` : ''}`;
+  echo.setAttribute('aria-label', removal?.kind === 'unsent' ? `Go to the dossier for ${source}` : `Go to ${source}`);
   const description = [withdrawn ? 'Withdrawn' : words, item.reply_cover_section && `Replying to the cover · ${item.reply_cover_section}`].filter(Boolean).join('. ');
   if (description) echo.setAttribute('aria-description', description);
   else echo.removeAttribute('aria-description');
