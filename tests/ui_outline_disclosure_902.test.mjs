@@ -8,6 +8,7 @@ import { Element, matches } from './fixtures/mini_dom.mjs';
 import { book, scopeOf } from '../web/outline-order.mjs';
 import { KEY_WORDS } from '../web/pane-keys.mjs';
 import { RULES } from '../web/interaction-guide.mjs';
+import { topicPosition } from '../web/topic-navigation.mjs';
 import { OutcomeColorPicker } from '../web/outcome-color-picker.mjs';
 
 class OutlineElement extends Element {
@@ -77,7 +78,7 @@ const memory = () => {
 const item = (id, extra = {}) => ({ id, title: 'Outcome ' + id, title_truncated: false, owner_id: 'reader', version: 1, unread: 2, addressed: 0, light: null, ...extra });
 const contexts = new WeakSet();
 
-async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fixture-902', phone = false, here = 'w1', outcomes = null, topicRows = null } = {}) {
+async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fixture-902', phone = false, here = 'w1', outcomes = null, topicRows = null, beforeTopics = null, navigationCurrent = null } = {}) {
   if (!contexts.has(t)) {
     contexts.add(t);
     const previous = globalThis.document, listeners = new Set(book.listeners), scopes = new Map(book.scopes);
@@ -105,9 +106,16 @@ async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fi
       return { ...base, items: page, next_cursor: remaining.length > page.length ? page.at(-1).id : null };
     }
     if (name === 'workspace_topics') {
+      if (beforeTopics) await beforeTopics(args);
       if (refuseTopics) throw Error('Topics unavailable');
-      return { ...base, groups: { done: 0, archived: 0 }, items: topicRows?.[args.workspace_id]?.map((item,index)=>({list_position:index+1,archived:false,...item})) ?? [{ id: 't-' + args.workspace_id, workspace_id: args.workspace_id,
-        title: 'Topic ' + args.workspace_id, list_position: 1, state: 'active', archived: false, unread: 0 }] };
+      const all = topicRows?.[args.workspace_id]?.map((item,index)=>({list_position:index+1,archived:false,...item})) ??
+        [{ id: 't-' + args.workspace_id, workspace_id: args.workspace_id,
+           title: 'Topic ' + args.workspace_id, list_position: 1, state: 'active', archived: false, unread: 0 }];
+      const start = args.cursor ? all.findIndex(item => topicPosition(item) === args.cursor) + 1 : 0;
+      if (args.cursor) assert.ok(start, 'the continuation names an existing topic position');
+      const items = all.slice(start, start + args.limit);
+      return { ...base, groups: { done: 0, archived: 0 }, items,
+        next_cursor: start + items.length < all.length ? topicPosition(items.at(-1)) : null };
     }
     if (name === 'conversation') return { instance_id: instance, conversation: null };
     if (name === 'stars' || name === 'memory_stars') return { ...base, items: [] };
@@ -115,7 +123,7 @@ async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fi
   };
   const outline = new OutlineRail({ host, doc, storage, read, open: (target, title) => { moves.push([target, title]); return true; } });
   const handles = id => ({ bootstrap: { instance_id: instance, actor }, workspaceId: id, workspaceTitle: 'Outcome ' + id,
-    route: { kind: 'workspace', id }, view: read, api: { command() { assert.fail('Disclosure sent a command'); } } });
+    route: { kind: 'workspace', id }, navigationCurrent, view: read, api: { command() { assert.fail('Disclosure sent a command'); } } });
   const flush = async () => {
     await outline.reload();
     for (let i = 0; i < 16; i++) await Promise.resolve();
@@ -423,14 +431,117 @@ test('46 an outcome badge follows the first unread topic in the loaded rail orde
   assert.equal(f.storage.writes.length, beforeWrites);
 });
 
-test('46 a phone outcome badge opens its home when no eligible unread topic is loaded', async t => {
-  const f = await fixture(t, { phone: true }), outcome = f.outcome('w2');
-  const beforeReads = f.reads.length, beforeWrites = f.storage.writes.length;
-  f.click(outcome.title.querySelector('.unread-count'));
+test('83 a cold outcome badge waits for topics and opens the first unread in rail order', async t => {
+  let releaseTopics;
+  const response = new Promise(resolve => { releaseTopics = resolve; });
+  const topics = [
+    { id: 'read', title: 'Read', unread: 0, list_position: 3 },
+    { id: 'unread-a', title: 'Unread A', unread: 2, list_position: 2 },
+    { id: 'unread-b', title: 'Unread B', unread: 1, list_position: 1 },
+  ].map(row => ({ ...row, workspace_id: 'w2', state: 'active' }));
+  const f = await fixture(t, { topicRows: { w2: topics },
+    beforeTopics: ({workspace_id}) => workspace_id === 'w2' ? response : undefined,
+  }), outcome = f.outcome('w2');
+  book.learn(scopeOf('w2'), { ids: ['read', 'unread-b', 'unread-a'], revision: 1 });
+  assert.equal(outcome.rail, null);
+  const beforeWrites = f.storage.writes.length;
+  const badge = outcome.title.querySelector('.unread-count');
+  f.click(badge);
+  f.click(outcome.name, { detail: 0 });
+  assert.deepEqual(f.moves, [], 'the home does not open while the first read is pending');
+  releaseTopics();
+  await outcome.rail.loading;
+  assert.deepEqual(f.moves, [[{ kind: 'topic', id: 'unread-b', at: 'unread' }, 'Unread B']]);
+  assert.equal(f.reads.filter(([name, args]) => name === 'workspace_topics' && args.workspace_id === 'w2').length, 1);
+  assert.equal(f.storage.writes.length, beforeWrites);
+});
+
+test('83 a cold phone outcome badge opens its home after a confirmed empty rail', async t => {
+  let releaseTopics;
+  const response = new Promise(resolve => { releaseTopics = resolve; });
+  const f = await fixture(t, { phone: true, topicRows: { w2: [] },
+    beforeTopics: ({workspace_id}) => workspace_id === 'w2' ? response : undefined,
+  }), outcome = f.outcome('w2');
+  const beforeWrites = f.storage.writes.length;
+  const press = f.click(outcome.title.querySelector('.unread-count'));
+  assert.equal(press.stopped, true, 'keep the phone drawer open while topics are pending');
+  assert.deepEqual(f.moves, []);
+  releaseTopics();
+  await outcome.rail.loading;
   assert.deepEqual(f.moves, [[{ kind: 'workspace', id: 'w2' }, 'Outcome w2']]);
   assert.equal(outcome.topics.hidden, true);
-  assert.equal(f.reads.length, beforeReads);
   assert.equal(f.storage.writes.length, beforeWrites);
+});
+
+for (const hasUnread of [true, false]) {
+  test('83 the badge checks a continuation before ' + (hasUnread ? 'opening the first unread topic' : 'using the outcome fallback'), async t => {
+    let releasePage;
+    const nextPage = new Promise(resolve => { releasePage = resolve; });
+    const topics = Array.from({length: 23}, (_, index) => ({ id: 'position-' + (23 - index),
+      title: 'Topic ' + (23 - index), workspace_id: 'w2', state: 'active', list_position: 23 - index,
+      unread: hasUnread && index === 21 ? 1 : 0 }));
+    const f = await fixture(t, { topicRows: { w2: topics }, beforeTopics(args) {
+      if (args.workspace_id === 'w2' && args.cursor) return nextPage;
+    } });
+    const outcome = f.outcome('w2');
+    f.click(outcome.title.querySelector('.unread-count'));
+    await outcome.rail.loading;
+    assert.deepEqual(f.moves, [], 'a full read page with a continuation cannot establish emptiness');
+    assert.ok(outcome.rail.loading, 'the next page is being read');
+    releasePage();
+    await outcome.rail.loading;
+    assert.deepEqual(f.moves, hasUnread ? [[{kind:'topic', id:'position-2', at:'unread'}, 'Topic 2']]
+      : [[{kind:'workspace', id:'w2'}, 'Outcome w2']]);
+    assert.equal(f.reads.filter(([name,args]) => name === 'workspace_topics' && args.workspace_id === 'w2').length, 2);
+  });
+}
+
+test('83 a failed cold read leaves the current page and allows retry from the badge', async t => {
+  let fail = true;
+  const f = await fixture(t, { topicRows: { w2: [] }, beforeTopics({workspace_id}) {
+    if (workspace_id === 'w2' && fail) throw Error('Topics unavailable');
+  } });
+  const outcome = f.outcome('w2'), badge = outcome.title.querySelector('.unread-count');
+  f.click(badge);
+  await outcome.rail.loading;
+  assert.deepEqual(f.moves, []);
+  fail = false;
+  f.click(badge);
+  await outcome.rail.loading;
+  assert.deepEqual(f.moves, [[{ kind: 'workspace', id: 'w2' }, 'Outcome w2']]);
+});
+
+test('83 a new navigation while a cold badge awaits its read wins', async t => {
+  let releaseTopics;
+  const response = new Promise(resolve => { releaseTopics = resolve; });
+  const f = await fixture(t, { topicRows: { w2: [] },
+    beforeTopics: ({workspace_id}) => workspace_id === 'w2' ? response : undefined,
+  });
+  const outcome = f.outcome('w2');
+  f.click(outcome.title.querySelector('.unread-count'));
+  f.click(f.outcome('w3').title);
+  releaseTopics();
+  await outcome.rail.loading;
+  assert.deepEqual(f.moves, [[{ kind: 'workspace', id: 'w3' }, 'Outcome w3']]);
+});
+
+test('83 local navigation supersedes a cold badge even without a shell departure', async t => {
+  let releaseTopics, landingSerial = 0;
+  const response = new Promise(resolve => { releaseTopics = resolve; });
+  const f = await fixture(t, {
+    topicRows: { w2: [{ id: 'unread', title: 'Unread', workspace_id: 'w2', state: 'active', unread: 1 }] },
+    beforeTopics: ({workspace_id}) => workspace_id === 'w2' ? response : undefined,
+    navigationCurrent() {
+      const chosen = landingSerial;
+      return () => chosen === landingSerial;
+    },
+  });
+  const outcome = f.outcome('w2');
+  f.click(outcome.title.querySelector('.unread-count'));
+  landingSerial++;
+  releaseTopics();
+  await outcome.rail.loading;
+  assert.deepEqual(f.moves, [], 'the earlier badge does not take over a new in-place Reader view');
 });
 
 test('902 a refused topic read keeps the disclosed outcome and exposes the existing retry', async t => {
