@@ -92,6 +92,9 @@ for (const { engine, batch } of batches) {
       const page = watchPage(await context.newPage());
       await page.emulateMedia({ colorScheme: spec.theme });
       await page.goto(info.origin + '/?workspace=' + workspace);
+      await page.locator('body[data-ready=true]').waitFor();
+      const agents = page.locator('#outcome-tab-agents');
+      if (await agents.isVisible()) await agents.click();
       await page.locator('#team-people .add-chip').waitFor({ state: 'visible' });
       return page;
     };
@@ -120,6 +123,8 @@ for (const { engine, batch } of batches) {
         await page.keyboard.press('Enter'); await page.keyboard.insertText('Second line.');
         const role = first + '\nSecond line.';
         assert.equal(await page.locator('#headless-seat-role').inputValue(), role, 'native Return inserts a newline');
+        assert.match(await page.locator('#headless-seat-model option:checked').innerText(), /^Template default · /);
+        assert.match(await page.locator('#headless-seat-reasoning_effort option:checked').innerText(), /^Template default · /);
         assert.equal((await channel.control({ method: 'inspect', workspace: row.workspace })).seats.length, 0);
         const geometry = await page.locator('.seat-form').evaluate(element => {
           const box = element.getBoundingClientRect();
@@ -131,8 +136,10 @@ for (const { engine, batch } of batches) {
         await page.screenshot({ path: path.join(output, engine + '-' + serial + '-form.png'), fullPage: true });
         if (serial % 2) await press(page, '#headless-seat-submit', touch);
         else {
-          await page.keyboard.press(engine === 'webkit' ? 'Alt+Tab' : 'Tab');
-          assert.equal(await page.evaluate(() => document.activeElement.id), 'headless-seat-submit');
+          for (const id of ['headless-seat-model', 'headless-seat-reasoning_effort', 'headless-seat-submit']) {
+            await page.keyboard.press(engine === 'webkit' ? 'Alt+Tab' : 'Tab');
+            assert.equal(await page.evaluate(() => document.activeElement.id), id);
+          }
           await page.keyboard.press('Enter');
         }
         const state = await until(async () => {

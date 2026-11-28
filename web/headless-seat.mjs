@@ -1,8 +1,8 @@
-import { openSeatJournal } from './seat-journal.mjs';
+import { openSeatJournal, seatModels, seatEfforts } from './seat-journal.mjs';
 import { checkedView } from './freshness.mjs';
 
 const copy = structuredClone;
-const sameForm = (a, b) => a?.name === b?.name && a?.role === b?.role && a?.template_id === b?.template_id;
+const sameForm = (a, b) => ['name', 'role', 'template_id', 'model', 'reasoning_effort'].every(key => a?.[key] === b?.[key]);
 const validTemplate = id => typeof id === 'string' && /^template-[0-9a-f]{64}$/.test(id);
 const templateRefusal = seat => ['host_template_ambiguous', 'host_template_unavailable', 'host_not_configured'].includes(seat.reason);
 const authorityOf = bootstrap => ({ authority_id: bootstrap.authority.authority_id, authority_epoch: bootstrap.authority.authority_epoch });
@@ -56,8 +56,14 @@ export class SeatAddition {
     }
   }
   request(version = this.workspace.version) {
+    const args = this.formArgs();
     return { v: 1, instance_id: this.bootstrap.instance_id, operation_id: this.id(), kind: 'workspace.hosted_seat_add',
-      target: { workspace_id: this.workspace.id }, expected: { workspace_revision: version, authority: authorityOf(this.bootstrap) }, args: copy(this.row.form) };
+      target: { workspace_id: this.workspace.id }, expected: { workspace_revision: version, authority: authorityOf(this.bootstrap) }, args };
+  }
+  formArgs() {
+    const args = copy(this.row.form);
+    if (!args.template_id && this.templates?.items.length === 1) args.template_id = this.templates.items[0].id;
+    return args;
   }
   async checkAuthority() {
     const current = await this.api.bootstrap({ readClass: 'foreground' });
@@ -125,11 +131,14 @@ export class SeatAddition {
       if (result?.workspace_id !== request.target.workspace_id || typeof result.seat_request_id !== 'string' ||
           result.seat?.id !== result.seat_request_id || result.seat.agent_id !== result.agent?.id ||
           (retry ? result.seat_request_id !== request.target.seat_request_id : result.seat.role !== request.args.role) ||
-          request.args.template_id && result.seat.template_id !== request.args.template_id) {
+          ['template_id', 'model', 'reasoning_effort'].some(key => key in request.args && result.seat[key] !== request.args[key])) {
         this.notice = 'Seat request is unconfirmed: its seat identity did not match the request.'; throw Error(this.notice);
       }
       this.row.request = null; this.row.requestLabel = null; this.row.lastSeatId = result.seat_request_id;
-      if (!retry && sameForm(this.row.form, request.args)) this.row.form = { name: '', role: '' };
+      const form = this.row.form;
+      if (!retry && sameForm({ ...form, template_id: form.template_id ?? request.args.template_id }, request.args)) {
+        this.row.form = { name: '', role: '' };
+      }
       if (ending) this.followSeat(result.seat, result.agent.name);
       else this.notice = `${result.agent.name} is on the team and preparing.`;
       this.version++;
@@ -207,11 +216,26 @@ export class HeadlessSeatControl {
     this.templateChoices = make('div', { className: 'seat-actions' });
     this.templateChoices.setAttribute('role', 'group'); this.templateChoices.setAttribute('aria-label', 'Existing host template');
     this.templateArea = make('section', { hidden: true }, make('p', { textContent: 'Template' }), this.templateChoices);
+    const select = (key, choices) => {
+      const useTemplate = make('option', { value: '', textContent: 'Template default' });
+      const input = make('select', { id: `headless-seat-${key}` }, useTemplate,
+        ...choices.map(([value, textContent]) => make('option', { value, textContent })));
+      input.onchange = () => {
+        const form = { ...this.owner.row.form };
+        if (input.value) form[key] = input.value;
+        else delete form[key];
+        this.owner.edit(form).catch(error => this.say(error.message));
+      };
+      return { input, useTemplate };
+    };
+    this.model = select('model', [...seatModels]);
+    this.effort = select('reasoning_effort', seatEfforts.map(effort => [effort, effort]));
     this.submit = make('button', { type: 'submit', id: 'headless-seat-submit', className: 'choice-chip', textContent: 'Add seat' });
     this.retry = make('button', { type: 'button', id: 'headless-seat-retry', className: 'text-action', hidden: true });
     this.form = make('form', { className: 'seat-form', hidden: true },
       make('p', { className: 'seat-access', textContent: 'This seat runs with full access on this Mac, including sub-agents, as the hosted lanes do.' }),
       make('label', {}, 'Name', this.name), make('label', {}, 'Role', this.role), this.templateArea,
+      make('label', {}, 'Model', this.model.input), make('label', {}, 'Reasoning effort', this.effort.input),
       make('div', { className: 'seat-actions' }, this.submit, this.retry));
     this.form.setAttribute('aria-label', 'Add a headless Codex seat');
     this.form.onsubmit = event => { event.preventDefault(); this.act(async () => { await this.loadTemplates(); return this.owner.add(); }); };
@@ -296,6 +320,14 @@ export class HeadlessSeatControl {
       if (this.role.value !== row.form.role) this.role.value = row.form.role;
     }
     const blocked = !this.manage || owner?.parked || !this.loadFinished;
+    const templates = owner?.templates?.items ?? [];
+    const selected = templates.find(item => item.id === row?.form.template_id) ?? (templates.length === 1 ? templates[0] : null);
+    for (const [control, key] of [[this.model, 'model'], [this.effort, 'reasoning_effort']]) {
+      control.input.value = row?.form[key] ?? '';
+      control.input.disabled = Boolean(blocked || !selected || owner?.busy || row?.request);
+      const value = selected?.[key];
+      control.useTemplate.textContent = value ? `Template default · ${seatModels.get(value) ?? value}` : 'Template default';
+    }
     this.name.readOnly = this.role.readOnly = Boolean(blocked);
     this.submit.disabled = blocked || !owner || Boolean(owner.busy) || Boolean(row?.request) ||
       !owner.templates?.available || owner.templates.items.length > 1 && !row?.form.template_id;
