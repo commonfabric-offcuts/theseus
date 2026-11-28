@@ -78,7 +78,7 @@ const memory = () => {
 const item = (id, extra = {}) => ({ id, title: 'Outcome ' + id, title_truncated: false, owner_id: 'reader', version: 1, unread: 2, addressed: 0, light: null, ...extra });
 const contexts = new WeakSet();
 
-async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fixture-902', phone = false, here = 'w1', outcomes = null, topicRows = null, beforeTopics = null } = {}) {
+async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fixture-902', phone = false, here = 'w1', outcomes = null, topicRows = null, beforeTopics = null, navigationCurrent = null } = {}) {
   if (!contexts.has(t)) {
     contexts.add(t);
     const previous = globalThis.document, listeners = new Set(book.listeners), scopes = new Map(book.scopes);
@@ -123,7 +123,7 @@ async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fi
   };
   const outline = new OutlineRail({ host, doc, storage, read, open: (target, title) => { moves.push([target, title]); return true; } });
   const handles = id => ({ bootstrap: { instance_id: instance, actor }, workspaceId: id, workspaceTitle: 'Outcome ' + id,
-    route: { kind: 'workspace', id }, view: read, api: { command() { assert.fail('Disclosure sent a command'); } } });
+    route: { kind: 'workspace', id }, navigationCurrent, view: read, api: { command() { assert.fail('Disclosure sent a command'); } } });
   const flush = async () => {
     await outline.reload();
     for (let i = 0; i < 16; i++) await Promise.resolve();
@@ -523,6 +523,25 @@ test('83 a new navigation while a cold badge awaits its read wins', async t => {
   releaseTopics();
   await outcome.rail.loading;
   assert.deepEqual(f.moves, [[{ kind: 'workspace', id: 'w3' }, 'Outcome w3']]);
+});
+
+test('83 local navigation supersedes a cold badge even without a shell departure', async t => {
+  let releaseTopics, landingSerial = 0;
+  const response = new Promise(resolve => { releaseTopics = resolve; });
+  const f = await fixture(t, {
+    topicRows: { w2: [{ id: 'unread', title: 'Unread', workspace_id: 'w2', state: 'active', unread: 1 }] },
+    beforeTopics: ({workspace_id}) => workspace_id === 'w2' ? response : undefined,
+    navigationCurrent() {
+      const chosen = landingSerial;
+      return () => chosen === landingSerial;
+    },
+  });
+  const outcome = f.outcome('w2');
+  f.click(outcome.title.querySelector('.unread-count'));
+  landingSerial++;
+  releaseTopics();
+  await outcome.rail.loading;
+  assert.deepEqual(f.moves, [], 'the earlier badge does not take over a new in-place Reader view');
 });
 
 test('902 a refused topic read keeps the disclosed outcome and exposes the existing retry', async t => {

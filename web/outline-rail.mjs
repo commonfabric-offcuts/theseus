@@ -572,12 +572,12 @@ export class OutlineRail {
     return this.open(this.nameTarget(outcome), outcome.item.title);
   }
   async readOutcomeUnread(outcome, rail, choice) {
-    const run = this.run;
+    const run = this.run, navigationCurrent = this.handles.navigationCurrent?.();
     let loaded = true;
     if (!rail.pages.started || rail.denied) {
       loaded = await (rail.lists[0].reading ? rail.loading : rail.load(false, true));
     }
-    while (run === this.run && choice === this.badgeChoice) {
+    while (run === this.run && choice === this.badgeChoice && (navigationCurrent?.() ?? true)) {
       if (!loaded || !rail.pages.started || rail.denied) {
         this.tree.say('Topics could not be loaded. Press the unread count again to retry.');
         return;
