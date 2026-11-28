@@ -8,7 +8,7 @@ export class OlderFeed {
     on('pointerdown', () => { this.intent = false; });
     on('wheel', event => {
       if (event.deltaY >= 0) { this.intent = false; return; }
-      this.up(event.target, { chainCardEdge: !event.defaultPrevented });
+      this.up(event.target, { chainCardEdge: !event.defaultPrevented && !event.ctrlKey && !event.shiftKey });
     });
     on('touchstart', event => { this.touching = true; this.touchY = event.touches.length === 1 ? event.touches[0].clientY : null; this.touchAsked = false; });
     on('touchend', () => { this.touching = false; });

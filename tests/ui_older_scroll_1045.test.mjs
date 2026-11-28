@@ -48,7 +48,7 @@ test('55 an upward wheel through a card can admit a read when the document reach
  f.feed.top=20;f.win.scrollY=140;f.emit('scroll');await turn();
  assert.equal(f.reads.length,1);f.resolve();await turn();
 });
-test('55 the card exception respects remaining scroll owners and applies only to an uncancelled wheel',async()=>{
+test('55 the card exception respects remaining scroll owners and applies only to ordinary wheel input',async()=>{
  const f=fixture(),scrollable={scrollHeight:400,clientHeight:200,overflow:'auto',parentElement:f.body};
  for(const target of [
    scrollCard(f,{scrollTop:.5}).target,
@@ -60,6 +60,8 @@ test('55 the card exception respects remaining scroll owners and applies only to
  ])f.emit('wheel',{target,deltaY:-120});
  const {target}=scrollCard(f);
  f.emit('wheel',{target,deltaY:-120,defaultPrevented:true});
+ f.emit('wheel',{target,deltaY:-120,ctrlKey:true});
+ f.emit('wheel',{target,deltaY:-120,shiftKey:true});
  f.emit('keydown',{target,key:'ArrowUp'});
  f.emit('touchstart',{target,touches:[{clientY:100}]});
  f.emit('touchmove',{target,touches:[{clientY:200}]});
