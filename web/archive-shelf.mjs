@@ -117,7 +117,10 @@ export class ArchiveShelf {
     this.refresh();
   }
   trashChanged({ message_id, trashed }) {
-    if (trashed && this.projected.delete(message_id)) this.remaining = null;
+    if (trashed) {
+      this.trashEmpty = false;
+      if (this.projected.delete(message_id)) this.remaining = null;
+    }
     this.refresh();
     this.trash?.reload();
   }
@@ -280,7 +283,16 @@ export class ArchiveShelf {
     });
     // A replica leaving the shelf (brought back, or the archive undone) takes its flight, if still in the air, with it.
     // Its copy goes at once, before a flight back can start from the same spot.
-    for (const [id, replica] of this.replicas) if (!live.has(id)) { this.land(id); replica.parentElement.remove(); this.replicas.delete(id); this.stacks.delete(id); }
+    const active = this.doc.activeElement;
+    let lostFocus = false;
+    for (const [id, replica] of this.replicas) if (!live.has(id)) {
+      this.land(id);
+      lostFocus ||= replica.parentElement.contains(active);
+      replica.parentElement.remove(); this.replicas.delete(id); this.stacks.delete(id);
+    }
+    if (lostFocus && (!this.doc.activeElement || this.doc.activeElement === this.doc.body)) {
+      (this.row.querySelector('.shelf-dossier') ?? this.trash?.summary)?.focus({ preventScroll: true });
+    }
     // Its replica gone from the shelf (brought back elsewhere), its menu goes too.
     if (this.menuOn && !this.menuOn.isConnected) {
       const held = this.doc.activeElement?.closest?.('.message-menu-list');

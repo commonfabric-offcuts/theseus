@@ -109,7 +109,21 @@ try {
       assert.equal(run.commands[0].revision, 0);
       assert.equal(run.commands[0].target.message_id, active, 'the dossier action names its canonical root');
       assert.equal((await position(topic, reply)).trashed, true);
+      if (!phone && look === 'paper') {
+        const answered = page.waitForResponse(response => new URL(response.url()).pathname === '/api/command' &&
+          response.request().postDataJSON()?.kind === 'stack.trash');
+        await page.keyboard.press('Meta+z');
+        const receipt = await (await answered).json();
+        assert.equal(receipt.status, 'committed', 'Undo works immediately after the keyboard move');
+        await dossier.waitFor();
+        assert.equal((await position(topic, reply)).trashed, false);
+        await card.focus();
+        await page.keyboard.press('Shift+F10');
+        await choose('Move to trash');
+        await dossier.waitFor({ state: 'hidden' });
+      }
 
+      const archiveCommand = run.commands.length;
       if (phone) await page.locator('#things-open').tap();
       await archivedReplica.waitFor();
       if (offPage) assert.equal(await page.locator('#messages .message-card[data-id="' + archived + '"]').count(), 0);
@@ -122,11 +136,23 @@ try {
       shot.push(['Archived menu', await screen()]);
       await choose('Move to trash');
       await archivedReplica.waitFor({ state: 'hidden' });
-      assert.equal(run.commands[1].target.message_id, archived);
-      assert.equal(run.commands[1].revision, offPage ? 2 : 0);
+      assert.equal(run.commands[archiveCommand].target.message_id, archived);
+      assert.equal(run.commands[archiveCommand].revision, offPage ? 2 : 0);
       if (offPage) assert.ok(run.reads.some(read => read.name === 'topic_messages' && read.args?.message_ids?.length === 1
         && read.args.message_ids[0] === archived));
       assert.equal((await position(topic, archived)).through, original);
+      if (!phone && look === 'paper') {
+        const answered = page.waitForResponse(response => new URL(response.url()).pathname === '/api/command' &&
+          response.request().postDataJSON()?.kind === 'stack.trash');
+        await page.keyboard.press('Meta+z');
+        const receipt = await (await answered).json();
+        assert.equal(receipt.status, 'committed', 'Undo works immediately after a keyboard move from Archived');
+        await archivedReplica.waitFor();
+        await archivedReplica.focus();
+        await page.keyboard.press('Shift+F10');
+        await choose('Move to trash');
+        await archivedReplica.waitFor({ state: 'hidden' });
+      }
       assert.equal(run.reads.filter(read => read.name === 'dossier_trash').length, 0, 'archiving and trashing with a folded list do not fetch it');
 
       if (phone) await summary.tap(); else await summary.click();

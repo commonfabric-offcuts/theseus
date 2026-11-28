@@ -315,6 +315,9 @@ export class StackFeed {
   // and deferred gestures use the ordinary current provider after it returns.
   paintArrangement() {
     const messages = this.arrangeMessages ?? this.messages();
+    const active = this.doc.activeElement;
+    const focusedEntry = this.list.contains(active) && (entryOf(this.list, active) ??
+      this.entryFor(active?.closest?.('.reply-stack')?.dataset.stack));
     this.hold(() => arrangeStacks(this.list, this.shownMessages(), { keep: this.keep, unread: this.unread, quiet: this.quiet, viewer: this.viewer, nameOf: this.nameOf, colorOf: this.colorOf, home: this.home, coordinationHost: this.filterHost, doc: this.doc, on: {
       arrange: () => this.arrange(),
       navigate: () => this.navigate(), more: () => this.moreChanged(), rename: stack => this.startRename(stack), renamed: (stack, text, how) => this.rename(stack, text, how), renameFinished: stack => { this.arrange(); this.focusOn(stack.id); }, cancelled: stack => { this.arrange(); this.focusOn(stack.id); },
@@ -358,6 +361,10 @@ export class StackFeed {
       menu: (stack, anchor, first) => { const item = this.messages().get(stack.id); if (item) this.menu(item, anchor, first); },
       landedBelow: (id, mark) => this.landedBelow(id, mark),
     } }));
+    if (focusedEntry && this.state.trashed?.has(focusedEntry.dataset.id) &&
+        [active, this.doc.body, null].includes(this.doc.activeElement)) {
+      this.focusAfterTrash(Number(focusedEntry.dataset.seq));
+    }
     for (const entry of entries(this.list)) {
       const card = cardIn(entry), item = messages.get(card.dataset.id);
       if (item) { this.paintStar(card.querySelector(':scope > .message-author'), item); this.paintFoldedThumb(card, item); }
@@ -365,6 +372,21 @@ export class StackFeed {
     this.readingMembers = new Set(messages.keys());
     this.redrawn();
     this.moreChanged();
+  }
+  focusAfterTrash(seq) {
+    // Keep the keys in the feed when the focused dossier disappears. Use a
+    // nearby drawn message, or the feed itself when all its messages are hidden.
+    let nearest = null, distance = Infinity;
+    for (const entry of entries(this.list)) {
+      if (!drawn(this.list, entry.dataset.id) || !entry.getClientRects().length) continue;
+      const away = Math.abs(Number(entry.dataset.seq) - seq);
+      if (away < distance) { nearest = entry; distance = away; }
+    }
+    if (nearest) this.focusOn(nearest.dataset.id);
+    else {
+      this.list.tabIndex = -1;
+      this.list.focus({ preventScroll: true });
+    }
   }
   // A read-only paint must not hide an admission/retirement or current key,
   // place, join or head change. Current records and renderer preflight decide.
@@ -1197,7 +1219,10 @@ export class StackFeed {
       if (this.gone) return;
       if (undoable && result.changed) {
         const saved = { ...item, acts: { trashed: result.trashed, trash_revision: result.trash_revision } };
-        this.remember(() => this.setTrash(saved, !result.trashed, { undoable: false }));
+        this.remember(() => {
+          this.setTrash(saved, !result.trashed, { undoable: false });
+          return false; // Trash announces the reversal on confirmation.
+        });
       }
       this.shelf?.trashChanged(result);
       this.press.after('stacks', () => this.arrange());
@@ -1355,7 +1380,7 @@ export class StackFeed {
     const action = keyAction(event);
     if (!FEED_ACTIONS.includes(action) || this.doc.querySelector('dialog[open]:not([data-card-reply])')) return;
     if (!at || !this.list.contains(at)) return;
-    if (action === 'undo' && at === this.state.more) {
+    if (action === 'undo' && (at === this.state.more || at === this.list)) {
       event.preventDefault();
       this.undo(); return;
     }
