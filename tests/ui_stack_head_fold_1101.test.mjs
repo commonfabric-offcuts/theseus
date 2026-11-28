@@ -74,6 +74,84 @@ function folded(f) {
   assert.equal(f.feed.foldState(f.messages.get('m1')), 'unfold');
 }
 
+test('54 each nonadjacent reply has its own echo and adjacent replies keep the existing line', () => {
+  const f = fixture({ count: 5 }), landed = [];
+  const original = Object.assign(f.messages.get('m1'), { author_kind: 'agent', sent_ms: Date.UTC(2026, 10, 27, 18, 12) });
+  for (const id of ['m2', 'm3', 'm4', 'm5']) {
+    Object.assign(f.messages.get(id), { reply_to_author: original.author_id, reply_to_excerpt: 'Existing excerpt' });
+  }
+  setLevel(f.state, f.state.stacks[0], 'open');
+  arrangeStacks(f.list, f.messages, { doc: f.doc, colorOf: item => item === original ? 'cyan' : null,
+    on: { landReply: id => landed.push(id) } });
+  const echoes = f.section().querySelectorAll('.reply-echo');
+  assert.deepEqual(echoes.map(button => button.nextElementSibling.dataset.id), ['m3', 'm4', 'm5']);
+  assert.equal(f.cards.get('m2').dataset.replyEcho, undefined);
+  assert.equal(f.cards.get('m3').dataset.replyEcho, '');
+  assert.equal(echoes[0].dataset.id, undefined);
+  assert.ok(echoes[0].classList.contains('agent-cyan'));
+  assert.match(echoes[0].getAttribute('aria-label'), /^Go to you's message from /);
+  assert.equal(echoes[0].querySelector('.reply-echo-excerpt').dataset.words, 'Exact first line 1');
+  assert.equal(echoes[0].textContent, '', 'generated context does not enter message selections');
+  echoes[0].onclick();
+  assert.deepEqual(landed, ['m1']);
+  assert.equal(f.section().querySelector('[data-id=m1]'), f.head());
+});
+
+test('54 a closed dossier echoes a hidden original and omits withdrawn or restricted words', () => {
+  const f = fixture({ count: 5 }), parent = f.messages.get('m1');
+  Object.assign(f.messages.get('m5'), { reply_to_author: parent.author_id, reply_to_excerpt: 'Existing excerpt' });
+  setLevel(f.state, f.state.stacks[0], 'head');
+  f.draw();
+  assert.equal(f.section().dataset.headOpen, 'false');
+  const echo = () => f.section().querySelector('.reply-echo');
+  assert.equal(echo()?.nextElementSibling.dataset.id, 'm5');
+  parent.withdrawal = { by: parent.author_id };
+  f.draw();
+  assert.equal(echo()?.querySelector('.reply-echo-excerpt').dataset.words, '');
+  assert.match(echo()?.querySelector('.reply-echo-detail').dataset.words, /withdrawn/);
+  f.messages.get('m5').reply_to_author = null;
+  f.draw();
+  assert.equal(echo(), null);
+  assert.equal(f.cards.get('m5').dataset.replyEcho, undefined);
+});
+
+test('54 an unsent original keeps the cue and takes focus to its dossier', () => {
+  const f = fixture({ count: 5 }), parent = f.messages.get('m1'), landed = [];
+  Object.assign(f.messages.get('m5'), { reply_to_author: parent.author_id, reply_to_excerpt: 'Words removed by Unsend',
+    reply_to_removal: { kind: 'unsent' } });
+  f.cards.get('m1').remove();
+  f.messages.delete('m1');
+  arrangeStacks(f.list, f.messages, { doc: f.doc, on: { landReply: id => landed.push(id) } });
+  const echo = f.list.querySelector('.reply-echo'), section = echo.closest('.reply-stack');
+  section.scrollIntoView = options => { section.scrollRequested = options.block; };
+  assert.equal(echo.querySelector('.reply-echo-excerpt').dataset.words, '');
+  assert.match(echo.querySelector('.reply-echo-detail').dataset.words, /withdrawn/);
+  assert.match(echo.getAttribute('aria-label'), /^Go to the dossier for /);
+  echo.onclick();
+  assert.deepEqual(landed, []);
+  assert.equal(section.scrollRequested, 'nearest');
+  assert.equal(f.doc.activeElement, section);
+});
+
+test('54 an unloaded original uses its authorized time, agent tint and withdrawal cue', () => {
+  const f = fixture({ count: 5 }), item = f.messages.get('m5');
+  Object.assign(item, { reply_to_author: 'agent', reply_to_author_kind: 'agent',
+    reply_to_sent_ms: Date.UTC(2026, 10, 27, 18, 12), reply_to_excerpt: 'Off-page excerpt', reply_to_withdrawn: false });
+  f.cards.get('m1').remove();
+  f.messages.delete('m1');
+  const draw = () => arrangeStacks(f.list, f.messages, { doc: f.doc,
+    colorOf: parent => parent.author_kind === 'agent' ? 'cyan' : null });
+  draw();
+  const echo = f.list.querySelector('.reply-echo');
+  assert.match(echo.getAttribute('aria-label'), /^Go to agent's message from /);
+  assert.ok(echo.classList.contains('agent-cyan'));
+  assert.equal(echo.querySelector('.reply-echo-excerpt').dataset.words, 'Off-page excerpt');
+  item.reply_to_withdrawn = true;
+  draw();
+  assert.equal(echo.querySelector('.reply-echo-excerpt').dataset.words, '');
+  assert.match(echo.querySelector('.reply-echo-detail').dataset.words, /withdrawn/);
+});
+
 test('1101 opening Earlier messages shows an unfolded first message whole and keeps earlier replies as rows', () => {
   const f = fixture(); assert.equal(f.section().dataset.headOpen, 'false');
   const held = f.state.held.get('m1'); f.openEarlier(); whole(f);

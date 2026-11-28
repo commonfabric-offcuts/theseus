@@ -135,18 +135,21 @@ test('actual private-scope freshness notice invalidates only that withdrawal ide
 
 test('late withdrawal receipt updates only its exact source and preserves newer writing', () => {
   const app = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8');
-  const start = app.indexOf('function learnQuestionWithdrawal('), end = app.indexOf('\nfunction ', start + 1);
+  const start = app.indexOf('function learnWithdrawnReplyContext('), end = app.indexOf('\nfunction learnMessageRemoval(', start + 1);
   assert.ok(start >= 0 && end > start);
   const original = { ...own }, other = { source_ref: { kind: 'message', id: 'other' }, body: 'Other source words' };
   const writing = { body: 'Newer unsent writing', destination: 'other' }, painted = [];
   const registry = { current: { source: other, writing } };
-  const learned = runInNewContext('(' + app.slice(start, end).trim() + ')', {
-    paintViews() {}, paintReaderTitle() {}, questionStates: { learn() {} }, views: { messages: new Map([['ask', original]]) }, learnWithdrawal, cardIn: () => null,
-    feedMessages: () => new Map([['ask', original]]), stackMessages() {},
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 'topic', window: () => ({}) });
+  views.messages.set('ask', original);
+  const learned = runInNewContext(app.slice(start, end) + '\nlearnQuestionWithdrawal', {
+    questionStates: { learn() {} }, views, learnWithdrawal, cardIn: () => null,
+    feedMessages: () => views.messages, stackMessages() {},
     messageEntries: new Map(), menu: { paint() {} }, registry, reader: { paintOrigin: source => painted.push(source) },
   });
   learned({ message_id: 'ask', withdrawal: value });
   assert.deepEqual(original.withdrawal, value);
+  assert.equal(views.windowHints.get('ask').parentWithdrawn, true);
   assert.equal(other.withdrawal, undefined);
   assert.deepEqual(painted, []);
   assert.deepEqual(writing, { body: 'Newer unsent writing', destination: 'other' });
