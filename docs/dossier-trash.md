@@ -41,3 +41,16 @@ The fold owns only its displayed pages. Closing it, leaving the topic, or
 losing access discards those rows and ignores earlier responses. Opening
 it again reads the first page. The fold adds no Archive reads and leaves
 archive counts and controls with the existing shelf.
+
+## Feed and Archived
+
+The feed uses the canonical root and Trash revision carried on each loaded
+message's stack position. All loaded parts of a trashed dossier are hidden
+before arranging the feed, even when the root is on another page. A newer
+restore takes precedence over an older page. Normal paging still visits the
+same history, and the folded Trash makes no read for these decisions.
+
+Archived excludes trashed roots while preserving their saved place and
+stars. A star stays in the outline and can open its dossier in the Reader.
+The existing live acts and positions refresh updates the feed and the
+active Archive shelf when this reader changes Trash on another device.

@@ -23,7 +23,7 @@ import { keepOnEscape } from './keep-on-escape.mjs';
 // the earlier ones, which shows them as rows for this visit (item 476): a way
 // of showing it, kept by the page alone, never recorded.
 import { cardIn, opened } from './fold.mjs';
-import { archiveOrder, gather, visibleStacks, withDossierHeads, dossiersOf, reheaded, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf, stackCover, starredDossiers, dossierOf } from './stack-order.mjs';
+import { archiveOrder, gather, visibleStacks, withDossierHeads, dossiersOf, reheaded, ordered, rowsOf, headOf, lineUnder, rowFolded, LEVELS, positionOf, placeOf, shownOrder, drawnBelow, pageOf, shown, earlierOf, stackCover, starredDossiers, dossierOf, trashedDossiers } from './stack-order.mjs';
 import { ownWithdrawnQuestion } from './question-withdrawal.mjs';
 import { messagePreview } from './message-preview.mjs';
 import { paintRemoval } from './message-removal.mjs';
@@ -175,7 +175,7 @@ export function stackState(list) {
       else scrolled.delete(box);
     }, { capture: true, passive: true });
     const state = { scrolled, levels: new Map(), savedLevels: new Map(), kept: new Set(), unreadKept: new Set(), newOpen: new Set(), contextRows: new Set(), peeked: new Set(), here: new Map(), renaming: null,
-    stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: false, coordinationHere: new Set(), below: new Set(), viewer: null, again: () => {}, waiting: new Set(),
+    stacks: [], sections: new Map(), folded: new Set(), coordination: new Set(), showCoordination: false, coordinationHere: new Set(), below: new Set(), viewer: null, again: () => {}, waiting: new Set(), trashed: new Set(), trashedRoots: new Set(),
     checking: new Map(), earlier: new Set(), whole: new Set(), earlierRows: new Set(), held: new Map(), starred: new Set(), filling: null, filled: new Set(), revealedFilled: new Set(), apart: new Set() };
     indexedStacks(state, state.stacks);
     states.set(list, state);
@@ -280,7 +280,7 @@ export const shownStacks = state => shownOrder(state.stacks, shownView(state));
 // messages do not name) is drawn as Only new draws it.
 export function drawn(list, id) {
   const state = stackState(list), view = shownView(state);
-  if (state.waiting.has(id)) return false;
+  if (state.waiting.has(id) || state.trashed.has(id)) return false;
   const found = drawnIndexes.get(state).get(id), stack = found?.stack;
   if (stack && view.hidden(stack)) return false;
   const item = found?.item ?? { id };
@@ -288,7 +288,8 @@ export function drawn(list, id) {
   return !stack || item === stack.head || shown(stack, item, { level: levelOf(state, stack.id), kept: each => state.kept.has(each.id), writing: each => state.writing?.has(each.id), newReply: each => state.unreadKept.has(each.id), newOpen: state.newOpen?.has(stack.id) ?? null, revealed: each => state.revealedFilled.has(each.id), earlier: state.earlier.has(stack.id), held: state.held.get(stack.id) ?? null });
 }
 // The page as stepping reads it (stack-order.mjs, pageOf and stepTarget).
-export const stackPage = (state, messages = null) => pageOf(state.stacks, shownView(state), { known: messages?.values() ?? [], viewer: state.viewer });
+export const stackPage = (state, messages = null) => pageOf(state.stacks, shownView(state),
+  { known: messages?.values() ?? [], viewer: state.viewer, trashed: state.trashed, trashedRoots: state.trashedRoots });
 
 // The stack an entry is in, as last drawn: { stack, section (null for a
 // message on its own), head: whether the entry is its head, index }.
@@ -310,7 +311,8 @@ export function lineSeq(list, seq) {
   const state = states.get(list);
   if (!seq || !state) return seq;
   const at = lineUnder(state.stacks, seq, state.viewer);
-  if (at === null) return entries(list).some(entry => state.waiting.has(entry.dataset.id) && Number(entry.dataset.seq) === seq) ? null : seq;
+  if (at === null) return entries(list).some(entry => Number(entry.dataset.seq) === seq &&
+    (state.waiting.has(entry.dataset.id) || state.trashed.has(entry.dataset.id))) ? null : seq;
   const view = shownView(state);
   if (!view.hidden(state.stacks[at])) return state.stacks[at].newest;
   const above = state.stacks.slice(0, at).findLast(stack => !view.below(stack) && !view.hidden(stack));
@@ -1365,17 +1367,25 @@ export function arrangeStacks(list, messages, options = {}) {
   const restoreFocus = keepArrangementFocus(doc, active);
   try {
   const byId = new Map(entries(list).map(entry => [entry.dataset.id, entry]));
+  const admitted = [...byId.keys()].map(id => messages.get(id)).filter(Boolean);
+  state.trashedRoots = trashedDossiers(admitted);
+  state.trashed = new Set(admitted.filter(item => state.trashedRoots.has(item.stack_position?.root_id)).map(item => item.id));
   // At document top New above stands for arrivals not drawn yet. Keep their
   // actual cards connected, without admitting them to dossier layout. Their
   // records remain in messages; this changes neither unread nor order keys.
   const waiting = [];
   for (const id of state.waiting) {
     const entry = byId.get(id);
-    if (!entry || !messages.has(id)) { state.waiting.delete(id); continue; }
+    if (!entry || !messages.has(id) || state.trashed.has(id)) { state.waiting.delete(id); continue; }
     entry.hidden = true;
     waiting.push(entry); byId.delete(id);
   }
-  const loaded = [...byId.keys()].map(id => messages.get(id)).filter(Boolean);
+  // Retain hidden entries so a restore can use the same cards and drafts.
+  const trashed = [];
+  for (const id of state.trashed) {
+    trashed.push(byId.get(id)); byId.delete(id);
+  }
+  const loaded = admitted.filter(item => byId.has(item.id));
   // Keep structural entries connected for later arrangements, but outside
   // every visible stack and every folded/earlier row painter. No saved hide
   // choice: each arrangement derives it from the current withdrawal fact.
@@ -1422,7 +1432,7 @@ export function arrangeStacks(list, messages, options = {}) {
   list.dataset.showCoordination = String(state.showCoordination);
   const coordinationNews = stacks.some(stack => state.coordination.has(stack.id) && [stack.head, ...stack.replies].some(unread));
   state.on?.coordinationCount?.(state.coordination.size, coordinationNews);
-  const top = [...waiting, ...withdrawn.values()], archived = [], live = new Set(), moved = [], context = { state, messages, keep, unread, nameOf, colorOf, doc, moved };
+  const top = [...waiting, ...trashed, ...withdrawn.values()], archived = [], live = new Set(), moved = [], context = { state, messages, keep, unread, nameOf, colorOf, doc, moved };
   state.below = new Set();
   for (const stack of stacks) {
     const head = byId.get(stack.id);
@@ -1488,7 +1498,7 @@ export function arrangeStacks(list, messages, options = {}) {
   // What is hidden here is what shownView says is hidden: below a closed More,
   // unless Only new draws the New items there.
   const { asideShown } = shownView(state);
-  for (const node of top) if (node !== state.controls && node !== home) node.hidden = withdrawn.has(node.dataset.id) || state.waiting.has(node.dataset.id) || aside.includes(node) && !asideShown;
+  for (const node of top) if (node !== state.controls && node !== home) node.hidden = withdrawn.has(node.dataset.id) || state.waiting.has(node.dataset.id) || state.trashed.has(node.dataset.id) || aside.includes(node) && !asideShown;
   // Detaching a card can reset its table or long-message scroll. Restore
   // only boxes known from their scroll events inside a node actually moved,
   // after every nested/outer move, without reading positions or descendants.

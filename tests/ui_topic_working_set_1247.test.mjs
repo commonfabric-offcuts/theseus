@@ -488,3 +488,27 @@ for (const history of [100, 30000]) {
       compact: visible.filter(row => state.folded.has(row.dataset.id)).length, recollapseMs }));
   });
 }
+
+test('Trash arrangement uses the newest state of an off-page root for all admitted members', () => {
+  const f = renderer799();
+  const position = (trashed, trash_revision) => ({
+    root_id: 'unloaded', at: { acts: trash_revision, messages: 44 }, trashed, trash_revision,
+  });
+  const newest = { ...item(44), reply_to: 'unloaded', stack_position: position(true, 3) };
+  const stale = { ...item(4), reply_to: 'unloaded', stack_position: position(false, 2), acts: { starred: true } };
+  const state = f.add([newest, stale, item(22)]);
+  assert.deepEqual(state.stacks.map(stack => stack.id), ['m22']);
+  assert.deepEqual([...state.trashed].sort(), ['m4', 'm44']);
+  assert.equal(drawn(f.list, newest.id), false);
+  const oldEntry = f.list.querySelector('[data-id="m4"]');
+  assert.equal(oldEntry.hidden, true);
+
+  f.messages.get(newest.id).stack_position = position(false, 4);
+  f.messages.get(stale.id).stack_position = position(true, 3);
+  arrangeStacks(f.list, f.messages);
+  assert.equal(state.trashed.size, 0);
+  assert.equal(f.list.querySelector('[data-id="m4"]'), oldEntry);
+  assert.equal(drawn(f.list, newest.id), true);
+  const { head, replies } = state.stacks.find(stack => stack.dossier === 'unloaded');
+  assert.deepEqual([head, ...replies].map(item => item.id).sort(), [stale.id, newest.id]);
+});

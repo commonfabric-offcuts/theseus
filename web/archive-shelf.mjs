@@ -284,7 +284,7 @@ export class ArchiveShelf {
     }
     this.list = list; this.paintPaging(); this.update(notify);
     const fresh = looks.reduce((sum, look) => sum + look.fresh, 0);
-    const total = !this.read ? list.length : this.remaining === null ? null : this.projected.size + this.remaining;
+    const total = !this.read ? list.length : this.remaining === null ? null : [...this.projected.keys()].filter(id => !suppress.has(id)).length + this.remaining;
     this.count.textContent = [total || '', fresh ? `${fresh} new` : ''].filter(Boolean).join(' · ');
     this.showView();
     this.retarget();

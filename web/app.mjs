@@ -1357,12 +1357,12 @@ function keepListAnchor(paint, act = null, revised = []) {
   }) : paintHeld();
 }
 function paintNewAbove() {
-  const list = $('messages');
+  const list = $('messages'), { trashed } = stackState(list);
   for (const id of newAbove) {
     const entry = messageEntries.get(id), item = views.messages.get(id);
     // Count retained arrival offers, not an estimate of current visibility.
     // Only activation measures its chosen card; passive paints need no scan.
-    if (!entry?.isConnected || entry.dataset.id !== id || !item || item.id !== id ||
+    if (trashed.has(id) || !entry?.isConnected || entry.dataset.id !== id || !item || item.id !== id ||
         item.topic_id !== topic?.id || item.author_id === bootstrap.actor) newAbove.delete(id);
   }
   if (!newAboveButton && newAbove.size) {
@@ -4052,7 +4052,7 @@ async function initialize() {
   const actorCheckpoint = await actorBaseline({ api, bootstrap });
   const holds = id => Boolean(dossierHeads?.records.has(id));
   visitNew = visitNewFor(document, { instanceId: bootstrap.instance_id, actor: bootstrap.actor, authority: bootstrap.authority });
-  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version, force) => freshness?.invalidate(key, version, force), holds, reading, actMessages: feedMessages, arrived: items => visitNew.arrive(items), window: topicWindowOptions, evicted: queueWindowEvictions });
+  views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, reader: bootstrap.actor, paint: paintViews, invalidate: (key, version, force) => freshness?.invalidate(key, version, force), holds, reading, actMessages: feedMessages, arrived: items => visitNew.arrive(items), window: topicWindowOptions, evicted: queueWindowEvictions, offPageActs: () => stackFeed?.shelf?.refresh() });
   const headViews = views;
   const inspectWindow = () => {
     if (views !== headViews || retired) return null;
