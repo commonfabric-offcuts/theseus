@@ -85,6 +85,21 @@ test('79 terminal removal cannot return in a late page and denial clears prior r
   assert.equal(f.trash.more.textContent, 'Retry Trash');
 });
 
+test('closing an exhausted empty Trash fold remembers only a current emptiness proof', async () => {
+  const f = fold(async () => page());
+  f.trash.show(true);
+  await f.toggle(true);
+  f.trash.invalidate();
+  f.toggle(false);
+  assert.equal(f.trash.confirmedEmpty, false);
+  await f.toggle(true);
+  assert.equal(f.trash.confirmedEmpty, false, 'the open fold still shows its empty state');
+  f.toggle(false);
+  assert.equal(f.trash.confirmedEmpty, true);
+  f.trash.invalidate();
+  assert.equal(f.trash.confirmedEmpty, false);
+});
+
 test('79 retraction keeps its row and act label on the open and reloaded fold', async () => {
   const removal = { kind: 'retracted', by: 'owner', at_ms: 123 };
   let held = null;

@@ -2,6 +2,7 @@
 .archive-shelf{margin:.75rem 0 0;padding:.75rem 0 0;border-top:1px solid var(--line)}
 .archive-shelf[hidden]{display:none}
 .archive-shelf-head{display:flex;align-items:baseline;gap:.45rem;margin-bottom:.55rem}
+.archive-shelf-head[hidden]{display:none}
 .archive-shelf-head h2{margin:0;font-size:.72rem;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .archive-shelf-count{font-size:.72rem;color:var(--muted)}
 :root .archive-shelf-more{display:block;width:100%;margin:.3rem 0 0;padding:.4rem .35rem;border:0;border-radius:.35rem;
@@ -44,7 +45,7 @@ body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden])
 .shelf-views[hidden]{display:none}
 :root .shelf-views .shelf-view{display:inline-grid;place-items:center;min-width:0;min-height:0;height:1.25rem;padding:0 .45rem;border:0;border-radius:.3rem;background:transparent;color:var(--muted);font-size:.68rem;line-height:1;cursor:pointer}
 :root .shelf-views .shelf-view:hover{color:var(--ink);background:transparent}
-:root .shelf-views .shelf-view[aria-pressed=true]{background:var(--soft);color:var(--ink);font-weight:600}
+:root .shelf-views .shelf-view[aria-pressed=true]{background:var(--row-current);color:var(--ink);font-weight:600}
 :root .shelf-views .shelf-view[data-current=true]{color:var(--ink)}
 .shelf-view svg{display:block}
 .shelf-size{display:none}
@@ -74,6 +75,7 @@ body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden])
 .shelf-new{flex:none;color:var(--accent);font-size:.7rem;font-weight:700;white-space:nowrap}
 
 .archive-trash{margin:.55rem 0 0;border-top:1px solid var(--line)}
+.archive-shelf-head[hidden]~.archive-trash{margin-top:0;border-top:0}
 .archive-trash>summary{display:flex;align-items:center;gap:.32rem;min-height:2rem;padding:0 .2rem;color:var(--muted);
   list-style:none;font-size:.8rem;font-weight:600;cursor:pointer;border-radius:.35rem;-webkit-tap-highlight-color:transparent}
 .archive-trash>summary::-webkit-details-marker{display:none}

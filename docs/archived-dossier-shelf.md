@@ -31,3 +31,14 @@ refreshes discard stale shelf rows and keep the archive cursor separate
 from the feed's older-message cursor. Terminal removal clears its shelf
 row immediately. Loss of topic access clears the shelf and rejects
 responses begun before the access change.
+
+When the first Archive page is conclusively empty, the same response can
+also prove Trash empty. The probe seeks up to nine of this reader's Trash
+acts in the topic through the existing recent Trash index, without reading
+message words or traversing dossiers. With eight or fewer positive acts,
+superseded and unsent acts do not prevent proving emptiness. If a sample
+could still contain a usable Trash row or the history exceeds the probe,
+the rail keeps the folded Trash row. With no archives it shows that row
+alone. Opening Trash still reads its first page on demand.
+When an open fold reaches the end with no rows, closing it hides an
+otherwise-empty section. A refresh or access change invalidates that result.
