@@ -52,7 +52,7 @@ MOVE_OCCUPIED = "SELECT EXISTS(SELECT 1 FROM dossier_moves)"
 
 
 def members(db, root):
-    return db.execute(ALL_MEMBERS + " SELECT m.id,m.seq,m.topic_id,m.author_id,m.private_to,m.addressees,m.intent,m.sent_ms "
+    return db.execute(ALL_MEMBERS + " SELECT m.id,m.seq,m.topic_id,m.author_id,m.private_to,m.addressees,m.intent,m.sent_ms,m.go_ahead "
                       "FROM members p CROSS JOIN messages m ON m.id=p.id ORDER BY m.seq", {"root": root}).fetchall()
 
 
@@ -230,7 +230,7 @@ class DossierMove:
             member = row["actor_id"]
             candidates = [item for item in open_questions if item["seq"] >= row["ask_seq"]
                           and member != item["author_id"] and member in json.loads(item["addressees"])
-                          and not self._reaction_row(db, member, item["id"], "answer")
+                          and not self._answered_since(db, source, member, item)
                           and not answered_yes(self._reaction_row(db, member, item["id"], "thumb"))]
             # The original open wait is authoritative even for a held/go-ahead ask.
             original = next((item for item in open_questions if item['id'] == row['ask_message_id']), None)

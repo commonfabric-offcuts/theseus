@@ -206,7 +206,7 @@ class Reactions:
         would: the wait clears where it is kept (conversation_waits in an outcome's
         conversation, topic_waiting in a topic) and the row's value is `yes`. Taking
         that 👍 back puts back the wait it cleared, unless they have answered the ask
-        since (a reply to it in a conversation, any writing in a topic) or the wait
+        since (a direct reply to it) or the wait
         could no longer stand. Nothing else a thumb is on changes a wait: a 👍 by
         anyone else or by an agent (its "got it"), on a message that asks nothing, on
         an ask to someone else, on a go-ahead (answered by ✅ or 🚫) or on an ask a
@@ -244,18 +244,28 @@ class Reactions:
         return ("yes" if answered else "up") if thumbed else None, affected
 
     def _answered_since(self, db, topic, actor, message):
-        """Whether actor, a person, has answered message, an ask in topic, by writing since it was sent: a reply to it,
-        on the record or by whisper to whoever asked, the one who can read it (StandingConversation._conversation_record,
-        TopicState._answered); and in a topic any writing there on the record, which answers every ask there to its
-        writer for legacy asks only. Linked asks always require the exact reply. A whisper replying to anything else, or to anyone else, answers nothing."""
+        """Read exact reply evidence and preserve the answer effect of older writing."""
+        from .questions import exact_reply_start
+        start = exact_reply_start(db)
+        decision = message["go_ahead"] and self._actor(db, actor)["kind"] == "human"
+        if decision:
+            answer = self._reaction_row(db, actor, message["id"], "answer")
+            if answer is not None and answer["value"] is not None:
+                return True
         if db.execute("SELECT 1 FROM messages m INDEXED BY message_reply_links WHERE reply_to=? AND author_id=? "
-                      "AND (private_to IS NULL OR private_to=?) AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) LIMIT 1", (message["id"], actor, message["author_id"])).fetchone():
+                      "AND seq<? AND (private_to IS NULL OR private_to=?) "
+                      "AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) "
+                      "AND (m.seq<? OR NOT EXISTS (SELECT 1 FROM conversation_takes k WHERE k.item_id=m.reply_to "
+                      "AND k.kind='answer' AND k.ref=m.id AND k.part=1)) LIMIT 1",
+                      (message["id"], actor, start if decision else 9223372036854775807, message["author_id"], start)).fetchone():
             return True
+        if is_conversation(topic) or message["seq"] >= start:
+            return False
         linked = db.execute("SELECT 1 FROM ask_cover_links WHERE ask_id=? AND actor_id=?", (message["id"], actor)).fetchone()
-        return not linked and not is_conversation(topic) and db.execute(
-            "SELECT 1 FROM messages m INDEXED BY public_actor_writing WHERE topic_id=? AND seq>? AND author_id=? AND private_to IS NULL "
+        return not linked and db.execute(
+            "SELECT 1 FROM messages m INDEXED BY public_actor_writing WHERE topic_id=? AND seq>? AND seq<? AND author_id=? AND private_to IS NULL "
             "AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) LIMIT 1",
-            (topic["id"], message["seq"], actor)).fetchone() is not None
+            (topic["id"], message["seq"], start, actor)).fetchone() is not None
 
     def _thumb_ask_topic(self, db, actor, message):
         """The topic whose wait a thumb by actor on message would answer, or None: the message is a plain
@@ -273,8 +283,7 @@ class Reactions:
         return topic
 
     def _topic_ask_answered(self, db, topic, member, message):
-        """Member answered message, an open ask to them in topic, alone: by their 👍 on it, or their whisper replying
-        to it (TopicState._answered). When the topic's wait on them is from it, the wait moves to their next open ask
+        """Member answered that ask alone. When the topic's wait on them is from it, the wait moves to their next open ask
         there, else ends (a wait someone said stays). Whether the wait changed."""
         row = db.execute("SELECT said,ask_message_id FROM topic_waiting WHERE topic_id=? AND actor_id=?", (topic["id"], member)).fetchone()
         if row is None or row["ask_message_id"] != message["id"]:
@@ -310,18 +319,17 @@ class Reactions:
 
     def _next_open_ask(self, db, topic, member, after_seq):
         """The oldest ask to member in topic after after_seq that nothing has answered, or that a record holds open
-        (outcome_asks.held_ask): {id, seq, sent_ms}, or None. Member has not written on the record there since
-        after_seq, or the topic would not be waiting on them from that ask, so none of these asks is theirs; a whisper
-        never asks. Member's whisper replying to an ask, to whoever asked, answered it (TopicState._answered).
+        (outcome_asks.held_ask): {id, seq, sent_ms}, or None.
 
         Each ask is judged by the rule that decides it, never restated here: whether member's own 👍 answered it is
         their thumb row, read by the key message.thumb fences on (_reaction_row) and read as every reader reads it
         (answered_yes); whether a record answers it is outcome_asks.record_ask."""
         found = None
-        for row in db.execute("SELECT m.id,m.seq,m.sent_ms,m.author_id FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
-                              "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>? AND m.intent='ask' AND NOT EXISTS (SELECT 1 FROM question_closures c WHERE c.message_id=m.id) AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) AND NOT EXISTS (SELECT 1 FROM message_withdrawals x WHERE x.message_id=m.id) AND NOT EXISTS (SELECT 1 FROM messages w "
-                              "INDEXED BY message_reply_links WHERE w.reply_to=m.id AND w.author_id=a.actor_id "
-                              "AND w.private_to=m.author_id AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=w.id)) ORDER BY a.seq",
+        for row in db.execute("SELECT m.id,m.seq,m.sent_ms,m.author_id,m.go_ahead FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
+                              "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>? AND m.intent='ask' AND m.private_to IS NULL "
+                              "AND m.author_id<>a.actor_id AND NOT EXISTS (SELECT 1 FROM question_closures c WHERE c.message_id=m.id) "
+                              "AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=m.id) "
+                              "AND NOT EXISTS (SELECT 1 FROM message_withdrawals x WHERE x.message_id=m.id) ORDER BY a.seq",
                               (topic["id"], member, after_seq)):
             linked = db.execute("SELECT active FROM ask_cover_links WHERE ask_id=? AND actor_id=?", (row["id"], member)).fetchone()
             if linked is not None and not linked["active"]:
@@ -366,7 +374,7 @@ class Reactions:
         body = ANSWERS[answer] + (" (I changed my answer)" if row is not None and row["value"] is not None else "")
         said, affected = self._publish(db, actor, envelope["operation_id"], message["topic_id"], {
             "body": body, "attachments": [], "quotes": [], "addressees": [message["author_id"]],
-            "reply_to": message["id"], "intent": "tell"})
+            "reply_to": message["id"], "intent": "tell"}, decision_reply=True)
         self._record_answer_receipt(db, actor, message, 'answer', current + 1, answer, said['message_id'])
         return self._read_by(dict(result, answer_revision=current + 1, reaction_version=version, reply_id=said["message_id"], changed=True), affected + [
             {"kind": "reaction", "id": message["id"], "version": version}], message, cleared)

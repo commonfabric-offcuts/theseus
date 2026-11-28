@@ -20,7 +20,6 @@ it is said, else the ask's.
 
 from .contract import LIMITS, READABLE, Refusal, organises, _body, _identifier, _prefix, _revision
 from .delivery import _now_ms
-from .outcome_asks import held_ask, record_ask
 from .whispers import VISIBLE, redact_topic
 from .message_edit import mark, revision, words, withheld
 from .standing_conversation import excerpt
@@ -316,45 +315,6 @@ class TopicState:
                 newly.append(member)
         return newly
 
-    def _answered(self, db, topic, author, to=None, reply_to=None):
-        """Writing clears the legacy projection; _publish restores any open linked questions.
-
-        New linked asks are settled only by AskCover._linked_reply, never by this broad rule.
-
-        A person's whisper (to: the agent it goes to) answers only the ask it replies to (reply_to), when that is an
-        ask to its writer from that agent, the one who can read the answer, as their 👍 on it would (item 307): when
-        the topic's wait on them is from that ask it moves to the oldest ask nobody has answered, or ends
-        (Reactions._topic_ask_answered); a wait from an older ask stays on it. A whisper that replies to no such ask
-        answers nothing. A wait someone said stays until it is said otherwise, and an ask an open record still needs
-        (a proposed target, an owner-gated stage: outcome_asks.held_ask) stays waiting."""
-        topic_id = topic["id"]
-        if to is not None:
-            ask = self._whispered_ask(db, topic, to, reply_to)
-            return ask is not None and self._topic_ask_answered(db, topic, author, ask)
-        held = held_ask(db, topic_id, author)
-        if held is not None:
-            db.execute("UPDATE topic_waiting SET ask_message_id=?,state_ms=(SELECT sent_ms FROM messages WHERE id=?) "
-                       "WHERE topic_id=? AND actor_id=?", (held, held, topic_id, author))
-            return False
-        row = db.execute("SELECT said FROM topic_waiting WHERE topic_id=? AND actor_id=? AND ask_message_id IS NOT NULL",
-                         (topic_id, author)).fetchone()
-        if row is None:
-            return False
-        if row["said"]:
-            db.execute("UPDATE topic_waiting SET ask_message_id=NULL WHERE topic_id=? AND actor_id=?", (topic_id, author))
-        else:
-            db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", (topic_id, author))
-        return True
-
-    def _whispered_ask(self, db, topic, to, reply_to):
-        """The message a person's whisper to `to` replies to, {id, seq, sent_ms}, when `to` wrote it and no record answers
-        it (outcome_asks.record_ask), or None. It is an open ask to the writer only when the topic's wait on them is from
-        it, which Reactions._topic_ask_answered reads; any other message answers nothing."""
-        ask = db.execute("SELECT id,seq,sent_ms FROM messages WHERE id=? AND author_id=?", (reply_to, to)).fetchone() if reply_to else None
-        if ask is None or record_ask(db, ask["id"], topic["workspace_id"], topic["id"]):
-            return None
-        return ask
-
     def _iter_waiting_asks(self, db, topic, actor, include_archived=False):
         """Yield the eligible asks to this reader in one waiting place, without message bodies.
 
@@ -363,7 +323,7 @@ class TopicState:
         archived topic reads retain metadata; outcome lights use the default.
         """
         rows = db.execute(
-            "SELECT m.id,m.seq,m.topic_id,m.author_id,m.sent_ms,m.intent,m.addressees,m.private_to "
+            "SELECT m.id,m.seq,m.topic_id,m.author_id,m.sent_ms,m.intent,m.addressees,m.private_to,m.go_ahead "
             "FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
             "CROSS JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
             "WHERE a.topic_id=:topic AND a.actor_id=:actor AND m.intent='ask' AND " + READABLE + " AND " + VISIBLE

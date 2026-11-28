@@ -26,13 +26,35 @@ QUESTION_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM question_closures)"
 from .removal import value as removal_value
 
 
+EXACT_REPLY_START = "ask_reply_from_seq.62"
+
+
+def record_exact_reply_start(db, seq):
+    db.execute("INSERT OR IGNORE INTO metadata(key,value) VALUES (?,?)", (EXACT_REPLY_START, str(seq)))
+
+
+def exact_reply_start(db):
+    row = db.execute("SELECT value FROM metadata WHERE key=?", (EXACT_REPLY_START,)).fetchone()
+    return int(row[0]) if row else 9223372036854775807
+
+
 class Questions:
+    def _reply_settles_ask(self, db, topic, parent, actor, private, part, decision):
+        if (parent is None or parent["intent"] != "ask" or parent["private_to"] is not None or part
+                or actor == parent["author_id"] or actor not in json.loads(parent["addressees"])
+                or private is not None and private != parent["author_id"]):
+            return False
+        if parent["go_ahead"] and not decision and self._actor(db, actor)["kind"] == "human":
+            return False
+        return not (self._question_closed(db, parent["id"]) or self._withdrawal_value(db, parent["id"])
+                    or removal_value(db, parent["id"]) or record_ask(db, parent["id"], topic["workspace_id"], topic["id"]))
+
     def _question_closed(self, db, message_id):
         return db.execute("SELECT kind,by,at_ms,superseded_by FROM question_closures WHERE message_id=?", (message_id,)).fetchone()
 
     def _question_value(self, db, actor, message_id):
         # Callers have already established message visibility. Never read words.
-        message = db.execute("SELECT id,topic_id,seq,author_id,private_to,intent,addressees,sent_ms FROM messages WHERE id=?", (message_id,)).fetchone()
+        message = db.execute("SELECT id,topic_id,seq,author_id,private_to,intent,addressees,sent_ms,go_ahead FROM messages WHERE id=?", (message_id,)).fetchone()
         if message is None or message['intent'] != 'ask' or message['private_to'] is not None or removal_value(db, message_id):
             return None
         topic = db.execute("SELECT * FROM topics WHERE id=?", (message['topic_id'],)).fetchone()

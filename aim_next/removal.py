@@ -239,6 +239,7 @@ class Removal:
 
     def _removed_waits(self, db, actor, topic, message_id):
         from .outcome_asks import record_ask
+        from .questions import exact_reply_start
         from .reactions import answered_yes
         from .standing_conversation import is_conversation
         message = db.execute('SELECT id,author_id,intent,addressees,reply_to,seq,private_to FROM messages WHERE id=?', (message_id,)).fetchone()
@@ -251,30 +252,31 @@ class Removal:
                 self._sync_linked_attention(db, topic, member)
                 touched.append(member)
             db.execute('DELETE FROM conversation_waits WHERE ask_id=?', (message_id,))
-        # An answer is a surviving act, not merely an immutable row. Walk this
-        # writer's older addressed asks, not unrelated topic history. Linked and
-        # conversation asks require the exact reply; legacy topic asks use the
-        # existing broad-writing rule. A record-held ask is settled by its record.
-        asks = db.execute('SELECT m.id,m.topic_id,m.author_id,m.private_to,m.seq,m.sent_ms,m.intent,m.addressees FROM message_addressees a JOIN messages m ON m.seq=a.seq '
+        # New replies can affect only their parent. Older public writes retain
+        # their original answer effect within this writer's addressed history.
+        conversation = is_conversation(topic)
+        exact = conversation or message['private_to'] is not None or message['seq'] >= exact_reply_start(db)
+        asks = db.execute('SELECT m.id,m.topic_id,m.author_id,m.private_to,m.seq,m.sent_ms,m.intent,m.addressees,m.go_ahead FROM message_addressees a JOIN messages m ON m.seq=a.seq '
                           "WHERE a.topic_id=? AND a.actor_id=? AND a.seq<? AND m.intent='ask' AND " + ACTIVE +
                           ' AND NOT EXISTS (SELECT 1 FROM message_withdrawals w WHERE w.message_id=m.id)'
-                          ' AND NOT EXISTS (SELECT 1 FROM question_closures c WHERE c.message_id=m.id) ORDER BY a.seq',
-                          (topic['id'], actor, message['seq'])).fetchall()
+                          ' AND NOT EXISTS (SELECT 1 FROM question_closures c WHERE c.message_id=m.id)'
+                          + (' AND m.id=?' if exact else '') + ' ORDER BY a.seq',
+                          (topic['id'], actor, message['seq']) + ((message['reply_to'],) if exact else ())).fetchall()
         for ask in asks:
             linked = db.execute('SELECT 1 FROM ask_cover_links WHERE ask_id=? AND actor_id=?', (ask['id'], actor)).fetchone()
-            if ((linked or is_conversation(topic) or message['private_to'] is not None) and message['reply_to'] != ask['id']
+            if (linked and message['reply_to'] != ask['id']
                     or message['private_to'] is not None and message['private_to'] != ask['author_id']
                     or record_ask(db, ask['id'], topic['workspace_id'], topic['id'])
                     or self._answered_since(db, topic, actor, ask)
                     or answered_yes(self._reaction_row(db, actor, ask['id'], 'thumb'))):
                 continue
             affected.extend(self._set_linked_wait(db, actor, ask['id'], True, by=actor))
-            if is_conversation(topic):
+            if conversation:
                 db.execute('INSERT OR IGNORE INTO conversation_waits(ask_id,actor_id) VALUES (?,?)', (ask['id'], actor))
             else:
                 self._topic_ask_unthumbed(db, topic, actor, ask)
             touched.append(actor)
-        if is_conversation(topic):
+        if conversation:
             self._sync_waits(db, topic, touched)
         for member in dict.fromkeys(touched):
             self._sync_linked_attention(db, topic, member)

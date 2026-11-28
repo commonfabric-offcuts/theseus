@@ -24,7 +24,7 @@ from .message_edit import current_words, withheld
 
 # What an ask that holds something is read with (messages m): what _ask_waits and the order read. Its line is read
 # afterwards from its latest words, for the asks kept only (message_edit.py), so no row costs a lookup per revision.
-ASK_COLUMNS = "m.id,m.seq,m.topic_id,m.author_id,m.sent_ms,m.intent,m.addressees,m.private_to"
+ASK_COLUMNS = "m.id,m.seq,m.topic_id,m.author_id,m.sent_ms,m.intent,m.addressees,m.private_to,m.go_ahead"
 
 
 # Version 36 keeps what an ask blocks. A message keeps it as written, so the
@@ -110,13 +110,13 @@ class Blocking:
         """Whether message, an ask in topic, still waits on member: the one rule that clears an ask, read where it is kept.
 
         The topic waits on member from an ask (its topic_waiting row) only while some ask there does, so none
-        waits without that row: losing the topic, a Reached outcome and writing in the topic all end it. An
+        waits without that row: losing the topic or a Reached outcome ends it. An
         archived topic counts nowhere (docs/attention.md), so while it is archived its asks wait on no one here
         either, and unarchiving it brings them back, its row kept. In a
         conversation each ask's own wait is kept (conversation_waits). In a topic an ask an open record still
         needs waits (outcome_asks.held_ask), one a settled record answered does not, and otherwise it waits
-        until member writes there on the record, replies to it by whisper to whoever asked (item 307), or gives
-        it a 👍 that answered it (their thumb row)."""
+        until a direct eligible reply, explicit decision or 👍 that answered it. Older writing retains its
+        previous answer effect."""
         if (message["intent"] != "ask" or self._question_closed(db, message["id"]) is not None or self._withdrawal_value(db, message["id"]) is not None or db.execute('SELECT 1 FROM message_removals WHERE message_id=?', (message['id'],)).fetchone() is not None or member == message["author_id"] or member not in json.loads(message["addressees"])
                 or db.execute("SELECT 1 FROM topic_waiting WHERE topic_id=? AND actor_id=? AND "
                               + ("ask_message_id IS NOT NULL" if include_archived else WAITS_FROM_AN_ASK),

@@ -13,6 +13,7 @@ from . import whispers, root_posts
 from .standing_conversation import open_items_clause
 from .topic_state import derived_conversation
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
+from .questions import record_exact_reply_start
 from .topic_reading import reading_fields, unread_groups, writing_fields
 from .stacks import MEMBERS, StackRoots, current_acts, act_fields, awaiting_fields, record_wait_start, source_dossier
 from .message_edit import (current_words, edited, is_held, mark, plain, quoted_revision, reading, record_agent_exposure_start, revision,
@@ -343,7 +344,7 @@ class Conversation:
             return "tell"
         return intent
 
-    def _publish(self, db, actor, operation_id, topic_id, snapshot, topic=None, settled_for=(), record_only=False):
+    def _publish(self, db, actor, operation_id, topic_id, snapshot, topic=None, settled_for=(), record_only=False, decision_reply=False):
         """Publish frozen writing as one message with its deliveries; every send shares this path.
 
         topic, the topic's row, and settled_for are given only by Theseus's own
@@ -357,7 +358,8 @@ class Conversation:
         parent = None
         if snapshot.get("reply_to"):
             # A message the writer cannot see is refused as one that does not exist.
-            parent = db.execute("SELECT id,seq,topic_id,author_id,private_to,intent FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
+            parent = db.execute("SELECT id,seq,topic_id,author_id,private_to,intent,addressees,go_ahead FROM messages WHERE id=?",
+                                (snapshot["reply_to"],)).fetchone()
             from .removal import unsent
             if not parent or parent["topic_id"] != topic_id or not whispers.visible(parent, actor) or unsent(db, snapshot['reply_to']):
                 # A state check, not a shape error: it is recorded like the others.
@@ -449,6 +451,7 @@ class Conversation:
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         # The first post of a release that holds item 475 says where its waiting dots begin (stacks.py).
         record_wait_start(db, sequence)
+        record_exact_reply_start(db, sequence)
         # And where agents' messages begin to be recorded as handed to other agents, who are corrected when one is edited (item 614).
         record_agent_exposure_start(db, sequence)
         # The author has written in this topic (TopicState._may_say); an agent's whisper is not writing in it.
@@ -489,19 +492,24 @@ class Conversation:
             # A whisper never moves these: they point at the message, which nobody else can open.
             db.execute("UPDATE topic_summaries SET message_count=message_count+1," + OTHER_MESSAGE + ",latest_message_id=?2 WHERE topic_id=?3",
                        (actor, message_id, topic_id))
+        settles = not record_only and self._reply_settles_ask(
+            db, topic, parent, actor, private, snapshot.get("part", False), decision_reply)
         if not record_only:
-            covered += self._linked_reply(db, actor, topic, snapshot.get("reply_to"), private)
+            if settles:
+                covered += self._set_linked_wait(db, actor, parent["id"], False)
             self._message_activity(db, topic, actor, message_id, sent_ms)
         if record_only:
             waited = []
         elif topic["kind"] == "conversation":
             # A conversation keeps its items, what became of each, and its waits ask by ask.
-            waited = self._conversation_record(db, actor, topic, message_id, snapshot, intent, private)
+            waited = self._conversation_record(db, actor, topic, message_id, snapshot, intent, private, settles_ask=settles)
         else:
-            # Writing in the topic answers what was asked of the author there (a person's whisper, the ask of the agent
-            # it goes to that it replies to); an ask waits on whoever it asks.
-            waited = ([actor] if self._answered(db, topic, actor, private, snapshot.get("reply_to")) else []) + (
-                self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"]) if intent == "ask" else [])
+            waited = []
+            if settles:
+                self._topic_ask_answered(db, topic, actor, parent)
+                waited.append(actor)
+            if intent == "ask":
+                waited += self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"])
         if not record_only:
             self._sync_linked_attention(db, topic, actor)
         version = self._touch_topic(db, topic)
