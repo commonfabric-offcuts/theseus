@@ -168,10 +168,13 @@ export function coverPreview(doc, cover, context) {
 }
 
 // A message of the dossier, cited by its number, a link that opens it.
-function cite(doc, topicId, messageId, seq, title) {
-  const node = linkNode(doc, `#${seq}`, { route: { kind: 'topic', id: topicId, message: messageId }, written: true });
+function cite(doc, topicId, messageId, seq, kind) {
+  const number = `#${seq}`;
+  const name = `${kind} ${number}`;
+  const node = linkNode(doc, number, { route: { kind: 'topic', id: topicId, message: messageId }, written: true });
   node.className = 'words-link cover-src';
-  node.title = title;
+  node.setAttribute('aria-label', name);
+  node.title = name;
   return node;
 }
 
@@ -366,11 +369,11 @@ export function coverSheet(doc, cover, context, previous = null) {
     const acceptance = element(doc, 'span', 'cover-payload-acceptance');
     acceptance.append(payloadPill(doc, payload, ctx));
     if (Number.isSafeInteger(payload.seq)) {
-      acceptance.append(' ', cite(doc, ctx.topicId, payload.message_id, payload.seq, 'The message that delivered it'));
+      acceptance.append(' ', cite(doc, ctx.topicId, payload.message_id, payload.seq, 'Source message'));
     }
     const done = payload.done;
     if (done?.how === 'word' && done.message_id && Number.isSafeInteger(done.seq)) {
-      acceptance.append(' ', cite(doc, ctx.topicId, done.message_id, done.seq, 'The word that made it done'));
+      acceptance.append(' ', cite(doc, ctx.topicId, done.message_id, done.seq, 'Acceptance reply'));
     }
     words.append(' ', acceptance);
     row.append(words);
