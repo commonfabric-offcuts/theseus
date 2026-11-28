@@ -30,7 +30,7 @@ import { paintRemoval } from './message-removal.mjs';
 import { shownTime } from './times.mjs';
 import { coordinationStack } from './coordination-stacks.mjs';
 import { carriesNode, carriesOf } from './marks.mjs';
-import { coverKey, coverSheet, paintCoverPills } from './dossier-cover.mjs';
+import { coverKey, coverPreview, coverSheet, paintCoverPills, structuredCover } from './dossier-cover.mjs';
 import { AGENT_PALETTE } from './author-colors.mjs';
 import { showGlyph } from './glyphs.mjs';
 import { firstCoverTarget, firstCoverControl, refreshLine } from './cover-refresh.mjs';
@@ -722,7 +722,7 @@ const replies = n => (n === 1 ? 'reply' : 'replies');
 // image, the reader's own note and saved reply: marks.mjs, item 127), how many
 // replied and who, and what is new. The 646 star toggles its actual first message.
 const headDetails = new WeakMap();
-function paintHead(card, stack, { open, state, unread, nameOf, doc, separate = false, discloseNew = false }) {
+function paintHead(card, stack, { open, state, unread, nameOf, doc, separate = false, discloseNew = false, preview = null }) {
   let row = headRows.get(card);
   if (!row) { row = element(doc, 'span', 'stack-head'); headRows.set(card, row); }
   if (card.firstElementChild !== row) card.prepend(row);
@@ -829,7 +829,7 @@ function paintHead(card, stack, { open, state, unread, nameOf, doc, separate = f
   const hide = open ? piece('hide', () => act('hide', 'stack-hide', 'Show latest and unread replies')) : null;
   paintRemoval(row, original ? stack.head : null, doc);
   const removal = row.querySelector('.message-retracted');
-  detailChildren(row, [...(replyStar ? [replyStar] : []), name, pen, who, ...(carried ? [carried] : []), ...(minted ? [minted] : []),
+  detailChildren(row, [...(replyStar ? [replyStar] : []), name, pen, ...(preview ? [preview] : []), who, ...(carried ? [carried] : []), ...(minted ? [minted] : []),
     ...(newHead ? [newHead] : []), star, meta, ...(hide ? [hide] : []), ...(removal ? [removal] : [])]);
   row.dataset.renaming = String(state.renaming === stack.id);
   return head;
@@ -1054,7 +1054,17 @@ function paintStack(section, stack, byId, context) {
   if (!single) opened(head);
   const separate = single || Boolean(state.only);
   if (separate) unhead(head);
-  const shown = paintHead(separate ? p.header : cardIn(head), stack, { open: open && !separate, state, unread, nameOf, doc, separate, discloseNew: level === 'folded' && !state.only });
+  const cover = state.apart.has(stack.id) ? null : stackCover(stack, { alone: true, provenance: true });
+  const coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id, rootId: dossierOf(stack) };
+  const key = coverKey(cover, coverContext);
+  const coverClosed = level === 'head' && !whole && !separate && structuredCover(cover);
+  if (coverClosed && p.previewKey !== key) {
+    p.preview = coverPreview(doc, cover, coverContext);
+    p.previewKey = key;
+  }
+  const shown = paintHead(separate ? p.header : cardIn(head), stack, { open: open && !separate, state, unread, nameOf, doc, separate,
+    discloseNew: level === 'folded' && !state.only, preview: coverClosed ? p.preview : null });
+  section.dataset.coverClosed = String(coverClosed);
   p.toggle.dataset.state = level;
   Object.assign(section.dataset, { coordination: coordination ? 'agents' : '', compact: String(!separate && !whole && coordination && level === 'head' && state.renaming !== stack.id && !stack.replies.some(item => item.yours?.note === true || state.writing.has(item.id))) });
   p.toggle.setAttribute('aria-expanded', String(level !== 'head'));
@@ -1162,8 +1172,6 @@ function paintStack(section, stack, byId, context) {
   // The cover is first in the folder under its tab, before any message face.
   // A reply-headed or singleton folder takes the same cover from its dossier.
   // Drawn again only when what it says changes; never duplicated as card pills.
-  const cover = state.apart.has(stack.id) ? null : stackCover(stack, { alone: true, provenance: true }), coverContext = { viewer: state.viewer, nameOf, topicId: stack.head.topic_id, rootId: dossierOf(stack) };
-  const key = coverKey(cover, coverContext);
   if (key !== p.coverKey) {
     const previous = p.cover;
     p.cover = cover ? coverSheet(doc, cover, coverContext, previous) : null;

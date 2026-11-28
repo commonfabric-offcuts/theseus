@@ -501,7 +501,7 @@
 .reply-stack[data-compact=true]:not(.only-new *){margin:.65rem 0;padding:0;border-radius:.55rem;box-shadow:none;min-height:2.75rem;background:transparent}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head-card>.stack-head{position:relative;top:0;width:100%;max-width:100%;height:2.75rem;flex-wrap:nowrap;align-items:center;padding-block:.25rem;border-radius:.55rem;background:transparent}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head-card{height:2.75rem;scroll-margin-top:4px}
-.reply-stack[data-compact=true]:not(.only-new *) .stack-head>:not(.stack-name,.stack-meta,.stack-star,.archive-title-star,.dossier-reply-star){display:none}
+.reply-stack[data-compact=true]:not(.only-new *) .stack-head>:not(.stack-name,.stack-meta,.stack-star,.archive-title-star,.dossier-reply-star,.stack-cover-preview){display:none}
 .reply-stack[data-compact=true]:not(.only-new *) .stack-head::after,
 .reply-stack[data-compact=true]:not(.only-new *) .stack-name::before,
 .reply-stack[data-compact=true]:not(.only-new *) .stack-name::after{display:none}
@@ -587,6 +587,57 @@
 .cover-wait>a.topic-state,a.pill-waits{text-decoration:none}
 .cover-wait>a.topic-state:hover,a.pill-waits:hover{text-decoration:underline}
 .only-new .dossier-cover,.reply-stack[data-compact=true]>.dossier-cover,.message-card[data-folded=true]>.row-pills{display:none}
+
+/* Structured covers share the same reading order on the feed and in Reader. */
+.dossier-cover[data-cover-layout]{overflow-wrap:anywhere}
+.dossier-cover[data-cover-layout]>.cover-line{grid-column:1 / -1}
+.dossier-cover[data-cover-layout]>.cover-refresh{grid-row:auto!important}
+.dossier-cover[data-cover-layout]:has(>.cover-refresh+.cover-revision-line){grid-auto-flow:row dense}
+.dossier-cover[data-cover-layout]>.cover-revision-line{align-self:center;justify-self:end}
+.dossier-cover[data-cover-layout]>.cover-refresh+.cover-revision-line{grid-column:1}
+.cover-header-content{display:flex;align-items:center;flex-wrap:wrap;gap:.25rem .75rem}
+.cover-nature{font-weight:650}
+.cover-status,.cover-phase-bars{display:inline-flex;align-items:center;gap:.32rem}
+.cover-phase-bars>span{width:.72rem;height:.19rem;border-radius:.16rem;background:var(--line)}
+.cover-phase-bars>[data-step=past]{background:var(--muted)}
+.cover-phase-bars>[data-step=current]{background:var(--ink)}
+.cover-phase,.cover-next,.cover-keeper{color:var(--muted);font-size:.8rem}
+.cover-keeper{margin-inline-start:auto}
+.dossier-cover[data-cover-layout]>.cover-payload{background:var(--panel);border:1px solid var(--line);border-radius:.5rem;padding:.4rem .55rem}
+.cover-payload-copy{display:contents}
+.cover-payload>.cover-words>.cover-acceptance{margin:.15rem 0}
+.row-pill.cover-acceptance{max-width:100%;border:1px dashed currentColor;border-radius:.85rem;padding:.1rem .45rem;color:var(--ink);white-space:normal;vertical-align:middle;line-height:1.25}
+.row-pill.cover-acceptance[data-state=done]{border-style:solid;background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.row-pill.cover-acceptance[data-state=done] svg{color:inherit}
+.cover-acceptance .pill-words{min-width:0;overflow-wrap:anywhere}
+.dossier-cover[data-cover-layout]>.cover-heading{display:block}
+.dossier-cover[data-cover-layout] .cover-heading>.cover-label{margin-inline-end:.4rem}
+.dossier-cover[data-cover-layout=question] .cover-stands{font-size:1.08rem;font-weight:620}
+.dossier-cover[data-cover-layout=tracking] .cover-stands{font-size:1.3rem;font-weight:620}
+.dossier-cover[data-cover-layout=other] .cover-stands{font-weight:400}
+.cover-structured-section{margin-top:0;border-top:1px solid var(--line)}
+.cover-structured-section>.cover-section-heading{min-height:2rem;align-items:center;padding:0 .22rem;gap:.4rem}
+.cover-section-label{flex:none;font-weight:600}
+.cover-section-peek{min-width:0;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cover-structured-section[open] .cover-section-peek{display:none}
+.cover-structured-section>.cover-section-body{padding:0 .22rem .3rem}
+#reader-cover-line>.reader-cover-status{color:var(--muted);flex:none}
+#reader-cover[open] #reader-cover-line>.reader-cover-status{display:none}
+.reply-stack[data-cover-closed=true]>.dossier-cover{display:none}
+.stack-cover-preview{display:flex;align-items:center;flex:1 1 0;min-width:0;gap:.45rem;color:var(--stack-folder-ink)}
+.stack-cover-preview>.cover-nature{flex:none;max-width:36%;overflow:hidden;text-overflow:ellipsis}
+.stack-cover-lead{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.stack-cover-status{flex:none;color:var(--stack-meta-ink)}
+.stack-cover-preview>.cover-acceptance{flex:0 1 auto;min-width:0;max-width:65%;font-size:inherit;white-space:nowrap;color:var(--stack-folder-ink)}
+.stack-cover-preview>.cover-acceptance>.pill-words{overflow-wrap:normal}
+.reply-stack[data-cover-closed=true]:not([data-compact=true]) .stack-head :is(.stack-who,.card-carries,.stack-named,.stack-repliers){display:none}
+.reply-stack[data-cover-closed=true][data-compact=true] .stack-name{flex:0 1 auto;max-width:28%}
+@media(max-width:760px){
+  .cover-structured-section>.cover-section-heading{min-height:44px}
+  .cover-payload-copy{display:block}
+  .dossier-cover[data-cover-layout] .cover-payload a{display:inline-flex;align-items:center;min-height:44px}
+  .stack-cover-preview{gap:.3rem}
+}
 @media(max-width:640px){
   .dossier-cover{font-size:.88rem}
   .cover-stands{font-size:.92rem}
