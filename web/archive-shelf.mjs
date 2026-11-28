@@ -104,8 +104,8 @@ export class ArchiveShelf {
     this.projected.clear(); this.cursor = null; this.remaining = null;
     this.paint([], new Set(), true);
   }
-  removed(id) {
-    this.trash?.forget(id);
+  removed(id, removal) {
+    this.trash?.learnRemoval(id, removal);
     this.epoch++;
     this.projected.delete(id);
     this.remaining = null;

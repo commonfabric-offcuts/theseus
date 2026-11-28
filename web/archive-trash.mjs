@@ -1,5 +1,6 @@
 import { glyph } from './glyphs.mjs';
 import { readFailure } from './freshness.mjs';
+import { paintRemoval } from './message-removal.mjs';
 
 const element = (doc, tag, className, text) => {
   const node = doc.createElement(tag);
@@ -14,10 +15,11 @@ export class ArchiveTrash {
   constructor({ doc, read, afterRead }) {
     Object.assign(this, { doc, read, afterRead });
     this.rows = new Map();
-    this.removed = new Set();
+    this.removals = new Map();
     this.root = element(doc, 'details', 'archive-trash');
     this.summary = element(doc, 'summary');
-    this.summary.append(glyph('chevron', doc, 14), element(doc, 'span', '', 'Trash'));
+    this.count = element(doc, 'span', 'archive-shelf-count');
+    this.summary.append(glyph('chevron', doc, 14), element(doc, 'span', '', 'Trash'), this.count);
     this.list = element(doc, 'ul', 'archive-trash-rows');
     this.list.setAttribute('role', 'list');
     this.notice = element(doc, 'div', 'archive-shelf-notice');
@@ -48,17 +50,25 @@ export class ArchiveTrash {
     this.loaded = false;
     this.failed = false;
     this.rows.clear();
-    this.removed.clear();
+    this.removals.clear();
     this.list.replaceChildren();
     this.paint();
   }
 
-  forget(id) {
-    if (!this.visible || !this.root.open) return;
-    this.removed.add(id);
-    this.rows.get(id)?.remove();
-    this.rows.delete(id);
+  learnRemoval(id, removal) {
+    if (!this.visible || !this.root.open || !removal) return;
+    this.removals.set(id, removal);
+    const row = this.rows.get(id);
+    if (removal.kind === 'unsent') {
+      row?.remove();
+      this.rows.delete(id);
+    } else if (row) this.paintTerminal(row, removal);
     this.paint();
+  }
+
+  paintTerminal(row, removal) {
+    row.querySelector('.archive-trash-title').classList.toggle('retracted-words', removal?.kind === 'retracted');
+    paintRemoval(row, { removal }, this.doc);
   }
 
   async load() {
@@ -73,10 +83,13 @@ export class ArchiveTrash {
       await this.afterRead();
       if (!current()) return;
       for (const item of page.items) {
-        if (item.withheld || this.removed.has(item.message_id) || this.rows.has(item.message_id)) continue;
+        const removal = this.removals.get(item.message_id) ?? item.removal;
+        if (item.withheld || removal?.kind === 'unsent' || this.rows.has(item.message_id)) continue;
         const title = item.name?.trim() || item.excerpt?.split('\n', 1)[0].trim() || 'Dossier';
-        const row = element(this.doc, 'li', '', title);
+        const row = element(this.doc, 'li');
         row.title = title;
+        row.append(glyph('trash', this.doc, 13), element(this.doc, 'span', 'archive-trash-title', title));
+        this.paintTerminal(row, removal);
         this.rows.set(item.message_id, row);
         this.list.append(row);
       }
@@ -104,6 +117,7 @@ export class ArchiveTrash {
   }
 
   paint() {
+    this.count.textContent = this.loaded && this.cursor === null ? String(this.rows.size) : '';
     this.notice.textContent = this.attempt ? 'Loading Trash…' : this.failed ? 'Could not load Trash.'
       : this.loaded && this.cursor === null && this.rows.size === 0 ? 'Trash is empty.' : '';
     this.more.hidden = this.cursor === null && !this.failed;

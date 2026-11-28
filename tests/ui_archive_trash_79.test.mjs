@@ -13,7 +13,7 @@ function fold(read) {
     afterRead: async () => {} });
   doc.body.append(trash.root);
   const toggle = open => { trash.root.open = open; return trash.root.ontoggle(); };
-  return { trash, doc, calls, toggle, titles: () => trash.list.children.map(row => row.textContent) };
+  return { trash, doc, calls, toggle, titles: () => trash.list.children.map(row => row.querySelector('.archive-trash-title').textContent) };
 }
 
 test('79 opens one page, continues an empty page, and retries the same cursor', async () => {
@@ -25,11 +25,13 @@ test('79 opens one page, continues an empty page, and retries the same cursor', 
   });
   f.trash.show(true);
   assert.deepEqual(f.calls, []);
+  assert.equal(f.trash.count.textContent, '');
   await f.toggle(true);
   await f.toggle(true);
   assert.deepEqual(f.calls, [null]);
   assert.equal(f.trash.notice.textContent, '');
   assert.equal(f.trash.more.hidden, false);
+  assert.equal(f.trash.count.textContent, '');
   await f.trash.more.onclick();
   assert.equal(f.trash.notice.textContent, 'Could not load Trash.');
   assert.equal(f.trash.more.textContent, 'Retry Trash');
@@ -37,6 +39,7 @@ test('79 opens one page, continues an empty page, and retries the same cursor', 
   await f.trash.more.onclick();
   assert.deepEqual(f.calls, [null, 10, 10]);
   assert.deepEqual(f.titles(), ['Named dossier', 'Note b']);
+  assert.equal(f.trash.count.textContent, '2');
   assert.equal(f.trash.more.hidden, true);
   assert.equal(f.doc.activeElement, f.trash.summary);
 });
@@ -63,6 +66,7 @@ test('79 clearing a folded or unavailable panel fences earlier pages', async () 
   await third;
   assert.deepEqual(f.calls, [null, null, null]);
   assert.equal(f.trash.notice.textContent, 'Trash is empty.');
+  assert.equal(f.trash.count.textContent, '0');
 });
 
 test('79 terminal removal cannot return in a late page and denial clears prior rows', async () => {
@@ -71,7 +75,7 @@ test('79 terminal removal cannot return in a late page and denial clears prior r
   f.trash.show(true);
   await f.toggle(true);
   const more = f.trash.load();
-  f.trash.forget('old');
+  f.trash.learnRemoval('old', { kind: 'unsent' });
   resolve(page([entry('old'), { ...entry('withheld'), withheld: true }, entry('other')], 5));
   await more;
   assert.deepEqual(f.titles(), ['Note other']);
@@ -79,4 +83,28 @@ test('79 terminal removal cannot return in a late page and denial clears prior r
   await f.trash.load();
   assert.deepEqual(f.titles(), []);
   assert.equal(f.trash.more.textContent, 'Retry Trash');
+});
+
+test('79 retraction keeps its row and act label on the open and reloaded fold', async () => {
+  const removal = { kind: 'retracted', by: 'owner', at_ms: 123 };
+  let held = null;
+  const f = fold(async () => page([{ ...entry('a'), removal: held }]));
+  f.trash.show(true);
+  await f.toggle(true);
+  const first = f.trash.rows.get('a');
+  held = removal;
+  f.trash.learnRemoval('a', removal);
+  const check = row => {
+    assert.equal(row.querySelector('.archive-trash-title').classList.contains('retracted-words'), true);
+    const label = row.querySelector('.message-retracted');
+    assert.equal(label.classList.contains('retracted-words'), false);
+    assert.match(label.text, /Retracted/);
+    assert.equal(label.querySelector('time').dataset.ms, '123');
+    assert.equal(f.trash.count.textContent, '1');
+  };
+  check(first);
+  assert.equal(f.trash.rows.get('a'), first);
+  f.toggle(false);
+  await f.toggle(true);
+  check(f.trash.rows.get('a'));
 });

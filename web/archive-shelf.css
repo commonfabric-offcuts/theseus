@@ -81,7 +81,10 @@ body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden])
 .archive-trash>summary:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .archive-trash[open]>summary>svg{transform:rotate(90deg)}
 .archive-trash-rows{margin:0;padding:0;list-style:none}
-.archive-trash-rows li{padding:.28rem .35rem .28rem 1.35rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:.78rem;color:var(--ink)}
+.archive-trash-rows li{display:flex;align-items:center;gap:.35rem;padding:.28rem .35rem .28rem .65rem;
+  font-size:.78rem;color:var(--muted)}
+.archive-trash-rows .glyph,.archive-trash-rows .message-retracted{flex:none}
+.archive-trash-rows .message-retracted{font-size:.72rem;white-space:nowrap}
+.archive-trash-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .archive-trash>.archive-shelf-notice{margin:.2rem .35rem .35rem 1.35rem}
-@media (pointer:coarse){.archive-trash>summary{min-height:44px}}
+@media (pointer:coarse),(max-width:760px){.archive-trash>summary,.archive-trash-rows li{min-height:44px}}

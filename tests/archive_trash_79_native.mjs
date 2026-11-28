@@ -68,6 +68,7 @@ try {
       const fold = shelf.locator('.archive-trash'), summary = fold.locator('summary');
       await summary.waitFor();
       assert.equal(await fold.evaluate(node => node.open), false);
+      assert.equal(await summary.locator('.archive-shelf-count').textContent(), '');
       assert.equal(await fold.evaluate(node => node === node.parentElement.lastElementChild), true);
       assert.equal(await page.locator('html').getAttribute('data-look'), look === 'paper' ? 'paper' : null);
       assert.equal(await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches), scheme === 'dark');
@@ -81,6 +82,13 @@ try {
       const rows = fold.locator('li');
       await rows.last().waitFor();
       assert.deepEqual(await rows.allTextContents(), ['Previous route', 'Duplicate handout', 'First map sketch']);
+      assert.equal(await summary.locator('.archive-shelf-count').textContent(), '3');
+      assert.equal(await fold.locator('li svg[data-glyph=trash][aria-hidden=true]').count(), 3);
+      const lookOfRows = await rows.evaluateAll(elements => {
+        const muted = getComputedStyle(elements[0].closest('details').querySelector('.archive-shelf-count')).color;
+        return elements.map(row => ({ muted: getComputedStyle(row).color === muted, height: row.getBoundingClientRect().height }));
+      });
+      assert.ok(lookOfRows.every(row => row.muted && (!phone || row.height >= 44)));
       assert.equal(archive(views).length, initialArchive, 'opening Trash does not refresh Archive');
       assert.deepEqual(trash(views), [{ topic_id: sample, limit: 24 }]);
       await summary.evaluate(node => node.blur());
@@ -126,6 +134,7 @@ try {
     await summary.click();
     await rows.nth(23).waitFor();
     assert.equal(await rows.count(), 24);
+    assert.equal(await summary.locator('.archive-shelf-count').textContent(), '');
     assert.equal(await shelf.locator('.shelf-views').isVisible(), false);
     await more.click();
     await fold.getByText('Could not load Trash.').waitFor();
@@ -133,6 +142,7 @@ try {
     await more.click();
     await rows.nth(25).waitFor();
     assert.equal(await rows.count(), 26);
+    assert.equal(await summary.locator('.archive-shelf-count').textContent(), '26');
     assert.equal(await more.isVisible(), false);
     assert.deepEqual(await rows.allTextContents(), Array.from({ length: 26 }, (_, index) => `Discarded draft ${26 - index}`));
     const reads = trash(views);

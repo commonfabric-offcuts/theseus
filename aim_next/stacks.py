@@ -1048,6 +1048,8 @@ class Stacks:
         return archive_page(db, actor, topic["id"], self.instance_id, args)
 
     def _view_dossier_trash(self, db, actor, args):
+        from .removal import value as removal_value
+
         topic = self._topic(db, actor, args.get("topic_id"))
         limit = _page_size(args)
         cursor = args.get("cursor", 9223372036854775807)
@@ -1077,6 +1079,7 @@ class Stacks:
                              lambda row: {"message_id": row["message_id"], "trash_id": row["trash_id"],
                                           "trash_revision": row["revision"], "name": row["name"],
                                           "excerpt": row["excerpt"], "withheld": withheld(row["message_id"]),
+                                          "removal": removal_value(db, row["message_id"]),
                                           "starred": bool(row["starred"]), "star_revision": row["star_revision"]}, "trash_id")
         if page["next_cursor"] is None and len(candidates) > budget:
             page["next_cursor"] = candidates[budget - 1]["trash_id"]

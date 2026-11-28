@@ -64,6 +64,7 @@ export const APPROVED = Object.freeze({
   archive: { vb: '0 0 20 20', sw: '1.6', d: 'M2.5 3.5h15V7h-15zM3.75 7v9.5h12.5V7M8 10.5h4' },
   reply: { d: 'M9.5 7 4.5 12l5 5 M5 12h9.5a5 5 0 0 1 5 5v1' },
   back: { d: 'M4 14v4.5h16V14 M12 14V4 M8 8l4-4 4 4' },
+  trash: { d: 'M4 7h16 M9 7V4h6v3 M6 7l1 13h10l1-13 M10 10v7 M14 10v7' },
   full: { d: 'M12 3v18 M8 7l4-4 4 4 M8 17l4 4 4-4' },
   fold: { d: 'M12 2.5v7 M8.5 6.5l3.5 3.5 3.5-3.5 M5 12h14 M12 21.5v-7 M8.5 17.5l3.5-3.5 3.5 3.5' },
   unfold: { d: 'M12 10V3 M8.5 6l3.5-3.5L15.5 6 M5 12h14 M12 14v7 M8.5 18l3.5 3.5 3.5-3.5' },
