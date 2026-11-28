@@ -178,11 +178,11 @@ export class StackFeed {
   // the menu a right-click on a message opens, from anchor (a title bar's ⋯). colorOf: as arrangeStacks takes it.
   constructor({ list, messages, viewer, instanceId, authority, send, keep, unread, nameOf, quiet = () => false, filterHost = null, reread = () => {}, starsChanged = () => {}, status = () => {}, line = () => null,
     newest = () => {}, refreshPositions = async () => {}, acted = () => {}, moreChanged = () => {}, arranged = () => {}, hold = paint => paint(), navigate = () => {}, press, thumb = null, redrawn = () => {}, home = null, reply = () => {}, menu = () => {},
-    colorOf = () => null, landReply = () => {}, readNamed = null, captureArchive = () => null, captureEmptyReply = null, closeReplyToFold = null, clock = () => Date.now(), thumbPending = () => null, doc = document }) {
+    colorOf = () => null, landReply = () => {}, readNamed = null, archiveTopic = null, landArchive = () => {}, captureArchive = () => null, captureEmptyReply = null, closeReplyToFold = null, clock = () => Date.now(), thumbPending = () => null, doc = document }) {
     Object.assign(this, { list, messages, viewer, instanceId, authority, commandOf: send, keep, unread, nameOf, quiet, filterHost, reread, starsChanged, status, line, newest, refreshPositions, acted, moreChanged, arranged, hold, navigate, press, thumb, redrawn, home, reply, menu, colorOf, landReply, captureArchive, captureEmptyReply, closeReplyToFold, clock, doc });
     this.archiveReads = new Map();
     this.thumbPending = thumbPending;
-    this.readNamed = readNamed; this.headerStars = new Set();
+    this.readNamed = readNamed; this.archiveTopic = archiveTopic; this.landArchive = landArchive; this.headerStars = new Set();
     this.coordinationChoice = new CoordinationChoice({ instanceId, viewer, view: doc.defaultView ?? globalThis.window });
     this.state.showCoordination = this.coordinationChoice.on;
     home?.addEventListener('close', () => this.arrange());
@@ -338,7 +338,10 @@ export class StackFeed {
       // hides what sits below More, as shownView is read after this).
       archived: list => {
         if (!this.list.isConnected) return;
-        const shelf = this.archiveShelf(), was = Boolean(this.state.shelved); shelf?.paint(list);
+        const shelf = this.archiveShelf(), was = Boolean(this.state.shelved);
+        const above = new Set(this.state.stacks.filter(stack => !this.state.below.has(stack.id)).map(dossierOf));
+        for (const { stack } of list) above.delete(dossierOf(stack));
+        shelf?.paint(list, above);
         this.state.shelved = Boolean(shelf?.drawn);
         if (this.state.shelved === was) return;
         if (this.state.shelved) this.state.moreOpen = false;
@@ -555,7 +558,7 @@ export class StackFeed {
   // settled still goes again as Theseus answers, so it is made once whatever
   // the reader does next, and what it says lands on the page it left
   // (app.mjs, retired elements). Once none is left, it listens no more.
-  dispose() { this.gone = true; if (!this.doubts.size) this.deafen(); }
+  dispose() { this.gone = true; this.shelf?.leave(); if (!this.doubts.size) this.deafen(); }
   // Hearing each time Theseus answers anything (api.mjs heard), at most once.
   listen() { this.unheard ??= heard(() => this.askAgain()); }
   deafen() { this.unheard?.(); this.unheard = null; }
@@ -1159,9 +1162,28 @@ export class StackFeed {
   archiveShelf() {
     if (!this.shelf && !this.list.ownerDocument.getElementById('things')) return null;
     // Brought back from the shelf, the dossier keeps the keys, as the feed's own Bring back does.
-    this.shelf ??= new ArchiveShelf({ doc: this.list.ownerDocument, unread: this.unread,
+    this.shelf ??= new ArchiveShelf({ doc: this.list.ownerDocument, unread: this.unread, afterRead: () => this.press.over(),
+      read: this.archiveTopic && this.readNamed ? async cursor => {
+        const topicId = this.archiveTopic;
+        const page = checkedView(await this.readNamed('dossier_archive', {
+          topic_id: topicId, limit: 24, ...(cursor ? { cursor } : {}),
+        }), this.instanceId);
+        if (page.topic_id !== topicId || !Array.isArray(page.items) || page.items.length > 24 ||
+            page.next_cursor !== null && !Array.isArray(page.next_cursor)) throw Error('Could not confirm the archived dossiers.');
+        return page;
+      } : null,
+      allows: row => {
+        const queued = this.pending.get(row.message_id)?.at(-1);
+        const held = this.standIns.get(row.message_id)?.acts;
+        return queued?.aside !== null && !(held?.aside_revision > row.aside_revision && held.aside === null);
+      },
       restore: stack => {
-        if (!this.setAside(stack, false)) return;
+        const committed = stack.archivedProjection || this.shelf?.inPanel() ? () => {
+          if (this.gone) return;
+          this.shelf?.refresh();
+          this.landArchive(dossierOf(stack), !stack.archivedProjection);
+        } : null;
+        if (!this.setAside(stack, false, { committed })) return;
         // A new mark on the replica promises the feed's same exact-message
         // read, not just a restored dossier whose unread reply is still folded.
         const mark = this.state.sections?.get(stack.id)?.querySelector('.stack-new-action');
@@ -1170,7 +1192,7 @@ export class StackFeed {
       changed: drawn => { this.state.shelved = drawn; if (drawn) this.state.moreOpen = false; this.arrange(); this.moreChanged(); } });
     return this.shelf;
   }
-  setAside(stack, below, { undoable = true, restoreThrough, restoreKey, focus = true, at = null } = {}) {
+  setAside(stack, below, { undoable = true, restoreThrough, restoreKey, focus = true, at = null, committed = null } = {}) {
     const found = this.rootOf(stack);
     if (!found) return false;
     const { item, position } = found, root = item.id;
@@ -1189,7 +1211,7 @@ export class StackFeed {
     const from = !below ? this.shelf?.replicaRect(stack.id) ?? null : null;
     if (below) this.shelf?.putAway(stack.id); else this.shelf?.broughtBack(stack.id);
     this.act('stack.aside', item, { through, ...(typeof restoreKey === 'number' ? { key: restoreKey } : {}),
-      ...(below && restoreThrough === undefined ? { clear_new: true } : {}) }, [], { quiet: true });
+      ...(below && restoreThrough === undefined ? { clear_new: true } : {}) }, [], { quiet: true, ...(committed && { committed }) });
     if (undoable) this.remember(at => this.setAside(stack, position.through !== null, { undoable: false, restoreThrough: position.through, restoreKey: position.order_key, at }));
     closeUp(this.list, () => this.arrange());
     // Focus goes to More where the page's one view draws it (Only new does

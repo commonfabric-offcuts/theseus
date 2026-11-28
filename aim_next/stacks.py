@@ -462,6 +462,11 @@ MEMBERS = """
         )"""
 
 
+def _dossier_totals(db, actor, root):
+    return db.execute(MEMBERS + " SELECT max(m.seq), max(CASE WHEN m.author_id<>:actor THEN m.seq END), count(*)"
+                      " FROM members p JOIN messages m ON m.id=p.id", {"root": root, "actor": actor}).fetchone()
+
+
 def _dossier(db, actor, root, *, archive_roots=None):
     """(the newest message, the newest by someone else) the reader can see in root's dossier, as sequences or None."""
     topic = db.execute("SELECT topic_id FROM messages WHERE id=?", (root,)).fetchone()[0]
@@ -502,8 +507,7 @@ def _dossier(db, actor, root, *, archive_roots=None):
         # absence; older/other dossiers keep the exact recursive calculation.
         if other is not None and roots.root(other['id']) == root or other is None and len(candidates) < 32:
             return latest['seq'], other['seq'] if other is not None else None
-    row = db.execute(MEMBERS + " SELECT max(m.seq), max(CASE WHEN m.author_id<>:actor THEN m.seq END) FROM members p JOIN messages m ON m.id=p.id",
-                     {"root": root, "actor": actor}).fetchone()
+    row = _dossier_totals(db, actor, root)
     return row[0], row[1]
 
 
@@ -1036,6 +1040,11 @@ class Stacks:
         found = current_acts(db, actor, [row["id"] for row in rows[:limit]])
         return _bounded_page({"instance_id": self.instance_id, "topic_id": topic["id"], "version": _seen_acts(db, actor, topic["id"])}, rows, limit,
                              lambda row: {"message_id": row["id"], "seq": row["seq"], "acts": found.get(row["id"], dict(EMPTY))}, "seq")
+
+    def _view_dossier_archive(self, db, actor, args):
+        from .archive_projection import archive_page
+        topic = self._topic(db, actor, args.get("topic_id"))
+        return archive_page(db, actor, topic["id"], self.instance_id, args)
 
     def _view_dossier_trash(self, db, actor, args):
         topic = self._topic(db, actor, args.get("topic_id"))

@@ -12,6 +12,9 @@
 .archive-shelf-head{display:flex;align-items:baseline;gap:.45rem;margin-bottom:.55rem}
 .archive-shelf-head h2{margin:0;font-size:.72rem;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .archive-shelf-count{font-size:.72rem;color:var(--muted)}
+.archive-shelf-more{margin-top:.55rem;font-size:.8rem}
+.archive-shelf-notice{display:block;margin-top:.35rem;color:var(--muted);font-size:.75rem}
+.archive-shelf-notice:empty{display:none}
 .archive-shelf-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(5.6rem,1fr));gap:.65rem .4rem}
 .shelf-item{display:flex;min-width:0}
 .shelf-dossier{flex:1;display:flex;flex-direction:column;align-items:center;min-width:0;padding:.35rem .2rem .3rem;color:var(--ink);background:transparent;border:0;border-radius:.5rem;cursor:pointer;font:inherit}
@@ -67,6 +70,10 @@ body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden])
   :root .shelf-views .shelf-view{height:2.75rem;min-height:44px;min-width:44px;padding:0 .8rem;font-size:.8rem}
   :root .archive-shelf[data-view=list] .shelf-dossier{height:2.75rem;min-height:44px}
   .archive-shelf[data-view=list] .shelf-title{line-height:2.75rem}
+  .archive-shelf-more{min-height:44px}
+}
+@media(max-width:1180px){
+  .archive-shelf{position:static;margin:.75rem 0 0;padding:.75rem 0 0;max-height:none;min-height:0;background:inherit}
 }
 
 /*1053: the feed’s New/count mark, quiet on the replica in either view. */

@@ -214,6 +214,7 @@ VIEWS = {
     "post_edit_hint": {"message_id", "topic_id", "reply_to"},
     "open_ask_replies": {"topic_id"},
     "dossier_trash": {"topic_id", "cursor", "limit"},
+    "dossier_archive": {"topic_id", "cursor", "limit"},
     "tools": {"workspace_id"}, "tool": {"tool_id", "cursor", "limit"}, "topic_tools": {"topic_id"},
 }
 
@@ -311,6 +312,9 @@ def _view_arguments(name, args):
             if cursor != "":
                 from .topic_state import order_position
                 order_position(cursor)
+        elif name == "dossier_archive":
+            from .archive_projection import _cursor
+            _cursor(args)
         elif name in ("workspaces", "openings", "workspace_members", "actors", "colors", "source_topics", "assessments", "hosted_seats"):
             if cursor != "":
                 _identifier(cursor, "cursor")
