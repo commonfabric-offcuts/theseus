@@ -29,7 +29,7 @@ export async function coverBirth1385Checks({ check, until, control, shot, observ
     await check(`reading item 1385 ${name} ${device} ${theme}: ${negative ? 'consumer-negative' : 'candidate'} Reader cover`, async () => {
       const topic = `birth1385-${name}-${device}-${theme}`;
       const ids = await seed(topic, [
-        ['root', { sender: 'aim-core', join: true, body: 'Which weekend suits the cabin trip?' }],
+        ['root', { sender: 'aim-core', join: true, divergence_reason: 'A distinct fixture dossier for 1385', body: 'Which weekend suits the cabin trip?' }],
         ['answer', { sender: 'aim-core', reply_to: 'root', body: 'Either works; Friday is easier for the drive.' }],
       ]);
       await write(topic, ids);
