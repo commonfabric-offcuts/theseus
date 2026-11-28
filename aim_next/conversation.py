@@ -13,10 +13,11 @@ from . import whispers, root_posts
 from .standing_conversation import open_items_clause
 from .topic_state import derived_conversation
 from .reactions import GO_AHEAD_NEEDS_ASK, go_ahead_flag
+from .removal import value as removal_value
 from .questions import record_exact_reply_start
 from .topic_reading import reading_fields, unread_groups, writing_fields
 from .stacks import MEMBERS, StackRoots, current_acts, act_fields, awaiting_fields, record_wait_start, source_dossier
-from .message_edit import (current_words, edited, is_held, mark, plain, quoted_revision, reading, record_agent_exposure_start, revision,
+from .message_edit import (current_words, edit_echo_for_source, edit_echo_metadata, edited, is_held, mark, plain, quoted_revision, reading, record_agent_exposure_start, revision,
                            struck, words, withheld)
 
 
@@ -551,7 +552,7 @@ class Conversation:
                 raise Refusal("FORBIDDEN", "No readable source")
         return row
 
-    def _source(self, db, actor, ref):
+    def _source(self, db, actor, ref, *, include_edit_echo=False):
         if isinstance(ref, dict) and ref.get("kind") == "memory":
             return self._memory_source(db, actor, ref)
         if not isinstance(ref, dict) or ref.get("kind") != "message":
@@ -573,6 +574,11 @@ class Conversation:
         quotes = [] if held else self._source_quotes(db, actor, json.loads(row["quotes"]))
         # For a person who had read words its agent author has since changed, those words, struck through (item 614).
         seen = None if held or current <= 1 else struck(db, actor, row["id"], current, current_words(db, row["id"], plain=True)[0])
+        echo_number = ref.get("edit_echo_revision")
+        if "edit_echo_revision" in ref and (type(echo_number) is not int or not 2 <= echo_number <= current):
+            raise Refusal("INVALID_ARGUMENT", "Choose an existing edited revision")
+        echo = (edit_echo_for_source(db, actor, row, current, echo_number)
+                if include_edit_echo and current > 1 and not held and not removal_value(db, row["id"]) else None)
         result = {"instance_id": self.instance_id, "source_ref": {"kind": "message", "id": row["id"]},
                 "owner_scope": {"kind": "topic", "id": row["topic_id"]}, "topic_id": row["topic_id"],
                 "author": row["author_id"], "author_kind": row["author_kind"], "seq": row["seq"], "title": "", "body": "" if held else body,
@@ -586,6 +592,8 @@ class Conversation:
                 "allowed_actions": ["quote", "note.save"], "dossier": self._source_dossier(db, actor, row),
                 "acts": self._source_acts(db, actor, row),
                 **whispers.whisper_fields(row), **self._source_reactions(db, actor, row)}
+        if echo is not None:
+            result["edit_echo"] = echo
         self._removal_fields(db, actor, [result])
         from .release_cards import enrich
         enrich(db, [result])
@@ -631,7 +639,7 @@ class Conversation:
         return quotes
 
     def _view_source(self, db, actor, args):
-        return self._source(db, actor, args.get("source_ref", args))
+        return self._source(db, actor, args.get("source_ref", args), include_edit_echo=True)
 
     def _view_topic(self, db, actor, args):
         topic = self._topic(db, actor, args.get("topic_id"))
@@ -661,7 +669,6 @@ class Conversation:
                 "outcome_target": target, "relevant_versions": {"topic": topic["version"]}, "allowed_actions": ["draft.save", "message.send"]}
 
     def _view_topic_messages(self, db, actor, args):
-        from .removal import value as removal_value
         topic = self._topic(db, actor, args.get("topic_id"))
         # Named messages are read alone: a page's position, size or form would be a second question.
         if args.get("message_ids") is not None and set(args) & {"cursor", "direction", "limit", "items", "audience"}:
@@ -758,6 +765,12 @@ class Conversation:
             # For a person who had read words its agent author has since changed, those within what the card shows,
             # struck through (item 614); measured with the item.
             item["struck"] = None if item["withheld"] else struck(db, actor, item["id"], item["revision"], whole, cut if item["preview"] else None)
+            echo = (edit_echo_metadata(db, item["id"], item["revision"])
+                    if item["revision"] > 1 and not item["withheld"] and not removal_value(db, item["id"]) else None)
+            if echo is not None:
+                if echo["revision"] != item["revision"]:
+                    echo["summary"] = "Revised wording"
+                item["edit_echo"] = echo
             encoded = len(_json(plain(item)).encode("utf-8")) + 1
             if size + encoded > LIMITS["summary_utf8_bytes"]:
                 if args.get("message_ids") is not None:

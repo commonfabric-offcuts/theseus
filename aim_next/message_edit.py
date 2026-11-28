@@ -95,6 +95,15 @@ MESSAGE_EDIT_DOWN = ["DROP TRIGGER immutable_message_revision_delete", "DROP TRI
 # Once any message is edited, version 39 would show its first words and lose the corrections' revisions.
 MESSAGE_EDIT_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_revisions)"
 
+# Version 72: an echo belongs to one immutable revision. Downgrading loses it.
+EDIT_ECHO_UP = ["ALTER TABLE message_revisions ADD COLUMN edit_echo TEXT"]
+EDIT_ECHO_DOWN = ["ALTER TABLE message_revisions DROP COLUMN edit_echo"]
+EDIT_ECHO_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_revisions WHERE edit_echo IS NOT NULL)"
+EDIT_ECHO_GROUP_MS = 120_000
+EDIT_ECHO_LOOKBACK = 32
+EDIT_ECHO_SNIPPET_CHARS = 100
+
+
 # Version 41 (item 452, slice 2): each message's one edit session, which keeps the person's draft in Core and holds the
 # message from agents while it is open; what each agent was handed of a person's message (its exposure); and the
 # horizon, the last message sent before exposures were kept, so every message at or below it counts as handed at
@@ -510,17 +519,139 @@ def struck_words(old, new):
     return {"cuts": cuts, "added": added}
 
 
+# These frequent transpositions are unambiguous in plain English prose.
+# General edit distance would misclassify real changes such as trial → trail.
+PROSE_TYPOS = {
+    "adn": "and", "ahve": "have", "becuase": "because", "freind": "friend",
+    "htis": "this", "jsut": "just", "recieve": "receive", "taht": "that",
+    "teh": "the", "thier": "their", "tihs": "this", "waht": "what",
+    "whcih": "which", "wiht": "with", "woudl": "would", "wuold": "would",
+}
+
+
+def _mechanical_edit(before, after):
+    old_lines, new_lines = before.splitlines(keepends=True), after.splitlines(keepends=True)
+    if len(old_lines) != len(new_lines):
+        return False
+    fence = None
+    for prior, new in zip(old_lines, new_lines):
+        delimiter = re.match(r" *(`{3,}|~{3,})", prior)
+        if delimiter:
+            if prior != new:
+                return False
+            if fence is None:
+                fence = delimiter[1]
+            elif prior.lstrip().startswith(fence) and not prior.lstrip()[len(delimiter[1]):].strip():
+                fence = None
+        if prior == new:
+            continue
+        if fence or re.search(r"[`/\\\t]", prior + new):
+            return False
+        left, right = prior.rstrip(" \r\n"), new.rstrip(" \r\n")
+        a, b = left.lstrip(" "), right.lstrip(" ")
+        indent = len(left) - len(a)
+        if indent >= 4 or indent != len(right) - len(b) or prior[len(left):] != new[len(right):]:
+            return False
+        if (" " in a and " " in b and a[-1] in ".?!" and b[-1] in ".?!"
+                and re.match(r"[A-Za-z][a-z]", a) and re.match(r"[A-Za-z][a-z]", b)):
+            a, b = a[0].lower() + a[1:], b[0].lower() + b[1:]
+        words = r"\w+|[^\w\s]"
+        old, current = re.findall(words, a), re.findall(words, b)
+        if len(old) != len(current) or any(x != y and PROSE_TYPOS.get(x.lower()) != y.lower()
+                                           for x, y in zip(old, current)):
+            return False
+    return True
+
+
+def _latest_edit_echo(db, message_id, revision):
+    return db.execute("SELECT revision,edited_ms,edit_echo FROM message_revisions WHERE message_id=? "
+                      "AND revision BETWEEN ? AND ? AND edit_echo IS NOT NULL ORDER BY revision DESC LIMIT 1",
+                      (message_id, max(2, revision - EDIT_ECHO_LOOKBACK + 1), revision)).fetchone()
+
+
+def _added_words(utf16, change, limit):
+    start = change["start"] * 2
+    end = min(change["end"] * 2, start + limit * 4)
+    text = utf16[start:end].decode("utf-16-le", errors="ignore")
+    return text if len(text) <= limit and end == change["end"] * 2 else text[:limit].rstrip() + "…"
+
+
+def _echo_summary(changes, after):
+    if not changes["added"]:
+        return "Removed wording" if changes["cuts"] else "Revised wording"
+    utf16 = after.encode("utf-16-le")
+    snippets = []
+    for change in changes["added"][:3]:
+        snippets.append(" ".join(_added_words(utf16, change, EDIT_ECHO_SNIPPET_CHARS).split()))
+    snippet = " … ".join(snippets)
+    if len(snippet) > EDIT_ECHO_SNIPPET_CHARS:
+        snippet = snippet[:EDIT_ECHO_SNIPPET_CHARS].rstrip() + "…"
+    return ("Revised wording to “%s”" if changes["cuts"] else "Added “%s”") % snippet
+
+
+def write_edit_echo(db, message_id, number, edited_ms, before, after):
+    if _mechanical_edit(before, after):
+        return None
+    group, baseline = number, before
+    previous = _latest_edit_echo(db, message_id, number - 1)
+    if previous is not None and 0 <= edited_ms - previous["edited_ms"] <= EDIT_ECHO_GROUP_MS:
+        anchor = json.loads(previous["edit_echo"])["group_revision"]
+        first_words = words_at(db, message_id, anchor - 1, plain=True)[0]
+        if first_words != after:
+            group, baseline = anchor, first_words
+    return json.dumps({"group_revision": group, "summary": _echo_summary(struck_words(baseline, after), after)}, ensure_ascii=False)
+
+
+def edit_echo_metadata(db, message_id, current, number=None):
+    if current <= 1:
+        return None
+    if number is None:
+        row = _latest_edit_echo(db, message_id, current)
+    else:
+        row = db.execute("SELECT revision,edited_ms,edit_echo FROM message_revisions WHERE message_id=? "
+                         "AND revision=? AND edit_echo IS NOT NULL", (message_id, number)).fetchone()
+    return dict(json.loads(row["edit_echo"]), revision=row["revision"], edited_ms=row["edited_ms"]) if row else None
+
+
+def _person_exposed_revision(db, actor, message_id):
+    row = db.execute("SELECT e.revision FROM message_exposures e JOIN actors a ON a.id=e.actor_id AND a.kind='human' "
+                     "WHERE e.actor_id=? AND e.message_id=?", (actor, message_id)).fetchone()
+    return row[0] if row else None
+
+
+def edit_echo_for_source(db, actor, message, current, number=None):
+    echo = edit_echo_metadata(db, message["id"], current, number)
+    if echo is None:
+        return None
+    author = message["author_id"] == actor
+    exposed = None if author else _person_exposed_revision(db, actor, message["id"])
+    if number is not None and number < current and not (author or exposed == number):
+        return None
+    to_revision = current if number is None else number
+    from_revision = echo["group_revision"] - 1
+    before = words_at(db, message["id"], from_revision, plain=True)[0]
+    after = words_at(db, message["id"], to_revision, plain=True)[0]
+    changes = struck_words(before, after)
+    if echo["revision"] != to_revision:
+        echo["summary"] = _echo_summary(changes, after)
+    if not author and exposed != from_revision:
+        changes["cuts"] = []
+    if to_revision != current:
+        utf16 = after.encode("utf-16-le")
+        changes["added"] = [dict(change, words=_added_words(utf16, change, STRUCK_CHARS)) for change in changes["added"]]
+    return dict(echo, diff=dict(changes, from_revision=from_revision, to_revision=to_revision))
+
+
 def struck(db, actor, message_id, revision_now, words_now, shown=None):
     """What one reader sees struck through on one message, or None: for a person whose row of message_exposures (written
     by the message's agent author's edit, item 614) names a revision they had read below the latest, {revision, cuts, added}
     from struck_words; shown clips these ranges to a card's excerpt. None for an agent, a message never edited, or a person with no such row."""
     if revision_now <= 1:
         return None
-    row = db.execute("SELECT e.revision FROM message_exposures e JOIN actors a ON a.id=e.actor_id AND a.kind='human' "
-                     "WHERE e.actor_id=? AND e.message_id=?", (actor, message_id)).fetchone()
-    if row is None or row[0] >= revision_now:
+    exposed = _person_exposed_revision(db, actor, message_id)
+    if exposed is None or exposed >= revision_now:
         return None
-    before = words_at(db, message_id, row[0], plain=True)
+    before = words_at(db, message_id, exposed, plain=True)
     if before is None:
         return None
     changes = struck_words(before[0], words_now)
@@ -529,7 +660,7 @@ def struck(db, actor, message_id, revision_now, words_now, shown=None):
         changes["cuts"] = [cut for cut in changes["cuts"] if cut["at"] < limit]
         changes["added"] = [{"start": run["start"], "end": min(run["end"], limit)}
                             for run in changes["added"] if run["start"] < limit]
-    return dict(changes, revision=row[0]) if changes["cuts"] or changes["added"] else None
+    return dict(changes, revision=exposed) if changes["cuts"] or changes["added"] else None
 
 
 EDIT_ARGUMENTS = "Name one message and its new words"
@@ -633,8 +764,9 @@ class MessageEdit:
             raise Refusal("INVALID_ARGUMENT", UNCHANGED)
         from . import delivery
         number, edited_ms = current + 1, delivery._now_ms()
-        db.execute("INSERT INTO message_revisions(message_id,revision,author_id,operation_id,body,edited_ms) VALUES (?,?,?,?,?,?)",
-                   (message["id"], number, actor, envelope["operation_id"], body, edited_ms))
+        echo = write_edit_echo(db, message["id"], number, edited_ms, now_words, body)
+        db.execute("INSERT INTO message_revisions(message_id,revision,author_id,operation_id,body,edited_ms,edit_echo) VALUES (?,?,?,?,?,?,?)",
+                   (message["id"], number, actor, envelope["operation_id"], body, edited_ms, echo))
         # The holder's Save ends the edit session and releases the hold before any correction is queued, so released
         # deliveries are pending again when the corrections run. Any other Save leaves the session as it is.
         session = db.execute("SELECT * FROM message_edit_sessions WHERE message_id=?", (message["id"],)).fetchone()
