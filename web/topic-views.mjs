@@ -14,7 +14,7 @@ const integer = n => Number.isSafeInteger(n) && n >= 0;
 // Revisions of the dossier's name, cover and personal place, its historical
 // places (550) and the reader's starred messages (635) each affect its drawing.
 // A position snapshot alone is not a change.
-const PLACING = ['level', 'level_revision', 'root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];
+const PLACING = ['level', 'level_revision', 'trashed', 'trash_revision', 'root_id', 'through', 'below', 'aside_revision', 'name_revision', 'place_revision', 'cover_revision', 'cover_refresh_revision', 'order_key', 'order_tie', 'order_entry_key'];
 const starsOf = position => (position.starred ?? []).join(' ');
 const samePlaces = (a, b) => JSON.stringify(a?.places ?? []) === JSON.stringify(b?.places ?? []);
 const samePlace = (a, b) => (a ? b !== undefined && b !== null && PLACING.every(key => a[key] === b[key]) && samePlaces(a, b) && starsOf(a) === starsOf(b) && JSON.stringify(a.cover) === JSON.stringify(b.cover) : !b);
@@ -55,8 +55,8 @@ export class TopicViews {
   // reading(what): a read of what shows the cards ('acts', 'reaction:<id>')
   // begins; the function it returns is called once that read has landed, so
   // what was said of an act on a card goes (stack-feed.mjs answered).
-  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {}, actMessages = null, arrived = () => {}, window = null, evicted = () => {} }) {
-    Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds, reading, actMessages, arrived });
+  constructor({ instanceId, topicId, reader = null, paint = () => {}, invalidate = () => {}, holds = () => false, reading = () => () => {}, actMessages = null, arrived = () => {}, window = null, evicted = () => {}, offPageActs = () => {} }) {
+    Object.assign(this, { instanceId, topicId, reader, paint, invalidate, holds, reading, actMessages, arrived, offPageActs });
     this.windowOptions = window; this.evicted = evicted; this.windowEpoch = 0;
     this.windowHints = new Map(); this.windowGaps = []; this.windowRoots = new Set(); this.windowPressure = null;
     this.windowKnowledge = 0; this.windowReadFloor = 0; this.windowAt = 0;
@@ -611,9 +611,12 @@ export class TopicViews {
     // What was learned is drawn even when reading the places after it fails
     // (superseded, or deferred behind the page's own reads): the next read
     // learns nothing new, so it would draw nothing.
-    try { await this.readPositions(read, current); }
+    let positionsChanged = false;
+    try { positionsChanged = await this.readPositions(read, current); }
     finally {
       if (changed) this.paint('acts');
+      // An Archive row can change even when its dossier is outside this window.
+      else if (moved && !positionsChanged && current()) this.offPageActs();
       // Acts count apart from the topic's versions, so the neighbours are
       // asked for afresh (force), even over a read already under way that
       // began before this act.
@@ -663,6 +666,7 @@ export class TopicViews {
         changed = this.learnPositions(answer.items) || changed;
       }
     } finally { if (changed) this.paint('acts'); }
+    return changed;
   }
   runOf(id) { return this.runs.get(id); }
   validMemory(item) {

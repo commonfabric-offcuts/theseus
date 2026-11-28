@@ -22,7 +22,7 @@ import { ownWithdrawnQuestion } from './question-withdrawal.mjs';
 const actsOf = item => item?.acts ?? {};
 
 // Each act and the revision Core counts it by.
-const REVISIONS = { level: 'level_revision', aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision', cover: 'cover_revision', cover_refresh: 'cover_refresh_revision', message_refresh: 'message_refresh_revision' };
+const REVISIONS = { level: 'level_revision', trashed: 'trash_revision', aside: 'aside_revision', starred: 'star_revision', dealt: 'deal_revision', folded: 'fold_revision', placed: 'place_revision', name: 'name_revision', joined: 'join_revision', cover: 'cover_revision', cover_refresh: 'cover_refresh_revision', message_refresh: 'message_refresh_revision' };
 
 // What Core holds of a message's acts, from what the page knew and an answer
 // it read or was given since: each act as the later of the two by its
@@ -479,11 +479,12 @@ export const placeOf = position => (position ? `${position.root_id}:${position.a
 // omitted from the projection; hiddenRoots, the dossier (Core's
 // root_id) of each stack drawn but not on show; asideShown, whether a dossier
 // put below More is on show (More open, or Only new).
-export function pageOf(stacks, view, { known = [], viewer = null } = {}) {
+export function pageOf(stacks, view, { known = [], viewer = null, trashed = [], trashedRoots = [] } = {}) {
   const all = readingOrder(shownOrder(stacks, { ...view, hidden: () => false }));
   const hiddenRoots = new Set(stacks.filter(stack => view.hidden(stack)).flatMap(stack => [stack.id, positionOf(stack)?.root_id ?? stack.id]));
   const order = readingOrder(shownOrder(stacks, view)).filter(item => !view.only || view.only(item));
-  const loaded = new Set(all.map(item => item.id));
+  for (const root of trashedRoots) hiddenRoots.add(root);
+  const loaded = new Set([...all.map(item => item.id), ...trashed]);
   // Projection can omit an entire dossier. Its known withdrawn question is
   // still loaded, so a Core neighbor must not reopen it as an outside edge.
   for (const item of known) if (ownWithdrawnQuestion(item, viewer)) loaded.add(item.id);
@@ -506,7 +507,7 @@ export function stepTarget(candidate, page) {
   if (page.shown.has(candidate.id)) return candidate;
   if (page.loaded.has(candidate.id)) return null;
   const position = candidate.position ?? null;
-  if (page.hiddenRoots.has(position?.root_id ?? candidate.id) || (position?.below && !page.asideShown)) return null;
+  if (position?.trashed || page.hiddenRoots.has(position?.root_id ?? candidate.id) || (position?.below && !page.asideShown)) return null;
   if (page.only && !page.only(candidate)) return null;
   return candidate;
 }
@@ -608,6 +609,19 @@ export function positionOf(stack) {
     .reduce((known, next) => laterPosition(known, next), null);
 }
 
+export function trashedDossiers(messages) {
+  // A page may carry an older state than a member already loaded. The
+  // newest state for the canonical root applies to all its loaded members.
+  const trashPositions = new Map();
+  for (const { stack_position: position } of messages) {
+    if (!position || position.trash_revision === undefined) continue;
+    if (position.trash_revision > (trashPositions.get(position.root_id)?.trash_revision ?? -1)) {
+      trashPositions.set(position.root_id, position);
+    }
+  }
+  return new Set([...trashPositions].filter(([, position]) => position.trashed).map(([root]) => root));
+}
+
 // Item 799. Admitted heads are a separate, visit-scoped presentation cache.
 // They never enter the topic's loaded runs or pagination frontiers.
 export class DossierHeads {
@@ -625,8 +639,9 @@ export class DossierHeads {
   }
   sync(messages, removals = this.removals, allowedRoots = null) {
     this.removals = removals;
+    const trashed = trashedDossiers(messages.values());
     const wanted = new Set([...dossiersOf([...messages.values()]).values()].filter(id => !messages.has(id) &&
-      removals?.get(id)?.kind !== 'unsent' && (!allowedRoots || allowedRoots.has(id))));
+      !trashed.has(id) && removals?.get(id)?.kind !== 'unsent' && (!allowedRoots || allowedRoots.has(id))));
     for (const id of this.records.keys()) if (!wanted.has(id)) this.records.delete(id);
     for (const id of this.queued.keys()) if (!wanted.has(id)) this.queued.delete(id);
     const added = [];

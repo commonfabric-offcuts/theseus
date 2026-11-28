@@ -257,6 +257,9 @@ export class StackFeed {
       if (known && (known.acts?.level_revision ?? -1) > (stack_position?.level_revision ?? -1)) {
         stack_position = { ...stack_position, level: known.acts.level, level_revision: known.acts.level_revision };
       }
+      if (known && (known.acts?.trash_revision ?? -1) > (stack_position?.trash_revision ?? -1)) {
+        stack_position = { ...stack_position, trashed: known.acts.trashed, trash_revision: known.acts.trash_revision };
+      }
       for (const pending of this.pending.get(root) ?? []) {
         if ('level' in pending) stack_position = { ...stack_position, level: pending.level };
         if ('aside' in pending) stack_position = { ...stack_position, through: pending.aside, below: pending.aside !== null,
@@ -342,6 +345,7 @@ export class StackFeed {
         const shelf = this.archiveShelf(), was = Boolean(this.state.shelved);
         const above = new Set(this.state.stacks.filter(stack => !this.state.below.has(stack.id)).map(dossierOf));
         for (const { stack } of list) above.delete(dossierOf(stack));
+        for (const root of this.state.trashedRoots) above.add(root);
         shelf?.paint(list, above);
         this.state.shelved = Boolean(shelf?.drawn);
         if (this.state.shelved === was) return;
