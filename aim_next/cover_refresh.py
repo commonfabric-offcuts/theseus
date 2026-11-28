@@ -104,8 +104,10 @@ class CoverRefresh:
                        if not written else "Please rewrite this dossier's cover from its latest facts. ")
             body = (opening +
                     "Read the whole dossier and its current cover, retain source attribution, waits and defaults, "
-                    "payload kind/link and the owner's Done record. Use aim-next cover %s --expected N with the "
-                    "current cover revision. This refresh observed revision %d; only a changed agent cover write "
+                    "payload kind/link and the owner's Done record. Put current facts and numbers in a simple "
+                    "table in plain language; fold log-like details under a details fold. "
+                    "Use aim-next cover %s --expected N with the current cover revision. "
+                    "This refresh observed revision %d; only a changed agent cover write "
                     "completes it, not a reply or acknowledgement." % (message["id"], current))
         else:
             recipient = message["author_id"]

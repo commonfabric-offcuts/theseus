@@ -327,6 +327,8 @@ it when you take a dossier up, and keep it current as the work moves, in the
 same turn as the reply that moves it: where it stands in one line, what waits
 on the owner with the default that holds if they say nothing, and, once the
 dossier has produced something, its payload and the message that delivered it.
+Put current facts and numbers in a simple table in plain language; fold
+log-like details under a details fold.
 
 ```sh
 aim-next cover ROOT --stands "Answered: the second weekend, with the lake open"

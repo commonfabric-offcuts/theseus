@@ -100,8 +100,10 @@ class RequestCase(CoverRefreshCase):
         item = self.delivery(refresh)
         expected = ("Please rewrite this dossier's cover from its latest facts. "
                     "Read the whole dossier and its current cover, retain source attribution, waits and defaults, "
-                    "payload kind/link and the owner's Done record. Use aim-next cover %s --expected N with the "
-                    "current cover revision. This refresh observed revision 1; only a changed agent cover write "
+                    "payload kind/link and the owner's Done record. Put current facts and numbers in a simple "
+                    "table in plain language; fold log-like details under a details fold. "
+                    "Use aim-next cover %s --expected N with the current cover revision. "
+                    "This refresh observed revision 1; only a changed agent cover write "
                     "completes it, not a reply or acknowledgement." % self.root)
         self.assertEqual(item["request"]["body"], expected)
         for actor in ("owner", "agent-a", "other-reader", "outsider"):
