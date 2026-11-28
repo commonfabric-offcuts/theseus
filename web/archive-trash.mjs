@@ -12,8 +12,8 @@ const element = (doc, tag, className, text) => {
 // Trash has its own lifetime and cursor. A response is only for the open
 // fold that asked for it, even if that fold closes and reopens meanwhile.
 export class ArchiveTrash {
-  constructor({ doc, read, afterRead }) {
-    Object.assign(this, { doc, read, afterRead });
+  constructor({ doc, read, afterRead, folded = () => {} }) {
+    Object.assign(this, { doc, read, afterRead, folded });
     this.rows = new Map();
     this.removals = new Map();
     this.root = element(doc, 'details', 'archive-trash');
@@ -29,7 +29,10 @@ export class ArchiveTrash {
     this.more.onclick = () => this.load();
     this.root.append(this.summary, this.list, this.notice, this.more);
     this.root.ontoggle = () => {
-      if (!this.root.open) this.clear();
+      if (!this.root.open) {
+        this.clear();
+        if (this.visible) this.folded();
+      }
       else if (!this.loaded && !this.failed) return this.load();
     };
     this.clear();

@@ -27,6 +27,20 @@ def _key(row):
     return [row["starred"], row["rank"], row["tie"], row["seq"]]
 
 
+def _trash_known_empty(db, actor, topic):
+    # Only prove emptiness. A remaining act or a partial sample leaves the
+    # fold available without resolving ancestry or reading any message words.
+    candidates = db.execute(
+        "WITH recent AS (SELECT a.message_id,a.revision FROM message_acts a INDEXED BY reader_trash_recent"
+        " WHERE a.owner=:actor AND a.topic_id=:topic AND a.kind='trash' AND json_extract(a.value,'$.trashed')=1"
+        " ORDER BY a.id DESC LIMIT 9)"
+        " SELECT revision=(SELECT max(b.revision) FROM message_acts b"
+        " WHERE b.message_id=recent.message_id AND b.kind='trash' AND b.owner=:actor)"
+        " AND NOT EXISTS (SELECT 1 FROM message_removals r WHERE r.message_id=recent.message_id AND r.kind='unsent')"
+        " FROM recent", {"actor": actor, "topic": topic}).fetchall()
+    return len(candidates) < 9 and not any(row[0] for row in candidates)
+
+
 def _unread(db, actor, root, groups):
     # The member's message id drives both indexed unread probes. Unrelated
     # pending deliveries and marks never become candidates for this count.
@@ -107,5 +121,8 @@ def archive_page(db, actor, topic, instance, args):
         # All inspected candidates were consumed or ineligible. Move past
         # them even if this page exposed zero roots.
         cursor = _key(candidates[at - 1])
-    return {"instance_id": instance, "topic_id": topic, "items": items,
+    page = {"instance_id": instance, "topic_id": topic, "items": items,
             "next_cursor": cursor, "remaining": remaining}
+    if not items and cursor is None and args.get("cursor") is None and _trash_known_empty(db, actor, topic):
+        page["trash_empty"] = True
+    return page

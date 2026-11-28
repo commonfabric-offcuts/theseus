@@ -54,12 +54,13 @@ export class ArchiveShelf {
     this.doc = doc; this.restore = restore; this.undo = undo; this.changed = changed; this.unread = unread;
     this.read = read; this.allows = allows; this.afterRead = afterRead; this.projected = new Map(); this.given = [];
     this.suppress = new Set(); this.cursor = null; this.remaining = null; this.epoch = 0;
+    this.archiveReady = !read; this.trashEmpty = false;
     this.replicas = new Map(); this.stacks = new Map(); this.flights = new Map();
     // The dossiers archived on this page, the latest last: they go first on the shelf. Any other keeps Core's order.
     this.here = []; this.drawn = false; this.list = [];
     this.root = element(doc, 'section', 'archive-shelf'); this.root.id = 'archive-shelf';
     this.root.setAttribute('aria-labelledby', 'archive-shelf-heading'); this.root.hidden = true;
-    const head = element(doc, 'div', 'archive-shelf-head');
+    const head = this.head = element(doc, 'div', 'archive-shelf-head');
     this.heading = element(doc, 'h2', '', 'Archived'); this.heading.id = 'archive-shelf-heading';
     this.count = element(doc, 'span', 'archive-shelf-count');
     this.viewGroup = this.views();
@@ -72,7 +73,7 @@ export class ArchiveShelf {
     this.notice.setAttribute('role', 'status');
     this.root.append(head, this.row, this.more, this.notice);
     if (readTrash) {
-      this.trash = new ArchiveTrash({ doc, read: readTrash, afterRead });
+      this.trash = new ArchiveTrash({ doc, read: readTrash, afterRead, folded: () => this.update(false) });
       this.root.append(this.trash.root);
     }
     const replicaOf = event => event.target.closest?.('.shelf-dossier') ?? null;
@@ -101,6 +102,7 @@ export class ArchiveShelf {
     this.unavailable = !available;
     this.epoch++;
     this.started = false; this.refreshPending = false; this.pageError = false;
+    this.archiveReady = !this.read; this.trashEmpty = false;
     this.projected.clear(); this.cursor = null; this.remaining = null;
     this.paint([], new Set(), true);
   }
@@ -140,9 +142,13 @@ export class ArchiveShelf {
     const beside = this.beside(), drawn = hasRows && beside, was = this.drawn;
     const panel = this.inPanel();
     const visible = !this.unavailable && (beside || panel);
-    this.drawn = drawn; this.root.hidden = !(visible && (hasRows || this.trash));
+    const showTrash = this.trash && (hasRows || this.archiveReady && (!this.trashEmpty || this.trash.root.open));
+    this.drawn = drawn; this.root.hidden = !(visible && (hasRows || showTrash));
+    this.head.hidden = !hasRows;
+    if (hasRows) this.root.setAttribute('aria-labelledby', this.heading.id);
+    else this.root.removeAttribute('aria-labelledby');
     this.viewGroup.hidden = !hasRows;
-    this.trash?.show(visible);
+    this.trash?.show(visible && Boolean(showTrash));
     if (drawn) this.doc.body.dataset.archiveShelf = 'on'; else delete this.doc.body.dataset.archiveShelf;
     if (notify && drawn !== was) this.changed(drawn);
     if (this.read && !this.unavailable && (beside || panel)) {
@@ -189,7 +195,10 @@ export class ArchiveShelf {
       const answer = await this.read(reset ? null : this.cursor);
       await this.afterRead();
       if (this.gone || this.refreshPending || epoch !== this.epoch) return;
-      if (reset) this.projected.clear();
+      if (reset) {
+        this.projected.clear();
+        this.archiveReady = true; this.trashEmpty = answer.trash_empty === true;
+      }
       for (const item of answer.items) {
         if (!this.projected.has(item.message_id)) firstAdded ??= item.message_id;
         this.projected.set(item.message_id, archivedRow(item, answer.topic_id));
@@ -200,6 +209,7 @@ export class ArchiveShelf {
       await this.afterRead();
       if (this.gone || this.refreshPending || epoch !== this.epoch) return;
       this.projected.clear(); this.cursor = null; this.remaining = null;
+      this.archiveReady = true; this.trashEmpty = false;
       if (error?.details?.error?.code === 'UNKNOWN_VIEW') this.read = null;
       else this.pageError = true;
     } finally {

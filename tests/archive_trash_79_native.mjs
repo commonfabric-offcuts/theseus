@@ -14,8 +14,8 @@ const report = { previews: [], paging: [] };
 let browser;
 try {
   const { origin, actor } = await control({ method: 'ready' });
-  const sample = 'trash-fold-preview', paged = 'trash-fold-paged', empty = 'trash-fold-empty';
-  await control({ method: 'navigation_topics', topics: [sample, paged, empty].map(id => ({ id, title: 'Field guide' })) });
+  const sample = 'trash-fold-preview', paged = 'trash-fold-paged', empty = 'trash-fold-empty', uncertain = 'trash-fold-uncertain';
+  await control({ method: 'navigation_topics', topics: [sample, paged, empty, uncertain].map(id => ({ id, title: 'Field guide' })) });
   const commit = async envelope => {
     const receipt = await control(envelope);
     assert.equal(receipt.status, 'committed', JSON.stringify(receipt));
@@ -30,11 +30,17 @@ try {
         args: kind === 'stack.trash' ? { trashed: true } : { through: (await control({ method: 'agent_view', actor,
           name: 'source', args: { source_ref: { kind: 'message', id: root.message_id } } })).seq } });
     }
+    return root.message_id;
   };
   for (const title of ['Trail route', 'Volunteer notes']) await record(sample, title, 'stack.aside');
   for (const title of ['First map sketch', 'Duplicate handout', 'Previous route']) await record(sample, title, 'stack.trash');
   for (let index = 1; index <= 26; index++) await record(paged, `Discarded draft ${index}`, 'stack.trash');
   await record(empty, 'Current route');
+  for (let index = 1; index <= 9; index++) {
+    const id = await record(uncertain, `Restored draft ${index}`, 'stack.trash');
+    await commit({ method: 'stack_act', kind: 'stack.trash', operation_id: 'restore-old-' + index,
+      sender: actor, message_id: id, args: { trashed: false } });
+  }
   browser = await chromium.launch({ executablePath: process.env.AIM_CHROME, headless: true });
 
   async function pageIn(context, topic) {
@@ -134,6 +140,9 @@ try {
     const { page, views, issues } = await pageIn(context, paged);
     const shelf = page.locator('#things > .archive-shelf'), fold = shelf.locator('.archive-trash');
     const summary = fold.locator('summary'), rows = fold.locator('li'), more = fold.locator('button');
+    await summary.waitFor();
+    assert.equal(await shelf.locator('.archive-shelf-head').isVisible(), false);
+    assert.deepEqual(trash(views), []);
     await summary.click();
     await rows.nth(23).waitFor();
     assert.equal(await rows.count(), 24);
@@ -154,15 +163,52 @@ try {
     assert.ok(Number.isSafeInteger(reads[1].cursor) && reads[1].cursor > 0);
     assert.deepEqual(reads[2], reads[1]);
     report.paging = reads;
+    const emptyArchive = page.waitForResponse(response => {
+      if (new URL(response.url()).pathname !== '/api/view') return false;
+      const view = response.request().postDataJSON();
+      return view?.name === 'dossier_archive' && view?.args?.topic_id === empty;
+    });
     await page.goto(origin + '/?topic=' + empty);
+    assert.equal((await (await emptyArchive).json()).trash_empty, true);
+    await settled(page);
+    assert.equal(await shelf.isVisible(), false);
+    assert.deepEqual(trash(views), reads);
+    await page.goto(origin + '/?topic=' + uncertain);
+    await summary.waitFor();
+    assert.equal(await shelf.locator('.archive-shelf-head').isVisible(), false);
+    assert.deepEqual(trash(views), reads);
     await summary.click();
     await fold.getByText('Trash is empty.').waitFor();
     assert.equal(await rows.count(), 0);
     assert.equal(await more.isVisible(), false);
-    assert.deepEqual(trash(views).at(-1), { topic_id: empty, limit: 24 });
+    assert.deepEqual(trash(views).at(-1), { topic_id: uncertain, limit: 24 });
     assert.deepEqual(issues, []);
-    console.log('PASS bounded paging, retry, and empty Trash');
+    console.log('PASS bounded paging, retry, Trash-only, proven empty, and uncertain empty states');
   } finally { await context.close(); }
+
+  const phone = await browser.newContext({ viewport: { width: 390, height: 900 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
+  try {
+    const { page, views, issues } = await pageIn(phone, empty);
+    const first = page.waitForResponse(response => new URL(response.url()).pathname === '/api/view' &&
+      response.request().postDataJSON()?.name === 'dossier_archive');
+    await page.locator('#things-open').tap();
+    assert.equal((await (await first).json()).trash_empty, true);
+    await settled(page);
+    const shelf = page.locator('#things > .archive-shelf');
+    assert.equal(await shelf.isVisible(), false);
+    assert.deepEqual(trash(views), []);
+    await page.goto(origin + '/?topic=' + paged);
+    await page.locator('#things-open').tap();
+    const summary = shelf.locator('.archive-trash > summary');
+    await summary.waitFor();
+    assert.equal(await shelf.locator('.archive-shelf-head').isVisible(), false);
+    assert.deepEqual(trash(views), []);
+    await summary.tap();
+    await shelf.locator('.archive-trash-rows > li').nth(23).waitFor();
+    assert.deepEqual(trash(views), [{ topic_id: paged, limit: 24 }]);
+    assert.deepEqual(issues, []);
+    console.log('PASS phone empty shelf and standalone Trash row');
+  } finally { await phone.close(); }
 } finally {
   await browser?.close();
   fixture.stdin.end();

@@ -19,6 +19,34 @@ class ArchivedShelfCase(StackCase):
         self.assertNotIn("error", page, page)
         return [item["message_id"] for item in page["items"]]
 
+    def trash(self, mid, trashed, revision, actor="owner"):
+        return self.committed(self.command("stack.trash", {"trashed": trashed}, target={"message_id": mid},
+                                           expected={"trash_revision": revision}, actor=actor))
+
+    def test_proves_empty_trash_for_only_this_reader_and_small_restored_history(self):
+        root = self.post("Dossier words")
+        self.assertTrue(self.page()["trash_empty"])
+        self.trash(root, True, 0, actor="agent-a")
+        self.assertTrue(self.page()["trash_empty"])
+        self.assertNotIn("trash_empty", self.page(actor="agent-a"))
+        self.trash(root, True, 0)
+        self.assertNotIn("trash_empty", self.page())
+        self.trash(root, False, 1)
+        self.assertTrue(self.page()["trash_empty"])
+        self.committed(self.archive(root))
+        self.assertNotIn("trash_empty", self.page())
+
+    def test_leaves_empty_signal_unknown_past_the_trash_probe(self):
+        root = self.post("An older trashed dossier")
+        self.trash(root, True, 0)
+        for number in range(9):
+            other = self.post("Restored dossier %d" % number)
+            self.trash(other, True, 0)
+            self.trash(other, False, 1)
+        self.assertNotIn("trash_empty", self.page())
+        self.trash(root, False, 1)
+        self.assertNotIn("trash_empty", self.page(), "an incomplete sample cannot hide the fold")
+
     def test_projects_off_page_roots_and_keeps_star_then_dossier_order(self):
         oldest, second, third, fourth = [self.post("Archive %d" % n) for n in range(4)]
         child = self.post("An older reply", reply_to=oldest)
