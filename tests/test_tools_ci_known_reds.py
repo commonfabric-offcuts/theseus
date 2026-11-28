@@ -1428,6 +1428,18 @@ class UnitLog1389(unittest.TestCase):
         self.assertEqual(Counter(log['events'])[('test_d (m.C)', '(k=4)', 'FAIL')], 2)
         self.assertEqual(log['counts'], {'tests': 4, 'status': 'FAILED', 'failures': 3, 'errors': 2})
 
+    def test_repeated_method_identities_keep_their_multiplicity(self):
+        passed = ci.unit_log(unittest_log(['test_a (m.C) ... ok', 'test_a (m.C) ... ok']))
+        self.assertEqual(passed['rows'], [({'name': 'test_a (m.C)'}, 'ok')] * 2)
+        failed = ci.unit_log(unittest_log(['test_a (m.C) ... FAIL', 'test_a (m.C) ... FAIL'],
+                                          [('FAIL', 'test_a (m.C)', None)] * 2))
+        self.assertEqual(failed['rows'], [({'name': 'test_a (m.C)'}, 'FAIL')] * 2)
+        self.assertEqual(Counter(failed['events']), Counter({('test_a (m.C)', None, 'FAIL'): 2}))
+        mixed = ci.unit_log(unittest_log(['test_a (m.C) ... FAIL', 'test_a (m.C) ... ok', 'test_a (m.C) ... test_b (m.C) ... ok'],
+                                         [('FAIL', 'test_a (m.C)', None), ('ERROR', 'test_a (m.C)', '(k=1)')], ran=4))
+        self.assertEqual(mixed['rows'], [({'name': 'test_a (m.C)'}, 'FAIL'), ({'name': 'test_a (m.C)'}, 'ok'),
+                                         ({'name': 'test_a (m.C)'}, 'ERROR'), ({'name': 'test_b (m.C)'}, 'ok')])
+
     def test_incomplete_unmatched_or_miscounted_logs_refuse(self):
         good = unittest_log(['test_a (m.C) ... ok', 'test_b (m.C) ... FAIL'], [('FAIL', 'test_b (m.C)', None)])
         self.assertEqual(len(ci.unit_log(good)['rows']), 2)
@@ -1439,7 +1451,15 @@ class UnitLog1389(unittest.TestCase):
             'FAIL without its event': (unittest_log(['test_a (m.C) ... FAIL'], summary='FAILED (failures=1)'), 'without its detail event'),
             'event for an unlisted method': (unittest_log(['test_a (m.C) ... FAIL'], [('FAIL', 'test_a (m.C)', None),
                                              ('FAIL', 'test_z (m.C)', None)]), 'names no listed method'),
-            'event for a passing method': (unittest_log(['test_a (m.C) ... ok'], [('FAIL', 'test_a (m.C)', None)]), 'outcome is ok'),
+            'event for a passing method': (unittest_log(['test_a (m.C) ... ok'], [('FAIL', 'test_a (m.C)', None)]), 'outcomes are ok'),
+            'event without its cause': (good.replace('Traceback (most recent call last):\nAssertionError: scratch\n\n', ''),
+                                        'without its cause for test_b'),
+            'cause cut after Traceback': (good.replace('AssertionError: scratch\n', ''), 'without its cause for test_b'),
+            'repeated FAIL with one event': (unittest_log(['test_a (m.C) ... FAIL', 'test_a (m.C) ... FAIL'],
+                                             [('FAIL', 'test_a (m.C)', None)], summary='FAILED (failures=2)'), 'without its detail event'),
+            'retained event body removed': (live.replace(
+                "(view='workspace_topics')\n" + DASHES + '\nTraceback (most recent call last):\n',
+                "(view='workspace_topics')\n" + DASHES + '\n', 1), 'without its cause'),
             'fewer methods than Ran': (unittest_log(['test_a (m.C) ... ok'], ran=2), '1 method outcomes but Ran 2'),
             'failure count differs': (good.replace('FAILED (failures=1)', 'FAILED (failures=2)'), 'counts differ from individual'),
             'event kind differs': (good.replace('FAILED (failures=1)', 'FAILED (errors=1)'), 'counts differ from individual'),

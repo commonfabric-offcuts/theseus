@@ -387,25 +387,38 @@ def unit_log(text):
         rows.append(({'name': pending}, 'subtests'))
 
     events = []
-    for i in starts:
+    for n, i in enumerate(starts):
         event = header(i)
+        # Every event keeps its cause: a traceback with content after it, before the next event or the final rule.
+        body = lines[i + (3 if lines[i + 2] == DASHES else 4):starts[n + 1] if n + 1 < len(starts) else end]
+        trace = [k for k, line in enumerate(body) if line == 'Traceback (most recent call last):']
+        require(bool(trace) and any(line.strip() for line in body[trace[0] + 1:]),
+                'python-units: failure event without its cause for ' + event[2])
         events.append((event[2], event[3], event[1]))
     kinds = Counter(kind for _, _, kind in events)
-    parents = {}
+    # A method identity may run more than once (multiplicity, as unit_records keeps it). Its events are pooled by name:
+    # each failing slot needs its own event of its kind, a subTest-only slot needs any event, and events need a failing
+    # slot; a passing or skipped slot beside a failing slot of the same name keeps its own outcome.
+    named = {}
     for parent, _, kind in events:
-        parents.setdefault(parent, set()).add(kind)
-    statuses = {case['name']: status for case, status in rows}
-    require(set(parents) <= set(statuses), 'python-units: a failure event names no listed method')
+        named.setdefault(parent, Counter())[kind] += 1
+    slots = {}
+    for case, status in rows:
+        slots.setdefault(case['name'], Counter())[status] += 1
+    require(set(named) <= set(slots), 'python-units: a failure event names no listed method')
+    for name, slot in slots.items():
+        found = named.get(name, Counter())
+        failing = slot['FAIL'] + slot['ERROR'] + slot['subtests']
+        require(found['FAIL'] >= slot['FAIL'] and found['ERROR'] >= slot['ERROR'],
+                'python-units: FAIL/ERROR outcome without its detail event for ' + name)
+        require(found['FAIL'] + found['ERROR'] >= failing, 'python-units: check outcome missing for ' + name)
+        require(failing or not found, 'python-units: failure event for a method whose outcomes are ' +
+                ', '.join(sorted(slot)))
     final = []
     for case, status in rows:
-        seen = parents.get(case['name'], set())
         if status == 'subtests':
-            require(bool(seen), 'python-units: check outcome missing for ' + case['name'])
-            status = 'FAIL' if 'FAIL' in seen else 'ERROR'
-        elif status in ('FAIL', 'ERROR'):
-            require(status in seen, 'python-units: %s outcome without its detail event for %s' % (status, case['name']))
-        else:
-            require(not seen, 'python-units: failure event for a method whose outcome is ' + status)
+            found, slot = named[case['name']], slots[case['name']]
+            status = 'FAIL' if found['FAIL'] > slot['FAIL'] else 'ERROR'
         final.append((case, status))
     require(len(final) == ran, 'python-units: %d method outcomes but Ran %d' % (len(final), ran))
     require(summary.get('failures', 0) == kinds['FAIL'] and summary.get('errors', 0) == kinds['ERROR'],
