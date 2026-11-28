@@ -176,7 +176,7 @@ export class OutlineRail {
   constructor({ host, open, read, listen, storage = null, doc = host.ownerDocument }) {
     Object.assign(this, { host, open, read, storage, doc });
     this.handles = null; this.filter = null; this.outcomes = new Map(); this.unlisten = null; this.started = false;
-    this.pages = null; this.opened = new Opened(); this.failed = false; this.listRead = false; this.run = 0; this.watch = null; this.watched = null;
+    this.pages = null; this.opened = new Opened(); this.failed = false; this.listRead = false; this.run = 0; this.badgeChoice = 0; this.watch = null; this.watched = null;
     let pending = new Set(), full = false, result = true;
     const reload = reloader(async () => { const dirty = full ? null : pending; full = false; pending = new Set(); result = await this.load(dirty); });
     this.reload = (dirty = null) => { if (dirty) mergeSidebarDirty(pending, dirty); else full = true; return reload().then(() => result); };
@@ -535,12 +535,12 @@ export class OutlineRail {
     };
     // On a phone a collapsed outcome first opens its topics here (item 654),
     // with no move and no drawer close; the next tap opens its home.
-    // The unread count skips phone disclosure and uses a topic already
-    // drawn by the rail. Plain name presses keep their existing actions.
+    // The unread count uses the same rail as the disclosure, loading it
+    // first when needed without changing the person's disclosure choice.
     name.onclick = event => {
       if (!plainClick(event)) return;
       event.preventDefault();
-      const unread = landsOnUnread(event.target, event);
+      const choice = ++this.badgeChoice, unread = landsOnUnread(event.target, event);
       if (!unread && event.detail !== 0 && this.phone) {
         if (!this.isOpen(outcome.id)) {
           // This link expanded in place: the drawer's bubbling link listener
@@ -550,13 +550,33 @@ export class OutlineRail {
           return;
         }
       }
-      const first = unread ? outcome.rail?.firstUnread() : null;
-      if (first) return this.open(topicTarget(first.id, null, 'unread'), first.title);
-      this.open(this.nameTarget(outcome), outcome.item.title);
+      if (unread && this.handles) {
+        const rail = this.ownRail(outcome);
+        if (rail.pages.started && !rail.denied) return this.openOutcomeUnread(outcome, rail);
+        // The shell closes the phone drawer when the actual move begins.
+        event.stopPropagation();
+        return this.openColdOutcomeUnread(outcome, rail, choice);
+      }
+      return this.open(this.nameTarget(outcome), outcome.item.title);
     };
     this.topicLine(outcome);
     this.outcomes.set(id, outcome);
     return outcome;
+  }
+  openOutcomeUnread(outcome, rail) {
+    const first = rail.firstUnread();
+    if (first) return this.open(topicTarget(first.id, null, 'unread'), first.title);
+    return this.open(this.nameTarget(outcome), outcome.item.title);
+  }
+  async openColdOutcomeUnread(outcome, rail, choice) {
+    const run = this.run;
+    const loaded = await (rail.lists[0].reading ? rail.loading : rail.load(false, true));
+    if (run !== this.run || choice !== this.badgeChoice) return;
+    if (!loaded || !rail.pages.started || rail.denied) {
+      this.tree.say('Topics could not be loaded. Press the unread count again to retry.');
+      return;
+    }
+    return this.openOutcomeUnread(outcome, rail);
   }
   // The phone drawer keeps its question cycle. Desktop uses the waiting pill
   // and topic rows; it carries neither a hidden cycle button nor its handler.
@@ -758,7 +778,7 @@ export class OutlineRail {
   // A move begins (in-place-navigation.mjs): one begun from elsewhere than the
   // outline (from: what a press was on, the focus for a key, null for back and
   // forward) leaves the row chosen there no longer the person's last choice.
-  leaving(from) { if (!this.host.contains(from)) this.tree.away(); }
+  leaving(from) { this.badgeChoice++; if (!this.host.contains(from)) this.tree.away(); }
   // The outline's own topic lists for an outcome (TopicRail, as the side rail
   // drew them), made the first time they are wanted.
   ownRail(outcome) {
@@ -893,7 +913,7 @@ export class OutlineRail {
         const badge = paintUnread(outcome.title, counted);
         if (badge) {
           badge.dataset.lands = 'unread';
-          outcome.title.append(element(this.doc, 'span', { className: 'sr-only', textContent: '. Return opens the first loaded unread topic when available' }));
+          outcome.title.append(element(this.doc, 'span', { className: 'sr-only', textContent: '. Return opens the first unread topic when available' }));
         }
         if (item.provisional) outcome.standing.replaceChildren(); else paintRowLight(outcome.standing, item.light);
         // The light leads the name; its words stay on the line under it.

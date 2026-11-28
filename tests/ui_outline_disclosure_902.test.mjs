@@ -77,7 +77,7 @@ const memory = () => {
 const item = (id, extra = {}) => ({ id, title: 'Outcome ' + id, title_truncated: false, owner_id: 'reader', version: 1, unread: 2, addressed: 0, light: null, ...extra });
 const contexts = new WeakSet();
 
-async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fixture-902', phone = false, here = 'w1', outcomes = null, topicRows = null } = {}) {
+async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fixture-902', phone = false, here = 'w1', outcomes = null, topicRows = null, beforeTopics = null } = {}) {
   if (!contexts.has(t)) {
     contexts.add(t);
     const previous = globalThis.document, listeners = new Set(book.listeners), scopes = new Map(book.scopes);
@@ -105,6 +105,7 @@ async function fixture(t, { storage = memory(), actor = 'reader', instance = 'fi
       return { ...base, items: page, next_cursor: remaining.length > page.length ? page.at(-1).id : null };
     }
     if (name === 'workspace_topics') {
+      if (beforeTopics) await beforeTopics(args);
       if (refuseTopics) throw Error('Topics unavailable');
       return { ...base, groups: { done: 0, archived: 0 }, items: topicRows?.[args.workspace_id]?.map((item,index)=>({list_position:index+1,archived:false,...item})) ?? [{ id: 't-' + args.workspace_id, workspace_id: args.workspace_id,
         title: 'Topic ' + args.workspace_id, list_position: 1, state: 'active', archived: false, unread: 0 }] };
@@ -423,14 +424,75 @@ test('46 an outcome badge follows the first unread topic in the loaded rail orde
   assert.equal(f.storage.writes.length, beforeWrites);
 });
 
-test('46 a phone outcome badge opens its home when no eligible unread topic is loaded', async t => {
-  const f = await fixture(t, { phone: true }), outcome = f.outcome('w2');
-  const beforeReads = f.reads.length, beforeWrites = f.storage.writes.length;
-  f.click(outcome.title.querySelector('.unread-count'));
+test('83 a cold outcome badge waits for topics and opens the first unread in rail order', async t => {
+  let releaseTopics;
+  const response = new Promise(resolve => { releaseTopics = resolve; });
+  const topics = [
+    { id: 'read', title: 'Read', unread: 0, list_position: 3 },
+    { id: 'unread-a', title: 'Unread A', unread: 2, list_position: 2 },
+    { id: 'unread-b', title: 'Unread B', unread: 1, list_position: 1 },
+  ].map(row => ({ ...row, workspace_id: 'w2', state: 'active' }));
+  const f = await fixture(t, { topicRows: { w2: topics },
+    beforeTopics: ({workspace_id}) => workspace_id === 'w2' ? response : undefined,
+  }), outcome = f.outcome('w2');
+  book.learn(scopeOf('w2'), { ids: ['read', 'unread-b', 'unread-a'], revision: 1 });
+  assert.equal(outcome.rail, null);
+  const beforeWrites = f.storage.writes.length;
+  const badge = outcome.title.querySelector('.unread-count');
+  f.click(badge);
+  f.click(outcome.name, { detail: 0 });
+  assert.deepEqual(f.moves, [], 'the home does not open while the first read is pending');
+  releaseTopics();
+  await outcome.rail.loading;
+  assert.deepEqual(f.moves, [[{ kind: 'topic', id: 'unread-b', at: 'unread' }, 'Unread B']]);
+  assert.equal(f.reads.filter(([name, args]) => name === 'workspace_topics' && args.workspace_id === 'w2').length, 1);
+  assert.equal(f.storage.writes.length, beforeWrites);
+});
+
+test('83 a cold phone outcome badge opens its home after a confirmed empty rail', async t => {
+  let releaseTopics;
+  const response = new Promise(resolve => { releaseTopics = resolve; });
+  const f = await fixture(t, { phone: true, topicRows: { w2: [] },
+    beforeTopics: ({workspace_id}) => workspace_id === 'w2' ? response : undefined,
+  }), outcome = f.outcome('w2');
+  const beforeWrites = f.storage.writes.length;
+  const press = f.click(outcome.title.querySelector('.unread-count'));
+  assert.equal(press.stopped, true, 'keep the phone drawer open while topics are pending');
+  assert.deepEqual(f.moves, []);
+  releaseTopics();
+  await outcome.rail.loading;
   assert.deepEqual(f.moves, [[{ kind: 'workspace', id: 'w2' }, 'Outcome w2']]);
   assert.equal(outcome.topics.hidden, true);
-  assert.equal(f.reads.length, beforeReads);
   assert.equal(f.storage.writes.length, beforeWrites);
+});
+
+test('83 a failed cold read leaves the current page and allows retry from the badge', async t => {
+  let fail = true;
+  const f = await fixture(t, { topicRows: { w2: [] }, beforeTopics({workspace_id}) {
+    if (workspace_id === 'w2' && fail) throw Error('Topics unavailable');
+  } });
+  const outcome = f.outcome('w2'), badge = outcome.title.querySelector('.unread-count');
+  f.click(badge);
+  await outcome.rail.loading;
+  assert.deepEqual(f.moves, []);
+  fail = false;
+  f.click(badge);
+  await outcome.rail.loading;
+  assert.deepEqual(f.moves, [[{ kind: 'workspace', id: 'w2' }, 'Outcome w2']]);
+});
+
+test('83 a new navigation while a cold badge awaits its read wins', async t => {
+  let releaseTopics;
+  const response = new Promise(resolve => { releaseTopics = resolve; });
+  const f = await fixture(t, { topicRows: { w2: [] },
+    beforeTopics: ({workspace_id}) => workspace_id === 'w2' ? response : undefined,
+  });
+  const outcome = f.outcome('w2');
+  f.click(outcome.title.querySelector('.unread-count'));
+  f.click(f.outcome('w3').title);
+  releaseTopics();
+  await outcome.rail.loading;
+  assert.deepEqual(f.moves, [[{ kind: 'workspace', id: 'w3' }, 'Outcome w3']]);
 });
 
 test('902 a refused topic read keeps the disclosed outcome and exposes the existing retry', async t => {
