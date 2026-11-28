@@ -356,6 +356,27 @@ test('1247 compact terminal and revision knowledge shares 256 hints and fences r
   for (const hint of views.windowHints.values()) assert.equal('body' in hint, false);
 });
 
+test('54 a withdrawal learned before a reply page arrives follows its authorized parent context', () => {
+  const views = new TopicViews({ instanceId: 'i', topicId: 't', window: () => ({ budget: 30 }) });
+  views.messagesPage(page(20, 25, 20), { initial: true });
+  const older = page(14, 16);
+  Object.assign(older.items[0], { reply_to: 'old-question', reply_to_author: 'person', reply_to_withdrawn: false });
+  Object.assign(older.items[1], { reply_to: 'old-question', reply_to_author: 'person', reply_to_withheld: true });
+  Object.assign(older.items[2], { reply_to: 'old-question', reply_to_author: null });
+  const windowReadStart = views.windowKnowledge;
+  views.rememberParentWithdrawal('old-question');
+  assert.equal(views.messagesPage(older, { cursor: 20, windowReadStart }), true);
+  assert.equal(views.messages.get('m14').reply_to_withdrawn, true);
+  assert.equal(views.messages.get('m15').reply_to_withdrawn, undefined);
+  assert.equal(views.messages.get('m16').reply_to_withdrawn, undefined);
+  const other = page(26, 27);
+  Object.assign(other.items[0], { reply_to: 'other-question', reply_to_author: 'person', reply_to_withdrawn: false });
+  Object.assign(other.items[1], { reply_to: 'other-question', reply_to_author: 'person', reply_to_withdrawn: true });
+  views.messagesPage(other, { live: true, cursor: 25 });
+  assert.equal(views.messages.get('m26').reply_to_withdrawn, true);
+  assert.ok(views.windowHints.get('other-question').parentWithdrawn);
+});
+
 test('1247 acts refresh seeks retained runs and an old held source without walking 30000 unrelated acts', async () => {
   const views = new TopicViews({ instanceId: 'i', topicId: 't', window: () => ({}) });
   views.messagesPage(page(29971, 30000, 29971), { initial: true }); views.showAlone('m1', 1);
