@@ -73,7 +73,7 @@ export class ArchiveShelf {
     this.notice.setAttribute('role', 'status');
     this.root.append(head, this.row, this.more, this.notice);
     if (readTrash) {
-      this.trash = new ArchiveTrash({ doc, read: readTrash, afterRead, folded: () => this.update(false) });
+      this.trash = new ArchiveTrash({ doc, read: readTrash, afterRead, folded: () => this.trashFolded() });
       this.root.append(this.trash.root);
     }
     const replicaOf = event => event.target.closest?.('.shelf-dossier') ?? null;
@@ -103,6 +103,7 @@ export class ArchiveShelf {
     this.epoch++;
     this.started = false; this.refreshPending = false; this.pageError = false;
     this.archiveReady = !this.read; this.trashEmpty = false;
+    this.trash?.invalidate();
     this.projected.clear(); this.cursor = null; this.remaining = null;
     this.paint([], new Set(), true);
   }
@@ -142,7 +143,8 @@ export class ArchiveShelf {
     const beside = this.beside(), drawn = hasRows && beside, was = this.drawn;
     const panel = this.inPanel();
     const visible = !this.unavailable && (beside || panel);
-    const showTrash = this.trash && (hasRows || this.archiveReady && (!this.trashEmpty || this.trash.root.open));
+    const emptyTrash = this.trashEmpty || this.trash?.confirmedEmpty;
+    const showTrash = this.trash && (hasRows || this.archiveReady && (!emptyTrash || this.trash.root.open));
     this.drawn = drawn; this.root.hidden = !(visible && (hasRows || showTrash));
     this.head.hidden = !hasRows;
     if (hasRows) this.root.setAttribute('aria-labelledby', this.heading.id);
@@ -154,6 +156,15 @@ export class ArchiveShelf {
     if (this.read && !this.unavailable && (beside || panel)) {
       if (!this.started) { this.started = true; this.refreshPending = true; }
       if (this.refreshPending) this.refresh();
+    }
+  }
+  trashFolded() {
+    const focused = this.doc.activeElement === this.trash.summary;
+    this.update(false);
+    if (focused && this.root.hidden) {
+      const rail = this.root.parentElement;
+      const sections = rail?.querySelectorAll('.things-sec:not([hidden]) > summary') ?? [];
+      (Array.from(sections).at(-1) ?? rail?.querySelector('#things-close'))?.focus({ preventScroll: true });
     }
   }
   // Drawn again as the rail moves beside the page or away: a resize across the wide rail's width, the Notebook
@@ -177,6 +188,7 @@ export class ArchiveShelf {
   // so the flight down always lands where the shelf begins. The first drawing keeps Core's order.
   refresh() {
     if (!this.read || !this.started || this.gone || this.unavailable) return;
+    this.trash?.invalidate();
     this.refreshPending = true;
     if (!this.pending && (this.beside() || this.inPanel())) queueMicrotask(() => {
       if (this.refreshPending && (this.beside() || this.inPanel())) this.readPage(true);

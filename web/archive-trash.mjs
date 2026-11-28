@@ -16,6 +16,8 @@ export class ArchiveTrash {
     Object.assign(this, { doc, read, afterRead, folded });
     this.rows = new Map();
     this.removals = new Map();
+    this.epoch = 0;
+    this.confirmedEmpty = false;
     this.root = element(doc, 'details', 'archive-trash');
     this.summary = element(doc, 'summary');
     this.count = element(doc, 'span', 'archive-shelf-count');
@@ -30,7 +32,7 @@ export class ArchiveTrash {
     this.root.append(this.summary, this.list, this.notice, this.more);
     this.root.ontoggle = () => {
       if (!this.root.open) {
-        this.clear();
+        this.close();
         if (this.visible) this.folded();
       }
       else if (!this.loaded && !this.failed) return this.load();
@@ -43,14 +45,27 @@ export class ArchiveTrash {
     this.visible = visible;
     if (!visible) {
       this.root.open = false;
-      this.clear();
+      this.close();
     }
+  }
+
+  invalidate() {
+    this.epoch++;
+    this.confirmedEmpty = false;
+  }
+
+  close() {
+    if (this.loaded && this.cursor === null && this.rows.size === 0 && this.loadedAt === this.epoch) {
+      this.confirmedEmpty = true;
+    }
+    this.clear();
   }
 
   clear() {
     this.attempt = null;
     this.cursor = null;
     this.loaded = false;
+    this.loadedAt = null;
     this.failed = false;
     this.rows.clear();
     this.removals.clear();
@@ -78,6 +93,10 @@ export class ArchiveTrash {
   async load() {
     if (!this.visible || !this.root.open || this.attempt || this.loaded && this.cursor === null) return;
     const attempt = {}, focused = this.doc.activeElement === this.more;
+    if (!this.loaded) {
+      this.loadedAt = this.epoch;
+      this.confirmedEmpty = false;
+    }
     this.attempt = attempt;
     this.failed = false;
     this.paint();

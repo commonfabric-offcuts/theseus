@@ -40,3 +40,5 @@ superseded and unsent acts do not prevent proving emptiness. If a sample
 could still contain a usable Trash row or the history exceeds the probe,
 the rail keeps the folded Trash row. With no archives it shows that row
 alone. Opening Trash still reads its first page on demand.
+When an open fold reaches the end with no rows, closing it hides an
+otherwise-empty section. A refresh or access change invalidates that result.

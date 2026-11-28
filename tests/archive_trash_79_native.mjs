@@ -182,6 +182,12 @@ try {
     assert.equal(await rows.count(), 0);
     assert.equal(await more.isVisible(), false);
     assert.deepEqual(trash(views).at(-1), { topic_id: uncertain, limit: 24 });
+    const openedReads = trash(views);
+    await summary.focus();
+    await page.keyboard.press('Enter');
+    await shelf.waitFor({ state: 'hidden' });
+    assert.equal(await page.evaluate(() => document.activeElement?.closest('#things') !== null), true);
+    assert.deepEqual(trash(views), openedReads);
     assert.deepEqual(issues, []);
     console.log('PASS bounded paging, retry, Trash-only, proven empty, and uncertain empty states');
   } finally { await context.close(); }
