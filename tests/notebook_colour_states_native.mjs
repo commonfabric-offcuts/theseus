@@ -83,9 +83,11 @@ async function inspectMenu(page, owner, expect) {
   for (let i = 0; i < 12 && !(await focusable()); i++) await page.keyboard.press('ArrowDown');
   const focused = await style(palette.locator('button:focus-visible:not([aria-checked=true])'));
   equal(surface.backgroundColor, rgb(expect[0]), 'Notebook menu surface');
-  equal(hover.backgroundColor, rgb(expect[1]), 'Notebook menu pointer hover');
+  equal(hover.backgroundColor, rgb(baseline ? expect[1] : expect[2]), 'Notebook menu pointer hover');
   equal(checkedPaint.backgroundColor, rgb(expect[2]), 'Notebook menu checked row');
-  equal(focused.backgroundColor, rgb(expect[1]), 'Notebook menu keyboard hover');
+  const keyboardFill = baseline ? rgb(expect[1]) : await palette.evaluate((node, current) =>
+    node.classList.contains('menu-sheet') ? current : 'rgba(0, 0, 0, 0)', rgb(expect[2]));
+  equal(focused.backgroundColor, keyboardFill, 'Notebook menu keyboard focus');
   equal(focused.outlineColor, rgb(expect[3]), 'Notebook menu focus');
   equal(focused.outlineWidth, '2px', 'Notebook menu outline width');
   equal(focused.outlineOffset, '-2px', 'Notebook menu inner outline');

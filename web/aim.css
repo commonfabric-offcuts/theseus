@@ -486,13 +486,14 @@ a.pl-title:hover{text-decoration:underline}
 .pl-row .pl-head{gap:.45rem}
 .pl-row .pl-meta{margin:.1rem 0 0 1.9rem;font-size:.78rem}
 .pl-steer{flex:0 0 auto;min-height:2.4rem;min-width:2.4rem;padding:0 .4rem;border-color:transparent;background:transparent;color:var(--muted);font-weight:700;letter-spacing:.05em}
-.pl-steer:hover,.pl-steer[aria-expanded=true]{background:var(--soft);color:var(--ink)}
+.pl-steer:hover,.pl-steer[aria-expanded=true]{background:var(--row-current);color:var(--ink)}
 .pl-row.moved{background:color-mix(in srgb,var(--muted) 12%,var(--panel))}
 .pl-note{margin:.15rem 0 0 1.9rem;font-size:.78rem;color:var(--muted)}
 .pl-note button{min-height:1.8rem;padding:0 .45rem;font-size:.75rem;margin-left:.3rem}
 .pl-menu{position:absolute;right:.5rem;top:calc(100% - .3rem);z-index:20;min-width:13rem;max-width:calc(100vw - 2rem);padding:.35rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);box-shadow:0 6px 24px rgb(0 0 0 / .18);display:flex;flex-direction:column}
 .pl-menu button{display:flex;align-items:center;justify-content:flex-start;min-height:2.4rem;border:0;text-align:left;font-size:.85rem;background:transparent}
-.pl-menu button:hover{background:var(--soft)}
+.pl-menu button:hover{background:var(--row-current)}
+.pl-menu button:focus-visible{background:transparent}
 .pl-menu kbd{font:inherit;color:var(--muted);font-size:.78rem;margin-left:auto;padding-left:1.2rem}
 .pl-menu hr{border:0;border-top:1px solid var(--line);margin:.25rem 0}
 .pl-group{margin:.8rem 0 .4rem}
@@ -732,20 +733,24 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 .message-bar button>.glyph{display:block;width:1.05rem;height:1.05rem}
 .message-bar [data-act=more].said{font-size:.78rem;font-weight:650;color:var(--accent)}
 .message-menu{min-height:2.25rem;min-width:2.25rem;padding:0 .45rem;border-color:transparent;background:transparent;color:var(--muted);font-size:1.15rem;font-weight:700;line-height:1;-webkit-tap-highlight-color:transparent}
-.message-menu:hover,.message-menu[aria-expanded=true]{border-color:var(--muted);background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink)}
+.message-menu:hover{border-color:var(--muted);background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink)}
+.message-menu[aria-expanded=true]{border-color:var(--muted);background:var(--row-current);color:var(--ink)}
 .message-menu.said{font-size:.78rem;font-weight:650;color:var(--accent)}
 .message-menu-list{z-index:20;display:flex;flex-direction:column;width:max-content;max-width:calc(100vw - 16px);padding:.3rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);color:var(--ink);box-shadow:0 6px 24px rgb(0 0 0 / .18)}
-.message-menu-list button{min-height:2.5rem;padding:.3rem .85rem;border:0;border-radius:.4rem;background:transparent;text-align:left;font-size:.9rem}
+.message-menu-list button{min-height:2.5rem;padding:.3rem .85rem;border:0;border-radius:.4rem;background:transparent;text-align:left;font-size:.9rem;-webkit-tap-highlight-color:transparent}
 /* The keys that do what an item does, at its end. */
 .message-menu-list button{display:flex;align-items:center}.menu-keys{margin-left:auto;padding-left:1.5rem;color:var(--muted);font-size:.8rem}
-.message-menu-list button:hover,.message-menu-list button:focus-visible{background:var(--soft)}
+.message-menu-list button:hover{background:var(--row-current)}
+.message-menu-list button:is([aria-pressed=true],[aria-checked=true]){background:var(--row-current);color:var(--ink)}
+.message-menu-list button:focus-visible{background:transparent}
 .notebook-drop-target{outline:2px solid var(--ink);outline-offset:2px;background:var(--soft)}
 .notebook-drop-preview{padding:.5rem;font-size:.85rem;color:var(--muted)}
 /* A menu item's glyph (glyphs.mjs, items 602 and 601): it follows the item's words in the document, so the row reads as
    its words, and is drawn before them, 18px, in the words' own colour. The quote glyph is a character drawn here. */
 .message-menu-list .glyph,.pl-menu .glyph{order:-1;flex:none;align-self:center;width:18px;height:18px;margin-right:10px;opacity:.85}
 .glyph[data-text]{display:inline-flex;align-items:center;justify-content:center;font-size:1.05rem;line-height:1}.glyph[data-text]::before{content:attr(data-text)}
-.message-bar [data-act=more][aria-expanded=true]{background:var(--soft)}
+.message-bar [data-act=more][aria-expanded=true],
+button:is(.deck-menu,.notebook-menu,.link-menu)[aria-expanded=true]{background:var(--row-current);color:var(--ink)}
 /* Where a finger presses, each item of a message's menu is 44px tall, as the bar's buttons are. */
 @media(pointer:coarse){.message-menu-list button{min-height:2.75rem}}
 /* The Health page (docs/health.md): its quiet entry under the instance label, what is wrong at the top, then one line each, opening in place. */
@@ -996,6 +1001,7 @@ dialog.naming-sheet[open] input.name-filter{flex:none;width:100%;max-width:none;
 /* The ⋯ as a sheet from the bottom, on a phone. */
 .message-menu-list.menu-sheet{position:fixed;left:0;right:0;top:auto;bottom:calc(100% - var(--vv-top,0px) - var(--vv-height,100dvh));width:auto;max-width:none;padding:.5rem .5rem calc(.5rem + env(safe-area-inset-bottom));border-radius:1rem 1rem 0 0;border-width:1px 0 0;box-shadow:0 -10px 40px rgb(0 0 0 / .25)}
 .message-menu-list.menu-sheet button{min-height:3rem;font-size:1rem}
+:root .message-menu-list.menu-sheet button:is(:hover,:focus,:active){background:var(--row-current);color:var(--ink)}
 @media(max-width:760px){
   dialog#reader,dialog#reader[data-layout=wide]{top:var(--vv-top,0px);bottom:auto;height:var(--vv-height,100dvh);max-height:var(--vv-height,100dvh)}
   /* Stacked, the reply is never taller than what the header leaves (its row's minimum is the pane's, 0): past that it scrolls inside itself, as it can here, where its panels open in its flow rather than over the message; as the keyboard comes up it scrolls the field back into view (compose-bar.mjs), so no part of it goes past the screen and the Reader itself never scrolls. */
@@ -1498,7 +1504,6 @@ dialog:not([open])>.composer-edge,dialog.notebook-mode>.composer-edge,dialog[dat
 .md-item-words>.sentence-paragraph+.sentence-paragraph{margin-top:.45rem}
 .menu-description{display:flex;flex-direction:column;max-width:26rem;white-space:normal}
 .menu-description small{font-size:.78rem;font-weight:400;color:var(--muted)}
-.message-menu-list [aria-checked=true]{background:var(--soft)}
 
 
 /* Outcome home (879): the outline's topics fill the width beside the left

@@ -4,7 +4,7 @@
 .message-menu-list.menu-palette button.palette-icon{justify-content:center;width:2.6rem;min-height:2.4rem;padding:0;color:var(--muted)}
 .menu-palette .palette-icon .glyph{margin:0;opacity:1}
 .message-menu-list.menu-palette button.palette-icon:hover{color:var(--ink)}
-.message-menu-list.menu-palette button.palette-icon[aria-pressed=true]{color:var(--ink);background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.message-menu-list.menu-palette button.palette-icon[aria-pressed=true]{color:var(--ink)}
 .message-menu-list.menu-palette button.palette-link{margin-left:auto}
 .menu-palette .palette-sep{height:1px;margin:.25rem .4rem;background:color-mix(in srgb,var(--line) 75%,transparent)}
 .menu-palette .palette-rows{display:flex;flex-direction:column}
@@ -13,7 +13,6 @@
 .menu-palette .palette-pair-words .glyph{order:-1;width:18px;height:18px;margin-right:10px;opacity:.85}
 .menu-palette .palette-seg{display:inline-flex;gap:.3rem}
 .message-menu-list.menu-palette .palette-seg button{min-height:1.75rem;padding:.1rem .65rem;border:1px solid var(--line);border-radius:.4rem;font-size:.82rem}
-.message-menu-list.menu-palette .palette-seg button:hover,.message-menu-list.menu-palette .palette-seg button:focus-visible{background:var(--soft)}
 .message-menu-list.menu-palette button.palette-danger{color:var(--alert,#e0806f)}
 .menu-palette .palette-keys{display:flex;flex-wrap:wrap;align-items:center;gap:.15rem .9rem;padding:.15rem .6rem .2rem .85rem;font-size:.72rem;color:var(--muted)}
 .menu-palette .palette-key-group{display:inline-flex;align-items:center;gap:.1rem}

@@ -93,12 +93,12 @@ body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden])
 @media (pointer:coarse),(max-width:760px){.archive-trash>summary,.archive-trash-rows li{min-height:44px}}
 
 :root .archive-trash-action,
-:root .shelf-menu{border:0;background:transparent;color:inherit;cursor:pointer;font:inherit;border-radius:.35rem}
+:root .shelf-menu{border:0;background:transparent;color:inherit;cursor:pointer;font:inherit;border-radius:.35rem;-webkit-tap-highlight-color:transparent}
 :root .archive-trash-action{display:flex;flex:1;align-items:center;gap:.35rem;min-width:0;padding:.28rem .35rem .28rem .65rem;text-align:left}
 .archive-trash-rows li:has(>.archive-trash-action){padding:0}
 .archive-trash-more-symbol{margin-left:auto;flex:none}
 .archive-trash-more-symbol::before{content:'⋯' / ''}
-:root .archive-trash-action:hover,:root .shelf-menu:hover{color:var(--ink);background:var(--row-current)}
+:root :is(.archive-trash-action,.shelf-menu):is(:hover,[aria-expanded=true]){color:var(--ink);background:var(--row-current)}
 :root .archive-trash-action:focus-visible,:root .shelf-menu:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 :root .shelf-menu{display:none;color:var(--muted)}
 @media (max-width:760px),(pointer:coarse){
