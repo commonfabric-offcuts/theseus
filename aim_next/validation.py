@@ -77,6 +77,7 @@ COMMANDS = {
     "message.star": "_command_message_star", "message.deal": "_command_message_deal", "message.fold": "_command_message_fold",
     "message.fold_through": "_command_message_fold_through",
     "stack.aside": "_command_stack_aside", "stack.place": "_command_stack_place", "stack.level": "_command_stack_level", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
+    "stack.trash": "_command_stack_act",
     "stack.cover": "_command_stack_cover", "stack.move": "_command_stack_move",
     "stack.cover_refresh": "_command_stack_cover_refresh",
     "tool.use": "_command_tool_use", "tool.link": "_command_tool_link", "tool.record": "_command_tool_record",
@@ -127,6 +128,7 @@ EXPECTED = {"release_card.create": set(), "release_card.update": {"message_revis
             "rail.dimming_set": {"dim_revision"},
             "message.star": {"star_revision"}, "message.deal": {"deal_revision"}, "message.fold": {"fold_revision"}, "message.fold_through": {"fold_revision"}, "stack.aside": {"aside_revision"},
             "stack.place": {"place_revision"}, "stack.level": {"level_revision"}, "stack.name": {"name_revision"}, "stack.join": {"join_revision"},
+            "stack.trash": {"trash_revision"},
             "stack.cover": {"cover_revision"}, "stack.cover_refresh": {"cover_revision"},
             "stack.move": {"move_revision", "source_topic_id"},
             "tool.use": set(), "tool.link": set(), "tool.record": set()}
@@ -151,6 +153,7 @@ REQUIRED_EXPECTED = {"release_card.update": "message_revision", "current_rule.up
                      "rail.dimming_set": "dim_revision",
                      "message.star": "star_revision", "message.deal": "deal_revision", "message.fold": "fold_revision", "message.fold_through": "fold_revision", "stack.aside": "aside_revision",
                      "stack.place": "place_revision", "stack.level": "level_revision", "stack.name": "name_revision", "stack.join": "join_revision",
+                     "stack.trash": "trash_revision",
                      "stack.move": "move_revision", "stack.cover": "cover_revision", "stack.cover_refresh": "cover_revision"}
 EXPECTED["pipeline.clock_record"] = {"clock_revision"}
 EXPECTED["performance.record"] = set()
@@ -205,6 +208,7 @@ VIEWS = {
     "outcome_live": {"workspace_id", "commit"},
     "topic_membership": {"topic_id", "message_ids"}, "dossier_move_targets": {"message_id", "cursor", "limit", "build"}, "dossier_moves": {"topic_id", "cursor", "limit"},
     "stack_positions": {"topic_id", "message_ids", "position_format"}, "stack_namer": {"message_id"}, "dossier_cover": {"message_id"}, "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"topic_id", "cursor", "limit"},
+    "dossier_trash": {"topic_id", "cursor", "limit"},
     "tools": {"workspace_id"}, "tool": {"tool_id", "cursor", "limit"}, "topic_tools": {"topic_id"},
 }
 
