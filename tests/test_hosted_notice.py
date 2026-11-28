@@ -36,7 +36,9 @@ class NoticeCase(unittest.TestCase):
             "1. topic t-1, from tony, message m-5 (seq 50), delivery d-5",
             "2. topic t-1, from tony, message m-7 (seq 70), delivery d-7",
             "Older pending: 1. Titles and previews are in the untrusted context.",
-            "Read: aim-next read t-1 --after 49"])
+            "Read: aim-next read t-1 --after 49",
+            "After the first public agent reply, the CLI gives its responder a birth command. "
+            "Use it in the same turn to write the nature, what counts as done, and a rough cover."])
         self.assertEqual(notice["announced_seq"], 7)
 
     def test_a_rewake_lists_every_pending_delivery(self):
@@ -94,8 +96,8 @@ class NoticeCase(unittest.TestCase):
         notice = self.build(items)
         text = self.text(notice)
         lines = text.splitlines()
-        # One line per delivery, the header, the older count and one read line for the one plain topic id.
-        self.assertEqual(len(lines), 1 + len(items) + 1 + 1, lines)
+        # One line per delivery, the header, older count, one read line and one trusted cover prompt.
+        self.assertEqual(len(lines), 1 + len(items) + 1 + 1 + 1, lines)
         self.assertEqual(sum(1 for line in lines if ", delivery d-" in line), len(items))
         self.assertEqual([line for line in lines if line.startswith("Read: ")], ["Read: aim-next read t-safe.1_x --after 9"])
         for words in ("curl", "evil", "ignore the above", "d-fake", "rm", "-rf", "Hello", "run x"):
