@@ -4,12 +4,13 @@ from __future__ import annotations
 
 An ask that an open record still needs stays waiting after its reader writes in
 the topic: a target wording still proposed to the owner (D8), or an open entry
-of an owner-gated stage (D24). TopicState._answered calls held_ask() first, so
-a reply that does not decide never leaves a proposal or a gated stage unlit;
-target.settle and the stage_enter that leaves the gated stage clear it.
+of an owner-gated stage (D24). A reply leaves a record-owned Ask open.
+The target or stage decision clears the wait that belongs to that record.
 """
 
 import json
+
+from .standing_conversation import is_conversation
 
 
 def held_ask(db, topic_id, writer):
@@ -41,21 +42,40 @@ def record_ask(db, message_id, workspace_id, topic_id):
 
 
 def release_held(store, db, message_id):
-    """Clear the wait an ask kept once its record is settled, when nothing else holds it; the owner's change is written."""
+    """Release a record-owned Ask and keep the other waits in its topic."""
     for link in db.execute("SELECT actor_id FROM ask_cover_links WHERE ask_id=? AND active=1", (message_id,)).fetchall():
         store._set_linked_wait(db, link["actor_id"], message_id, False)
-    rows = db.execute("SELECT topic_id,actor_id,said FROM topic_waiting WHERE ask_message_id=?", (message_id,)).fetchall()
-    for row in rows:
-        still = held_ask(db, row["topic_id"], row["actor_id"])
-        if still is not None:
-            # Another open record's ask in the same topic still needs this person: the wait moves to it.
-            db.execute("UPDATE topic_waiting SET ask_message_id=?,state_ms=(SELECT sent_ms FROM messages WHERE id=?) WHERE topic_id=? AND actor_id=?",
-                       (still, still, row["topic_id"], row["actor_id"]))
-        elif row["said"]:
-            db.execute("UPDATE topic_waiting SET ask_message_id=NULL WHERE topic_id=? AND actor_id=?", (row["topic_id"], row["actor_id"]))
-        else:
-            db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", (row["topic_id"], row["actor_id"]))
-        topic = db.execute("SELECT * FROM topics WHERE id=?", (row["topic_id"],)).fetchone()
-        store._sync_linked_attention(db, topic, row["actor_id"])
+    topic = db.execute("SELECT t.* FROM messages m JOIN topics t ON t.id=m.topic_id WHERE m.id=?", (message_id,)).fetchone()
+    if topic is None:
+        return
+    topic_id = topic["id"]
+    if is_conversation(topic):
+        actors = [row["actor_id"] for row in db.execute("SELECT actor_id FROM conversation_waits WHERE ask_id=?", (message_id,))]
+        db.execute("DELETE FROM conversation_waits WHERE ask_id=?", (message_id,))
+        store._sync_waits(db, topic, actors)
+    else:
+        rows = db.execute("SELECT actor_id,said FROM topic_waiting WHERE topic_id=? AND ask_message_id=?",
+                          (topic_id, message_id)).fetchall()
+        actors = [row["actor_id"] for row in rows]
+        for row in rows:
+            actor = row["actor_id"]
+            still = held_ask(db, topic_id, actor)
+            if still is not None:
+                # Keep the existing priority of a proposal or stage that still needs a decision.
+                db.execute("UPDATE topic_waiting SET ask_message_id=?,state_ms=(SELECT sent_ms FROM messages WHERE id=?) "
+                           "WHERE topic_id=? AND actor_id=?", (still, still, topic_id, actor))
+            else:
+                # A record can have moved this pointer past an older Ask. Find
+                # its replacement in this recipient's indexed topic history.
+                following = store._next_open_ask(db, topic, actor, 0)
+                if following is not None:
+                    store._wait_from(db, topic, actor, following)
+                elif row["said"]:
+                    db.execute("UPDATE topic_waiting SET ask_message_id=NULL WHERE topic_id=? AND actor_id=?", (topic_id, actor))
+                else:
+                    db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", (topic_id, actor))
+            store._sync_linked_attention(db, topic, actor)
+    if actors:
         version = store._touch_topic(db, topic)
-        store._change(db, "actor", row["actor_id"], "waiting", row["topic_id"], version)
+        for actor in actors:
+            store._change(db, "actor", actor, "waiting", topic_id, version)

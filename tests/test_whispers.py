@@ -1004,7 +1004,7 @@ MESSAGE_READS = {
     "aim_next/ask_cover.py": ("public ask and source metadata used to admit or update wait links and find the next indexed active link, plus the owning person's compatible topic wait; these reads return no message words", 5),
     "aim_next/checks.py": ("held asks and the owner's ask about the target, which a whisper never is; a problem's message, refused "
                            "when it is an agent's whisper, and shown through _message_access; the loop's account on the record only", 7),
-    "aim_next/outcome_asks.py": ("asks an open target or owner-gated stage still holds, which a whisper never is", 4),
+    "aim_next/outcome_asks.py": ("asks an open target or owner-gated stage still holds, plus the topic id of the exact released record Ask; these read no message words", 5),
     "aim_next/outcome_kind.py": ("the conversation's asks, cleared when the outcome is reached", 1),
     "aim_next/sources.py": ("the latest message on the record from topic_summaries", 1),
     "aim_next/wake_health.py": ("on the record, or the reader's own whispers (whispers.READ_BY)", 1),

@@ -106,7 +106,8 @@ There is no Save button. The first wording, and the owner's own, are current
 at once. Anyone else's later wording is an ask to the owner, and keeps his
 Waiting on you lit until he uses the words or keeps the old ones (D8; the ask
 is held by `outcome_asks.held_ask`, so a reply that does not decide never
-leaves it unlit).
+leaves it unlit). Accepting or declining the target clears its Ask. Any other
+open Ask in the same topic or outcome conversation keeps waiting.
 
 The target's word, first that holds:
 
