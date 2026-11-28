@@ -6,7 +6,6 @@ import json
 
 from .contract import Refusal, _json
 from .cover_values import stored_value
-from .outcome_asks import record_ask
 from .stacks import StackRoots
 
 ASK_COVER_SCHEMA = [
@@ -117,18 +116,8 @@ class AskCover:
         # Only the public question and the person appear here, never a private answer's identity or words.
         return self._write_linked_cover(db, actor if by is None else by, root, value)
 
-    def _linked_reply(self, db, actor, topic, reply_to, private):
-        if not reply_to or self._actor(db, actor)['kind'] != 'human':
-            return []
-        asker = db.execute('SELECT author_id FROM messages WHERE id=?', (reply_to,)).fetchone()
-        if private is not None and (asker is None or private != asker['author_id']):
-            return []
-        if record_ask(db, reply_to, topic['workspace_id'], topic['id']):
-            return []
-        return self._set_linked_wait(db, actor, reply_to, False)
-
     def _sync_linked_attention(self, db, topic, actor):
-        """Restore the oldest open linked question after legacy broad clearing. No unrelated history walk."""
+        """Keep the topic projection on its earliest open linked question."""
         oldest = db.execute('SELECT m.id,m.seq,m.sent_ms,m.author_id FROM ask_cover_links q JOIN messages m ON m.id=q.ask_id '
                             'WHERE q.topic_id=? AND q.actor_id=? AND q.active=1 ORDER BY q.ask_seq LIMIT 1', (topic['id'], actor)).fetchone()
         if oldest is None:

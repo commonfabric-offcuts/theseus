@@ -36,8 +36,23 @@ take precedence. The command returns this projection as `question` with
 `message_id`, `topic_id`, and `changed`. Actor-scoped `question` changes tell
 loaded clients to read that source; existing topic/acts changes refresh waits.
 Replies to public questions announce that exact question at the committed
-topic version. An open Reader also refreshes its question on topic changes,
-covering archival and legacy waits cleared by writing elsewhere in the topic.
+topic version. An open Reader also refreshes its question on topic changes.
+
+## Exact reply settlement
+
+An ordinary Ask stops waiting on a recipient when that recipient replies
+directly to it in the same topic. Other recipients and other Asks retain their
+waits. A person's whisper can answer the exact Ask they were sent when the
+whisper goes to that asker. A partial conversation answer records the take
+while keeping its wait. A person's go-ahead is settled by its explicit
+decision receipt. Outcome target and stage Asks still follow their records.
+
+The first new post records the message sequence where exact settlement
+starts in instance metadata. Before that sequence, prior ordinary-topic
+writes retain the answer effect they had under the previous rule. A new
+reply to a preexisting open Ask is handled by the exact rule. Existing message
+references, conversation takes, reaction receipts and wait tables carry the
+state. There is no schema change or backfill.
 
 The Reader names its own question's wait and offers Resolve only when Core
 permits it. Terminal Resolved/Superseded states have no display label in a card or the

@@ -990,19 +990,18 @@ MESSAGE_READS = {
     "aim_next/standing_conversation.py": ("a conversation's items and asks, which a whisper never is, the about links of a page already read through VISIBLE, a pipeline item's message sources, which _source_rows read through _message_access, the message a person's whisper replies to, to see that it goes to that message's author, and an answer take's reply, shown through visible(); removal follows only the checked owned reply's exact parent id to recompute its indexed surviving takes; that internal update returns no message words or hidden identity", 11),
     "aim_next/marks.py": ("the reader's own marks, or a row checked by visible()", 4),
     "aim_next/reactions.py": ("a row checked by visible() before a reaction or its view, the occupied probe, and go-ahead flags of messages the caller checked; "
-                              "for a thumb that answers an ask (item 239): the asked person's replies, on the record or whispered to "
-                              "whoever asked, and their writing on the record, their next ask and the whispered replies that answered one "
-                              "(item 307), never shown, and the asks topic_waiting and held_ask name, which a whisper never is", 10),
+                              "exact replies by the addressed actor on the record or by whisper to the asker, earlier public writing within the compatibility boundary, and the actor's next public ask; "
+                              "answer existence is used only for wait state and returns no private message id or words", 9),
     "aim_next/blocking.py": ("the message just posted, and asks that name what they block, which only an ask can and a whisper never is", 3),
     "aim_next/store.py": ("the latest message on the record from topic_summaries; the exposure boundary additionally reads ids/revisions only for bounded content identities actually returned by admitted projections, after unsent refusal and excluding held ids; no new words or identities are projected by this read", 2),
     "aim_next/topic_preview.py": ("only the returned topics' public summary messages, additionally private_to IS NULL and removal.VISIBLE; current words use the edit/hold helper and final opening words mark their exact revision", 1),
     "aim_next/topic_reading.py": ("the reader's own replies (author_id is the reader) to messages on a page already read through VISIBLE; "
                                   "whether the reader's own prepared reply was sent, an EXISTS over their own messages by the send's "
                                   "operation id that shows nothing of any message", 2),
-    "aim_next/topic_state.py": ("asks, an ask an open record still holds, the ask a wait is from when its person writes, the message a "
-                                "person's whisper replies to (its author and place, never shown), "
+    "aim_next/topic_state.py": ("asks, an ask an open record still holds, public author and sequence metadata for an active wait, "
                                 "the conversation asks to someone who can no longer read it, and the latest message on the record; "
-                                "item 372 reader/topic-scoped eligible ask metadata under READABLE and VISIBLE, followed by current public preview words only for those eligible ids, private words empty", 9),
+                                "item 372 reader/topic-scoped eligible ask metadata under READABLE and VISIBLE, followed by current public preview words only for those eligible ids, private words empty", 8),
+    "aim_next/ask_cover.py": ("public ask and source metadata used to admit or update wait links and find the next indexed active link, plus the owning person's compatible topic wait; these reads return no message words", 5),
     "aim_next/checks.py": ("held asks and the owner's ask about the target, which a whisper never is; a problem's message, refused "
                            "when it is an agent's whisper, and shown through _message_access; the loop's account on the record only", 7),
     "aim_next/outcome_asks.py": ("asks an open target or owner-gated stage still holds, which a whisper never is", 4),

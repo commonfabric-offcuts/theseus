@@ -358,7 +358,7 @@ class StandingConversation:
         if taken:
             self._touch_topic(db, conversation)
 
-    def _conversation_record(self, db, actor, topic, message_id, snapshot, intent, private=None):
+    def _conversation_record(self, db, actor, topic, message_id, snapshot, intent, private=None, *, settles_ask=False):
         """After a message on the record, or a person's whisper (private: the agent it goes to), lands in a conversation:
         its item, its answer take, and its waits.
 
@@ -372,17 +372,17 @@ class StandingConversation:
             "SELECT 1 FROM messages WHERE id=? AND author_id=?", (parent_id, private)).fetchone() is not None
         parent_item = self._item(db, parent_id) if parent_id and reaches else None
         answering = parent_item is not None and actor in self._answerers(db, parent_id)
-        answers_ask = parent_id is not None and reaches and db.execute(
+        open_ask = parent_id is not None and reaches and db.execute(
             "SELECT 1 FROM conversation_waits WHERE ask_id=? AND actor_id=?", (parent_id, actor)).fetchone() is not None
         # Theseus's own notices (health.py) are nobody's request, as the coordinator's posts are not.
-        if private is None and actor not in (coordinator, HEALTH_ACTOR) and not answering and not answers_ask:
+        if private is None and actor not in (coordinator, HEALTH_ACTOR) and not answering and not open_ask:
             db.execute("INSERT INTO conversation_items(message_id) VALUES (?)", (message_id,))
         if answering:
             # An answer even when it asks the item's author back: its ask waits on them apart (below).
             # An answerer who still owes the rest says so with part, which leaves the item New.
-            self._record_take(db, parent_id, "answer", message_id, actor, part=partial(snapshot))
+            self._record_take(db, parent_id, "answer", message_id, actor, part=partial(snapshot) or (open_ask and not settles_ask))
         touched = []
-        if answers_ask:
+        if open_ask and settles_ask:
             db.execute("DELETE FROM conversation_waits WHERE ask_id=? AND actor_id=?", (parent_id, actor))
             touched.append(actor)
         if intent == "ask":
