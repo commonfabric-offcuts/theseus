@@ -28,6 +28,7 @@ from .standing_conversation import excerpt
 
 STATES = ("active", "waiting", "review", "done")
 NOTE_UTF8_BYTES = 1024
+OPEN_ASK_REPLY_LIMIT = 10
 
 TOPIC_STATE_SCHEMA = [
     "ALTER TABLE topics ADD COLUMN state TEXT NOT NULL DEFAULT 'active' CHECK(state IN ('active','waiting','review','done'))",
@@ -354,8 +355,8 @@ class TopicState:
             return None
         return ask
 
-    def _waiting_asks(self, db, topic, actor, include_archived=False):
-        """Every eligible ask identity to this reader in one waiting place, without message bodies.
+    def _iter_waiting_asks(self, db, topic, actor, include_archived=False):
+        """Yield the eligible asks to this reader in one waiting place, without message bodies.
 
         The addressee key bounds candidates to this topic and reader; _ask_waits
         owns all answer/held-record rules, including conversation_waits. Explicit
@@ -367,8 +368,49 @@ class TopicState:
             "CROSS JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
             "WHERE a.topic_id=:topic AND a.actor_id=:actor AND m.intent='ask' AND " + READABLE + " AND " + VISIBLE
             + " ORDER BY a.seq", {"topic": topic["id"], "actor": actor})
+        for row in rows:
+            if self._ask_waits(db, topic, row, actor, include_archived=include_archived):
+                yield row
+
+    def _waiting_asks(self, db, topic, actor, include_archived=False):
         return [{"actor_id": actor, "message_id": row["id"], "by": row["author_id"], "since_ms": row["sent_ms"]}
-                for row in rows if self._ask_waits(db, topic, row, actor, include_archived=include_archived)]
+                for row in self._iter_waiting_asks(db, topic, actor, include_archived)]
+
+    def _view_open_ask_replies(self, db, actor, args):
+        """Current reply targets for the plain CLI, after a root-post refusal."""
+        result = {"instance_id": self.instance_id, "items": [], "more": False}
+        topic = self._topic(db, actor, args.get("topic_id"))
+        if (self._actor(db, actor)["kind"] != "agent" or topic["archived"] or topic["replaced_by"] is not None
+                or self._closed(db, topic["workspace_id"]) is not None):
+            return result
+        if not db.execute("SELECT 1 FROM topic_waiting WHERE topic_id=? AND actor_id=? AND ask_message_id IS NOT NULL",
+                          (topic["id"], actor)).fetchone():
+            return result
+
+        from .stacks import StackRoots
+        roots = StackRoots(db, actor)
+        labels, tell = {}, {}
+        for ask in self._iter_waiting_asks(db, topic, actor):
+            if ask["topic_id"] != topic["id"] or ask["private_to"] is not None or withheld(ask["id"]):
+                continue
+            if len(result["items"]) == OPEN_ASK_REPLY_LIMIT:
+                result["more"] = True
+                break
+            root = roots.root(ask["id"])
+            if root not in labels:
+                labels[root] = ((self._act_value(db, root, "name", "") or {}).get("name") or "")[:100]
+            asker = ask["author_id"]
+            if asker not in tell:
+                try:
+                    self._actor(db, asker)
+                    self._topic(db, asker, topic["id"])
+                except Refusal:
+                    tell[asker] = False
+                else:
+                    tell[asker] = True
+            result["items"].append({"message_id": ask["id"], "seq": ask["seq"], "asker": asker,
+                                    "may_tell": tell[asker], "root_id": root, "dossier_name": labels[root]})
+        return result
 
     def _waits_by_topic(self, db, topic_ids, reader=None):
         """{topic_id: (waiting_on, asks)} for the given topics: who the topic was said to wait

@@ -212,6 +212,7 @@ VIEWS = {
     "topic_membership": {"topic_id", "message_ids"}, "dossier_move_targets": {"message_id", "cursor", "limit", "build"}, "dossier_moves": {"topic_id", "cursor", "limit"},
     "stack_positions": {"topic_id", "message_ids", "position_format"}, "stack_namer": {"message_id"}, "dossier_cover": {"message_id"}, "message_acts": {"topic_id", "cursor", "limit"}, "stars": {"topic_id", "cursor", "limit"},
     "post_edit_hint": {"message_id", "topic_id", "reply_to"},
+    "open_ask_replies": {"topic_id"},
     "dossier_trash": {"topic_id", "cursor", "limit"},
     "tools": {"workspace_id"}, "tool": {"tool_id", "cursor", "limit"}, "topic_tools": {"topic_id"},
 }
