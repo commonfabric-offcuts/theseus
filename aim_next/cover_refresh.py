@@ -7,6 +7,7 @@ Only a changed agent cover write completes it. See docs/cover-refresh.md.
 """
 
 from .contract import Refusal
+from .cover_values import has_cover_words
 from .delivery import _now_ms
 import uuid
 
@@ -159,6 +160,6 @@ class CoverRefresh:
                    "ON CONFLICT(message_id) DO UPDATE SET actor_id=excluded.actor_id,revision=excluded.revision",
                    (message["id"], actor, revision))
         wrote_birth = bool(value.get("birth")) and not before.get("birth")
-        if not (value["stands"] or value["waiting"] or value["payload"] or wrote_birth):
+        if not (has_cover_words(value) or wrote_birth):
             return version
         return self._complete_refresh(db, actor, message, "cover_refresh", revision, version)

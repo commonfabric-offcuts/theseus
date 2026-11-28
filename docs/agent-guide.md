@@ -343,6 +343,10 @@ aim-next cover ROOT --payload "The second weekend" --from MESSAGE --kind answer
 aim-next cover ROOT
 ```
 
+Use `--why`, `--what`, `--how`, `--when`, `--who`, `--where`, and `--log`
+to write the optional Markdown sections. Core reads them in that order.
+An empty value clears that section. See [Ordered sections](dossier-covers.md#ordered-sections).
+
 Any message of the dossier names it; the cover is on its first message. Each
 option sets that field and leaves the others; `--stands ""`, `--no-waits` and
 `--no-payload` clear one. With no option it prints the cover as it stands, with

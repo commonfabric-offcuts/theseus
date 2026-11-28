@@ -195,6 +195,7 @@ USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute
          "| thumb MESSAGE [--off] | withdraw MESSAGE [--operation ID] | mint MESSAGE [--expected N] WORDS|- | edit MESSAGE --expected N TEXT|- "
          "| birth REPLY [--root ROOT --expected-name N --expected-cover N [--name TEXT] [--nature TEXT] [--done-when TEXT] [--stands TEXT|-] [--operation ID]] "
          "| cover MESSAGE [--refresh [--operation ID]] [--expected N] [--stands TEXT] [--waits TEXT --default TEXT]... [--no-waits] "
+         "[--why TEXT] [--what TEXT] [--how TEXT] [--when TEXT] [--who TEXT] [--where TEXT] [--log TEXT] "
          "[--payload TEXT --from MESSAGE [--link URL] [--kind answer|decision|preview|page|release] [--done-by MESSAGE]] [--no-payload] "
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "

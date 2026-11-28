@@ -11,7 +11,7 @@ a 👍 on the payload's message or by their own reply to it, which the writer na
 
 import time
 
-from .cover_values import PAYLOAD_KINDS
+from .cover_values import COVER_SECTIONS, PAYLOAD_KINDS
 
 
 def _at(ms):
@@ -37,6 +37,8 @@ def register(verb):
     cover.add_argument("--operation")
     # Where it stands, retaining its lines; "" clears it.
     cover.add_argument("--stands")
+    for section in COVER_SECTIONS:
+        cover.add_argument("--" + section)
     # What waits on the owner, each with its default: --waits TEXT --default TEXT, once per thing waiting, in order.
     cover.add_argument("--waits", action="append", default=[])
     cover.add_argument("--default", dest="defaults", action="append", default=[])
@@ -74,6 +76,9 @@ def cover_lines(root, revision, cover, owner):
         # Output.plain sanitizes embedded controls, including LF. Emit each
         # supplied line separately so the terminal readback retains the breaks.
         lines.extend(("  stands: " + cover["stands"]).split("\n"))
+    for section in cover.get("sections", ()):
+        peek = section["text"].strip().split("\n", 1)[0].rstrip()
+        lines.append("  %s: %s" % (section["key"].title(), peek))
     for wait in cover["waiting"]:
         details = []
         if 'options' in wait:
@@ -128,6 +133,9 @@ class CoverVerbs:
         options, args = self.options, {}
         if options.stands is not None:
             args["stands"] = options.stands
+        sections = {key: getattr(options, key) for key in COVER_SECTIONS if getattr(options, key) is not None}
+        if sections:
+            args["sections"] = sections
         if options.no_waits and options.waits:
             self.refuse("INVALID_ARGUMENT", "--no-waits clears what waits on the owner; it takes no --waits; nothing was sent")
         if len(options.waits) != len(options.defaults):
