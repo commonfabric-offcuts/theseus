@@ -8,7 +8,7 @@ const EXCERPT = 60;
 const paintedReplies = new WeakMap();
 
 function excerpt(item, { parent = null, viewer = null } = {}) {
-  if (ownWithdrawnQuestion(parent, viewer)) return '';
+  if (ownWithdrawnQuestion(parent, viewer) || item.reply_to_withdrawn === true && item.reply_to_author === viewer) return '';
   const first = String(item.reply_to_excerpt ?? '').split('\n')[0].trim();
   return first.length > EXCERPT ? first.slice(0, EXCERPT).trimEnd() + '…' : first;
 }

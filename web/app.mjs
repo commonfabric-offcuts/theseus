@@ -78,7 +78,7 @@ import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, paintFoldWords, paintOwnNoteFold, opened } from './fold.mjs';
 import { MessageEditWriting, messageEditStore, mayEdit, revisionOf, wasEdited } from './message-edit-writing.mjs';
 import { MessageEdit } from './message-edit.mjs';
-import { withdrawalItem, paintWithdrawal, Withdrawals, learnWithdrawal } from './question-withdrawal.mjs';
+import { ownWithdrawnQuestion, withdrawalItem, paintWithdrawal, Withdrawals, learnWithdrawal } from './question-withdrawal.mjs';
 import { removalItem, paintRemoval, readRemoval, Removals } from './message-removal.mjs';
 import { cardClass, paintCardColor, agentColor, paneClass } from './author-colors.mjs';
 import { paintWhisperAuthor, mayStartFrom } from './whisper-choice.mjs';
@@ -1943,6 +1943,7 @@ function feedOf() {
     closeReplyToFold: id => cardReplies?.close(id, { focus: false }),
     nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     newest: (stack, mark) => run(() => openDossierNew(stack, mark)),
+    landReply: id => run(() => landOnMessage(id, undefined, undefined, false, true)),
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), arranged: stacksRedrawn,
     hold: (paint, act) => keepListAnchor(paint, act), navigate: () => releaseTopArrivals(), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyInCard(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), thumbPending: id => reactions?.pending.get(id) ?? null,
@@ -2078,12 +2079,15 @@ function landOn(id, { full = false } = {}) {
 // anchored page, preserving the paging gap. With no visible card, the exact
 // source opens through the ordinary Reader owner instead.
 let landingSerial = 0;
-async function landOnMessage(id, serial = ++landingSerial, current = () => true, dossier = false) {
+async function landOnMessage(id, serial = ++landingSerial, current = () => true, dossier = false, exact = false) {
   const accessEpoch = listAccessEpoch, generation = registry.generation, windowRequest = ++windowReadSerial, windowReadStart = views.windowKnowledge;
   const mine = () => !retired && !registry.disposed && !topicUnavailable &&
     accessEpoch === listAccessEpoch && serial === landingSerial && generation === registry.generation && windowRequest === windowReadSerial && current();
   if (!mine()) return false;
-  if (dossier || !views.messages.has(id)) {
+  const openExact = () => openSource({ kind: 'message', id }, document.activeElement);
+  const local = exact ? feedMessages().get(id) : null;
+  if (local && ownWithdrawnQuestion(local, bootstrap.actor)) return Boolean(await openExact());
+  if (dossier || !(views.messages.has(id) || local && stackFeed.entryFor(id))) {
     const foreground = registry.cleanup.foreground();
     try {
       let cursor = Number.MAX_SAFE_INTEGER, args = { topic_id: topic.id, limit: 30 };
@@ -2109,8 +2113,11 @@ async function landOnMessage(id, serial = ++landingSerial, current = () => true,
   // A loaded same-topic target can land during the rail's tap handler,
   // before its bubbling click closes the drawer and removes main's inertness.
   if (shell.drawer?.isOpen()) shell.drawer.close();
+  // An authored withdrawal has no card in this reader's feed. Echo
+  // activation still opens the exact original instead of selecting a reply.
+  if (exact && ownWithdrawnQuestion(feedMessages().get(id), bootstrap.actor)) return Boolean(await openExact());
   const card = landOn(id, { full: true });
-  if (!card) return Boolean(await openSource({ kind: 'message', id }, document.activeElement));
+  if (!card) return Boolean(await openExact());
   card.focus({ preventScroll: true });
   return true;
 }
@@ -3122,6 +3129,20 @@ function learnQuestionState({ message_id, question }) {
   if (author && item) { paintCardAuthor(author, item); paintReactions(card, item, bootstrap.actor, bootstrap.actor_kind, document); }
   paintReaderThumb$();
 }
+// The actor's withdrawal event also covers replies whose original is outside
+// this page. Their existing authorized context can be updated without a read.
+function learnWithdrawnReplyContext(messageId, messages) {
+  views.rememberParentWithdrawal(messageId);
+  let changed = false;
+  for (const reply of messages.values()) {
+    if (reply.reply_to !== messageId || !reply.reply_to_author || reply.reply_to_withheld || reply.reply_to_withdrawn) continue;
+    reply.reply_to_withdrawn = true;
+    changed = true;
+    const entry = messageEntries.get(reply.id);
+    if (entry) paintReplyContext(cardIn(entry), reply, messages);
+  }
+  return changed;
+}
 // A message's withdrawal is permanent and belongs only to that identity, even after a Reader step.
 function learnQuestionWithdrawal({ message_id, withdrawal }) {
   questionStates?.learn(message_id, { state: 'withdrawn', waiting_on: [], may_resolve: false, ...withdrawal });
@@ -3129,11 +3150,7 @@ function learnQuestionWithdrawal({ message_id, withdrawal }) {
   learnWithdrawal(item, withdrawal);
   const card = cardIn(messageEntries.get(message_id)), author = card?.querySelector('.message-author');
   if (author && item) { paintCardAuthor(author, item); paintReactions(card, item, bootstrap.actor, bootstrap.actor_kind, document); }
-  for (const reply of messages.values()) if (reply.reply_to === message_id) {
-    const entry = messageEntries.get(reply.id);
-    if (entry) paintReplyContext(cardIn(entry), reply, messages);
-  }
-  if (item) stackMessages();
+  if (learnWithdrawnReplyContext(message_id, messages) || item) stackMessages();
   menu?.paint();
   const source = registry.current?.source;
   if (source?.source_ref?.kind === 'message' && source.source_ref.id === message_id) {
@@ -3714,7 +3731,10 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
       if (key.startsWith('withdrawal:')) {
         const id = key.slice('withdrawal:'.length);
         const source = registry.current?.source;
-        if (!views.messages.has(id) && !dossierHeads?.records.has(id) && source?.source_ref?.id !== id) return true;
+        if (!views.messages.has(id) && !dossierHeads?.records.has(id) && source?.source_ref?.id !== id) {
+          if (learnWithdrawnReplyContext(id, feedMessages())) stackMessages();
+          return true;
+        }
         let answer;
         try { answer = checkedView(await read('source', { kind: 'message', id }), bootstrap.instance_id); }
         catch (error) {

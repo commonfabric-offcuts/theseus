@@ -626,7 +626,9 @@ export function paintFolderColors(list) {
   if (!state) return;
   for (const stack of state.stacks ?? []) {
     const section = state.sections.get(stack.id);
-    if (section) paintFolderColor(section, stack, state.colorOf);
+    if (!section) continue;
+    paintFolderColor(section, stack, state.colorOf);
+    for (const control of parts.get(section).lines.values()) if (echoParts.has(control)) paintEchoColor(control, state.colorOf);
   }
 }
 
@@ -650,6 +652,68 @@ function line(section, key, make) {
   const { lines } = parts.get(section);
   if (!lines.has(key)) lines.set(key, make());
   return lines.get(key);
+}
+
+const echoParts = new WeakMap();
+
+function paintEchoColor(echo, colorOf) {
+  const parent = echoParts.get(echo).parent;
+  const color = parent ? colorOf(parent) : null;
+  for (const name of AGENT_PALETTE) echo.classList.toggle(`agent-${name}`, name === color);
+  echo.dataset.color = color ? 'agent' : '';
+}
+
+function paintReplyEcho(section, entry, previous, { state, messages, nameOf, colorOf, doc }, visible) {
+  const card = cardIn(entry), item = messages.get(entry.dataset.id), id = item.reply_to;
+  const parent = id ? messages.get(id) : null;
+  const show = visible && id && id !== previous?.dataset.id && item.reply_to_author &&
+    !item.withheld && !item.removal && !item.withdrawal && !item.reply_to_withheld && !parent?.withheld;
+  if (!show) {
+    delete card.dataset.replyEcho;
+    return null;
+  }
+
+  const echo = line(section, `reply-echo:${item.id}`, () => {
+    const button = element(doc, 'button', 'reply-echo');
+    button.type = 'button';
+    const heading = element(doc, 'span', 'reply-echo-heading');
+    const author = element(doc, 'span', 'reply-echo-author');
+    const detail = element(doc, 'span', 'reply-echo-detail');
+    const excerpt = element(doc, 'span', 'reply-echo-excerpt');
+    heading.setAttribute('aria-hidden', 'true');
+    excerpt.setAttribute('aria-hidden', 'true');
+    heading.append(author, detail);
+    button.append(heading, excerpt);
+    echoParts.set(button, { author, detail, excerpt });
+    return button;
+  });
+  const parts = echoParts.get(echo);
+  const name = nameOf(item.reply_to_author);
+  const sent = parent?.sent_ms ?? item.reply_to_sent_ms;
+  const time = Number.isSafeInteger(sent) ? shownTime(sent) : '';
+  const removal = parent?.removal ?? item.reply_to_removal;
+  const withdrawn = Boolean(parent?.withdrawal || item.reply_to_withdrawn || removal);
+  const words = withdrawn ? '' : messagePreview(parent ?? { body: item.reply_to_excerpt, preview: true });
+  parts.parent = parent ?? { author_id: item.reply_to_author, author_kind: item.reply_to_author_kind };
+  parts.author.dataset.words = name;
+  parts.detail.dataset.words = `${time ? ` · ${time}` : ''}${withdrawn ? ' · withdrawn' : ''}`;
+  parts.excerpt.dataset.words = words;
+  paintEchoColor(echo, colorOf);
+  const source = `${name === 'You' ? 'your' : `${name}'s`} message${time ? ` from ${time}` : ''}`;
+  echo.setAttribute('aria-label', removal?.kind === 'unsent' ? `Go to the dossier for ${source}` : `Go to ${source}`);
+  const description = [withdrawn ? 'Withdrawn' : words, item.reply_cover_section && `Replying to the cover · ${item.reply_cover_section}`].filter(Boolean).join('. ');
+  if (description) echo.setAttribute('aria-description', description);
+  else echo.removeAttribute('aria-description');
+  echo.onclick = () => {
+    if (removal?.kind !== 'unsent') return state.on?.landReply?.(id);
+    // Core has removed the original's card and source. Its dossier is the
+    // place still available from this reply.
+    section.tabIndex = -1;
+    section.scrollIntoView({ block: 'nearest' });
+    section.focus({ preventScroll: true });
+  };
+  card.dataset.replyEcho = '';
+  return echo;
 }
 
 const replies = n => (n === 1 ? 'reply' : 'replies');
@@ -1070,9 +1134,21 @@ function paintStack(section, stack, byId, context) {
     // Only new draws a New item wherever it sits, a folded one included.
     for (const item of row.items ?? []) { const entry = byId.get(item.id); entry.hidden = !state.only?.(item); desired.push(entry); }
   }
-  const used = new Set(desired);
+  const headVisible = state.only ? state.only(stack.head) : whole;
+  const headEcho = paintReplyEcho(section, head, null, context, headVisible);
+  let previous = headVisible ? head : null;
+  const withEchoes = [];
+  for (const entry of desired) {
+    if (entry.dataset.id) {
+      const echo = paintReplyEcho(section, entry, previous, context, !entry.hidden);
+      if (echo) withEchoes.push(echo);
+    }
+    if (!entry.hidden) previous = entry.dataset.id ? entry : null;
+    withEchoes.push(entry);
+  }
+  const used = new Set([...withEchoes, headEcho]);
   for (const [key, node] of p.lines) if (!used.has(node)) { node.remove(); p.lines.delete(key); }
-  reconcile(p.replies, desired, moved);
+  reconcile(p.replies, withEchoes, moved);
   // Presentation only: overlap adjacent visible faces, never a provenance
   // line. Hidden replies neither consume an edge nor separate two faces.
   // Item 550: what More messages filled the stack with (stack.filled) is a
@@ -1096,7 +1172,7 @@ function paintStack(section, stack, byId, context) {
   }
   // The cover precedes every message; adjacent message faces overlap as usual.
   let previousFace = whole ? head : null;
-  for (const entry of desired) {
+  for (const entry of withEchoes) {
     if (entry.hidden) continue;
     if (!entry.dataset.id || entry.dataset.stackFilled === 'true') { previousFace = null; continue; }
     entry.dataset.stackOverlap = String(Boolean(previousFace));
@@ -1116,7 +1192,7 @@ function paintStack(section, stack, byId, context) {
   p.requestLine = !p.cover && firstTarget ? refreshLine(doc, firstTarget, coverContext) : null;
   section.dataset.askCover = String(Boolean(coverTools.get(p.tools)?.node));
   paintFolderColor(section, stack, colorOf);
-  reconcile(section, [...(separate ? [p.header] : []), ...(p.cover ? [p.cover] : []), ...(p.requestLine ? [p.requestLine] : []), head, ...(rename ? [rename] : [...(separate ? [] : [p.toggle]), p.tools]), p.replies, ...(stack.placed !== null ? [p.placed] : [])], moved);
+  reconcile(section, [...(separate ? [p.header] : []), ...(p.cover ? [p.cover] : []), ...(p.requestLine ? [p.requestLine] : []), ...(headEcho ? [headEcho] : []), head, ...(rename ? [rename] : [...(separate ? [] : [p.toggle]), p.tools]), p.replies, ...(stack.placed !== null ? [p.placed] : [])], moved);
   if (!separate) p.header.remove();
   if (separate || rename) p.toggle.remove();
   if (rename) p.tools.remove();
@@ -1210,7 +1286,7 @@ export function repaintStackReading(list, ids, messages) {
       if (!state.writing.has(item.id) && rowFolded(item, { peeked: each => state.peeked.has(each.id) })) state.folded.add(item.id);
       else state.folded.delete(item.id);
     }
-    paintStack(section, stack, byId, { state, keep, unread, nameOf, colorOf, doc, moved });
+    paintStack(section, stack, byId, { state, messages, keep, unread, nameOf, colorOf, doc, moved });
     const heads = stack.replies.length && !state.only;
     for (const [id, entry] of byId) {
       const item = messages.get(id);
@@ -1303,7 +1379,7 @@ export function arrangeStacks(list, messages, options = {}) {
   list.dataset.showCoordination = String(state.showCoordination);
   const coordinationNews = stacks.some(stack => state.coordination.has(stack.id) && [stack.head, ...stack.replies].some(unread));
   state.on?.coordinationCount?.(state.coordination.size, coordinationNews);
-  const top = [...waiting, ...withdrawn.values()], archived = [], live = new Set(), moved = [], context = { state, keep, unread, nameOf, colorOf, doc, moved };
+  const top = [...waiting, ...withdrawn.values()], archived = [], live = new Set(), moved = [], context = { state, messages, keep, unread, nameOf, colorOf, doc, moved };
   state.below = new Set();
   for (const stack of stacks) {
     const head = byId.get(stack.id);
