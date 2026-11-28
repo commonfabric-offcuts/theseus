@@ -68,7 +68,7 @@ export function returnIntent(event, doc, host, shown = entry => entry, controls 
   const at = doc.activeElement;
   if (!plainReturn(event) || event.defaultPrevented || event.isComposing || writing(event.target) || writing(at) || at?.isContentEditable || doc.querySelector('dialog[open]:not([data-card-reply])')) return null;
   if (at?.matches?.('.dossier-cover summary, .dossier-cover a[href]') && host.contains(at)) return null;
-  if (at?.matches?.('[data-card-image-control]') && host.contains(at) && returnShown(at, doc)) return null;
+  if (at?.matches?.('[data-card-image-control], .edit-echo-controls button') && host.contains(at) && returnShown(at, doc)) return null;
   const selection = at?.matches?.('.message-card, .fold-line, .stack-toggle');
   if (controls && !selection && at?.matches?.(':focus-visible') && returnShown(at, doc)) {
     const style = doc.defaultView.getComputedStyle(at);

@@ -613,6 +613,23 @@ def edit_echo_metadata(db, message_id, current, number=None):
     return dict(json.loads(row["edit_echo"]), revision=row["revision"], edited_ms=row["edited_ms"]) if row else None
 
 
+def edit_echo_summaries(db, message_id, current):
+    """Return the newest revision in each group within the indexed edit window."""
+    groups = {}
+    for row in db.execute("SELECT revision,edited_ms,edit_echo FROM message_revisions WHERE message_id=? "
+                          "AND revision BETWEEN ? AND ? AND edit_echo IS NOT NULL ORDER BY revision DESC",
+                          (message_id, max(2, current - EDIT_ECHO_LOOKBACK + 1), current)):
+        metadata = json.loads(row["edit_echo"])
+        group = metadata["group_revision"]
+        if group in groups:
+            continue
+        # A topic page may show current words. An exact source read owns the
+        # permission check for words that have since been replaced.
+        groups[group] = dict(metadata, revision=row["revision"], edited_ms=row["edited_ms"],
+                             summary=metadata["summary"] if row["revision"] == current else "Revised wording")
+    return list(groups.values())
+
+
 def _person_exposed_revision(db, actor, message_id):
     row = db.execute("SELECT e.revision FROM message_exposures e JOIN actors a ON a.id=e.actor_id AND a.kind='human' "
                      "WHERE e.actor_id=? AND e.message_id=?", (actor, message_id)).fetchone()

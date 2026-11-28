@@ -672,3 +672,14 @@
 .cover-item .cover-words{overflow-wrap:anywhere}
 
 @media(prefers-color-scheme:dark){.reply-stack:not(.only-new *) .message-card:not(.own-message,.agent-card):hover{background:#353f41}}
+
+/* Edit echoes sit below the messages and use the reply echo's face. */
+.edit-echo{min-width:0;margin-top:var(--stack-sheet-gap)}
+.edit-echo-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.25rem}
+.edit-echo-controls>.reply-echo{margin:0}
+.edit-echo .reply-echo-heading::before{content:'↻'}
+.edit-echo-toggle{padding-inline:.7rem}
+.edit-echo-diff{margin:.25rem 0 0;padding:.55rem .8rem;border-radius:var(--stack-r-sheet);
+  background:var(--stack-read-sheet);color:var(--ink);font-size:.82rem;overflow-wrap:anywhere}
+.edit-echo-change{display:grid;grid-template-columns:3.3rem minmax(0,1fr);gap:.45rem;margin:.15rem 0;white-space:pre-wrap}
+.edit-echo-change strong{color:var(--muted);font-size:.76rem}
