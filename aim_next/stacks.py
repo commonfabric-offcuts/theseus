@@ -139,11 +139,20 @@ LEVEL_DOWN = _rebuilt(ACT_MESSAGE_REFRESH[0]) + ASIDE_INDEXES[1:] + COVER_INDEXE
 # A cleared preference still has history and revisions; rollback must retain it.
 LEVEL_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='level')"
 
-PERSONAL = {"star", "deal", "fold", "place", "aside", "level"}
+TRASH_INDEX = ("CREATE INDEX reader_trash_recent ON message_acts(owner,topic_id,id DESC) "
+               "WHERE kind='trash' AND json_extract(value,'$.trashed')=1")
+ACT_TRASH = [_act_table(("star", "deal", "fold", "place", "name", "join", "aside", "cover", "cover_refresh",
+                         "message_refresh", "level", "trash"))] + ACT_INDEXES + ASIDE_INDEXES + COVER_INDEXES + [TRASH_INDEX]
+TRASH_SCHEMA = _rebuilt(ACT_TRASH[0]) + ASIDE_INDEXES[1:] + COVER_INDEXES + [TRASH_INDEX]
+TRASH_DOWN = _rebuilt(ACT_LEVEL[0]) + ASIDE_INDEXES[1:] + COVER_INDEXES
+TRASH_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_acts WHERE kind='trash')"
+
+PERSONAL = {"star", "deal", "fold", "place", "aside", "level", "trash"}
 # The command for each act, and the revision its sender read.
 KINDS = {"message.star": ("star", "star_revision"), "message.deal": ("deal", "deal_revision"),
          "message.fold": ("fold", "fold_revision"), "stack.place": ("place", "place_revision"), "stack.name": ("name", "name_revision"),
-         "stack.join": ("join", "join_revision"), "stack.aside": ("aside", "aside_revision"), "stack.level": ("level", "level_revision")}
+         "stack.join": ("join", "join_revision"), "stack.aside": ("aside", "aside_revision"), "stack.level": ("level", "level_revision"),
+         "stack.trash": ("trash", "trash_revision")}
 # A short name is one line of at most this many characters; the page ends a long one in "…".
 NAME_CHARS = 200
 # A place is a number to sort by; this bound keeps it exact as JSON in every client.
@@ -154,7 +163,7 @@ JOIN_DEPTH = 10000
 MINT_WORDS = (2, 5)
 
 NONE = {"aside": {"through": None}, "star": {"starred": False}, "deal": {"dealt": False}, "fold": {"folded": False}, "place": {"key": None}, "name": {"name": ""}, "join": {"into": None},
-        "cover": cover_values.EMPTY_COVER, "level": {"level": None}}
+        "cover": cover_values.EMPTY_COVER, "level": {"level": None}, "trash": {"trashed": False}}
 EMPTY = {"aside": None, "aside_revision": 0, "starred": False, "star_revision": 0, "dealt": False, "deal_revision": 0, "folded": False, "fold_revision": 0,
          "placed": None, "place_revision": 0, "level": None, "level_revision": 0,
          "name": None, "name_revision": 0, "joined": None, "join_revision": 0, "cover": None, "cover_revision": 0, "cover_refresh": None, "cover_refresh_revision": 0, "message_refresh": None, "message_refresh_revision": 0}
@@ -184,6 +193,8 @@ def _value(kind, args):
         return dict({"through": through}, **key)
     if kind == "star":
         return _flag(args, "starred", "Name one message and whether it is starred")
+    if kind == "trash":
+        return _flag(args, "trashed", "Say whether the dossier is in Trash")
     if kind == "deal":
         return _flag(args, "dealt", "Name one message and whether its stack is dealt with")
     if kind == "fold":
@@ -222,6 +233,8 @@ def _shown(kind, row):
         return {"aside": value["through"]}
     if kind == "star":
         return {"starred": value["starred"]}
+    if kind == "trash":
+        return {"trashed": value["trashed"]}
     if kind == "deal":
         return {"dealt": value["dealt"]}
     if kind == "fold":
@@ -673,7 +686,9 @@ def stack_positions(db, actor, items, *, context=None):
             # replies shows them; read as this reader reads its first message, the root they can see.
             from .dossier_move import move_fields
             order = dossier_order.rank(db, actor, topic, root)
-            positions[root] = {**move_fields(db, actor, root), "root_id": root, "through": through, "aside_revision": acts["aside_revision"],
+            trash = {key: acts[key] for key in ("trashed", "trash_revision")} if "trash_revision" in acts else {}
+            positions[root] = {**move_fields(db, actor, root), **trash,
+                               "root_id": root, "through": through, "aside_revision": acts["aside_revision"],
                                "name": acts["name"], "name_revision": acts["name_revision"], "join_revision": acts["join_revision"],
                                "placed": acts["placed"], "place_revision": acts["place_revision"],
                                "level": acts["level"], "level_revision": acts["level_revision"],
@@ -777,7 +792,7 @@ class Stacks:
         message, topic = self._acted_message(db, actor, envelope["target"])
         value = _value(kind, envelope["args"])
         # Dossier acts name its canonical first message as this reader's Core finds it.
-        if kind in ("aside", "name", "level") and StackRoots(db, actor).root(message["id"]) != message["id"]:
+        if kind in ("aside", "name", "level", "trash") and StackRoots(db, actor).root(message["id"]) != message["id"]:
             raise Refusal("STACK_CHANGED", "This is not the first message of its dossier now; read it again")
         if kind == "aside":
             if value["through"] is not None and value["through"] > _seen_seq(db, actor, message["topic_id"]):
@@ -1001,6 +1016,41 @@ class Stacks:
         found = current_acts(db, actor, [row["id"] for row in rows[:limit]])
         return _bounded_page({"instance_id": self.instance_id, "topic_id": topic["id"], "version": _seen_acts(db, actor, topic["id"])}, rows, limit,
                              lambda row: {"message_id": row["id"], "seq": row["seq"], "acts": found.get(row["id"], dict(EMPTY))}, "seq")
+
+    def _view_dossier_trash(self, db, actor, args):
+        topic = self._topic(db, actor, args.get("topic_id"))
+        limit = _page_size(args)
+        cursor = args.get("cursor", 9223372036854775807)
+        if type(cursor) is not int or not 0 < cursor <= 9223372036854775807:
+            raise Refusal("INVALID_ARGUMENT", "Invalid Trash cursor")
+        # Seek this reader's Trash acts in the topic. Limit the candidates
+        # before checking for restores, removed roots or changed ancestry.
+        budget = limit * 4
+        candidates = db.execute(
+            "SELECT a.id AS trash_id,a.message_id,a.revision," + words("m", chars=160) + " AS excerpt,"
+            "coalesce(json_extract(n.value,'$.name'),'') AS name,"
+            "coalesce(json_extract(s.value,'$.starred'),0) AS starred,coalesce(s.revision,0) AS star_revision,"
+            "(a.revision=(SELECT max(b.revision) FROM message_acts b "
+            "WHERE b.message_id=a.message_id AND b.owner=a.owner AND b.kind='trash') AND " + VISIBLE + ") AS eligible "
+            "FROM message_acts a INDEXED BY reader_trash_recent JOIN messages m ON m.id=a.message_id "
+            "LEFT JOIN message_acts n ON n.id=(SELECT id FROM message_acts "
+            "WHERE message_id=a.message_id AND kind='name' AND owner='' ORDER BY revision DESC LIMIT 1) "
+            "LEFT JOIN message_acts s ON s.id=(SELECT id FROM message_acts "
+            "WHERE message_id=a.message_id AND kind='star' AND owner=:actor ORDER BY revision DESC LIMIT 1) "
+            "WHERE a.owner=:actor AND a.topic_id=:topic AND a.kind='trash' AND json_extract(a.value,'$.trashed')=1 "
+            "AND a.id<:cursor ORDER BY a.id DESC LIMIT :limit",
+            {"actor": actor, "topic": topic["id"], "cursor": cursor, "limit": budget + 1}).fetchall()
+        roots = StackRoots(db, actor)
+        current = [row for row in candidates[:budget]
+                   if row["eligible"] and roots.root(row["message_id"]) == row["message_id"]]
+        page = _bounded_page({"instance_id": self.instance_id, "topic_id": topic["id"]}, current, limit,
+                             lambda row: {"message_id": row["message_id"], "trash_id": row["trash_id"],
+                                          "trash_revision": row["revision"], "name": row["name"],
+                                          "excerpt": row["excerpt"], "withheld": withheld(row["message_id"]),
+                                          "starred": bool(row["starred"]), "star_revision": row["star_revision"]}, "trash_id")
+        if page["next_cursor"] is None and len(candidates) > budget:
+            page["next_cursor"] = candidates[budget - 1]["trash_id"]
+        return page
 
     def _view_stars(self, db, actor, args):
         """The reader's starred messages, wherever they can still read them, the newest star first, paged by star."""
