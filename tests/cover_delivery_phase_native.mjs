@@ -40,9 +40,13 @@ try {
   };
   const proposed = await dossier({
     id: 'proposed', title: 'Field guide preview', nature: 'research', stands: 'Readers can find the trail plan and download the packet from one page.',
-    criterion: 'The field team can find the route, handout, and revision date.', payload: { kind: 'preview', text: 'Field guide preview is ready for approval.', link: 'https://example.test/field-guide' },
-    fields: { log: 'Draft map replaced on Tuesday.', where: 'North trailhead noticeboard.', who: 'Field team.', when: 'Friday morning.', how: 'Print the route and packet together.',
-      what: '| File | Contents |\n| --- | --- |\n| Guide | Printable route and handout |', why: '**One home for the plan.**\nThe team can share a single address.' },
+    criterion: 'The field team can find the route, handout, and revision date.', payload: { kind: 'preview',
+      text: 'The field guide preview has the full trail plan, handout, and revision date. The field team can check the full packet now.',
+      link: 'https://example.test/field-guide' },
+    fields: { log: 'Draft map replaced on Tuesday.', where: 'North trailhead noticeboard.', who: 'Field team.', when: 'Friday morning.',
+      how: '1. Print the **route** and packet together.\n2. Deliver it to the field team.',
+      what: '| **File** | [Contents](https://example.test/contents) |\n| --- | --- |\n| Guide | Printable route and handout |\n| Packet | Supply list |\n| Map | Trail stops |',
+      why: '**One home for the plan.** The team can share a single address.' },
   });
   const accepted = await dossier({
     id: 'accepted', title: 'Route map decision', nature: 'decision', stands: 'Use the riverside route for the opening walk.',
@@ -63,7 +67,8 @@ try {
   });
   const working = await dossier({
     id: 'working', title: 'Handout checklist', nature: 'feature', stands: 'Prepare the handout for print.',
-    criterion: 'The route and legend appear on the same page.', fields: { what: '- [x] Add the route\n- [ ] Place the legend' },
+    criterion: 'The route and legend appear on the same page.',
+    fields: { what: '- [x] Measure the path\n- [ ] Add the **route**\n- [ ] Print the guide\n- [x] Check the scale' },
   });
 
   browser = await chromium.launch({ executablePath: process.env.AIM_CHROME, headless: true });
@@ -95,7 +100,10 @@ try {
       assert.equal(await cover(accepted).locator('.cover-acceptance').evaluate(node => getComputedStyle(node).borderStyle), 'solid');
       const fields = cover(proposed).locator('.cover-structured-section');
       assert.deepEqual(await fields.locator('.cover-section-label').allTextContents(), ['Why', 'What', 'How', 'When', 'Who', 'Where', 'Log']);
-      assert.equal(await fields.first().locator('.cover-section-peek').textContent(), 'One home for the plan.');
+      const peeks = await fields.locator('.cover-section-peek').allTextContents();
+      assert.deepEqual(peeks.slice(0, 3), ['One home for the plan.', 'File, Contents · 3 rows', 'Print the route and packet together.']);
+      const checklist = await cover(working).locator('.cover-section-peek').textContent();
+      assert.equal(checklist, '2 of 4 done · Add the route');
       assert.equal(await cover(proposed).locator('.cover-structured-section[open]').count(), 0);
       const filter = page.locator('#agent-coordination-show button');
       if (await page.locator('#messages').getAttribute('data-show-coordination') !== 'true') await press(filter);
@@ -120,13 +128,22 @@ try {
       const summary = fields.nth(1).locator('summary');
       const geometry = await cover(proposed).evaluate(sheet => {
         const payload = sheet.querySelector('.cover-payload');
+        const text = payload.querySelector('.cover-payload-text');
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        const lineTops = [...new Set([...range.getClientRects()].map(rect => rect.top))];
         return { payloadBeforeLead: payload.getBoundingClientRect().bottom <= sheet.querySelector('.cover-heading').getBoundingClientRect().top,
+          lineHeight: parseFloat(getComputedStyle(sheet).lineHeight), lineTops,
           link: payload.querySelector('.cover-words a').getBoundingClientRect().height,
           headings: [...sheet.querySelectorAll('.cover-structured-section > summary')].map(node => node.getBoundingClientRect().height),
           overflow: document.documentElement.scrollWidth - innerWidth };
       });
       assert.ok(geometry.payloadBeforeLead && geometry.overflow <= 1, JSON.stringify({ screen, geometry }));
-      if (phone) assert.ok(geometry.link >= 44 && geometry.headings.every(height => height >= 44));
+      if (phone) {
+        assert.ok(geometry.link >= 44 && geometry.headings.every(height => height >= 44));
+        assert.ok(geometry.lineTops.length >= 2 && geometry.lineTops.slice(1).every((top, index) =>
+          Math.abs(top - geometry.lineTops[index] - geometry.lineHeight) < 1), JSON.stringify({ screen, geometry }));
+      }
       await press(summary);
       await fields.nth(1).locator('.md-table').waitFor();
       const fold = await fields.nth(1).evaluate(node => [node.dataset.coverFoldScope, node.dataset.coverFoldSection]);
@@ -141,7 +158,7 @@ try {
       assert.equal(await readerSheet.locator('.cover-structured-section[open] .cover-section-label').textContent(), 'What');
       assert.deepEqual(await readerSheet.locator(':scope > .cover-line').evaluateAll(rows => rows.slice(0, 3).map(row => row.className)),
         ['cover-line cover-header', 'cover-line cover-payload', 'cover-line cover-heading']);
-      report.cases.push({ ...screen, geometry, previewFile });
+      report.cases.push({ ...screen, geometry, peeks, checklist, previewFile });
     } finally {
       await context.close();
     }

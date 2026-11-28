@@ -26,6 +26,7 @@ const PAYLOAD_LABELS = { answer: 'Payload · answer', decision: 'Payload · deci
 const SECTION_LABELS = { why: 'Why', what: 'What', how: 'How', when: 'When', who: 'Who', where: 'Where', log: 'Log' };
 const NATURE_LABELS = new Map([['question', 'Question'], ['decision', 'Decision'], ['research', 'Research'], ['feature', 'Feature'], ['tracking', 'Tracking']]);
 const PHASES = ['Open', 'Working', 'Delivered', 'Accepted'];
+const sentences = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'sentence' }) : null;
 
 function writtenSections(cover) {
   const sections = new Map((cover.sections ?? []).map(({ key, text }) => [key, text]));
@@ -41,6 +42,31 @@ export function structuredCover(cover) {
 
 function firstLine(text, doc) {
   return inlineNodes(text.trim().split('\n', 1)[0], { doc }).map(node => node.textContent).join('');
+}
+
+function plainWords(words, doc) {
+  return inlineNodes(words, { doc }).map(node => node.textContent).join('').replace(/\s+/g, ' ').trim();
+}
+
+function fieldPeek(blocks, doc) {
+  const block = blocks.find(item => item.kind !== 'rule');
+  if (!block) return '';
+  if (block.kind === 'table') {
+    const headers = block.head.cells.map(cell => plainWords(cell, doc)).filter(Boolean).join(', ');
+    const count = block.rows.length;
+    return [headers, `${count} ${count === 1 ? 'row' : 'rows'}`].filter(Boolean).join(' · ');
+  }
+  if (block.kind === 'list') {
+    const [first] = block.items;
+    if (!first.task) return plainWords(first.words, doc);
+    const tasks = block.items.filter(item => item.task);
+    const open = tasks.find(item => item.task === 'open');
+    const done = tasks.filter(item => item.task === 'done').length;
+    return [`${done} of ${tasks.length} done`, open && plainWords(open.words, doc)].filter(Boolean).join(' · ');
+  }
+  if (block.kind === 'quote' && block.blocks) return fieldPeek(block.blocks, doc);
+  const text = plainWords(block.words, doc);
+  return (sentences?.segment(text)[Symbol.iterator]().next().value?.segment ?? text).trim();
 }
 
 function presentation(cover, sections, doc) {
@@ -279,8 +305,15 @@ export function coverSheet(doc, cover, context, previous = null) {
   const drawPayload = () => {
     const row = line('cover-payload', [payload, cover.owner, ctx.ownerName, ctx.acceptedByName]);
     const words = element(doc, 'span', 'cover-words');
-    const text = quote ? quotable(literalWords(element(doc, 'span'), payload.text, cover.revision), 'payload', payload.text) : payload.text;
-    words.append(element(doc, 'span', 'cover-label', PAYLOAD_LABELS[payload.kind] ?? 'Payload'), ' ', text);
+    const text = element(doc, 'span', 'cover-payload-text');
+    if (quote) quotable(literalWords(text, payload.text, cover.revision), 'payload', payload.text);
+    else text.textContent = payload.text;
+    const label = element(doc, 'span', 'cover-label', PAYLOAD_LABELS[payload.kind] ?? 'Payload');
+    if (structured) {
+      const copy = element(doc, 'span', 'cover-payload-copy');
+      copy.append(label, ' ', text);
+      words.append(copy);
+    } else words.append(label, ' ', text);
     const link = payload.link ? writtenLink(payload.link) : null;
     if (link) {
       let shown = payload.link;
@@ -335,7 +368,7 @@ export function coverSheet(doc, cover, context, previous = null) {
     const title = element(doc, 'span', 'cover-section-label', label);
     const { section, summary, body } = coverDisclosure(title, { ...ctx, doc, sectionId: JSON.stringify(['structured', key]), initiallyOpen: false });
     section.classList.add('cover-structured-section');
-    summary.append(element(doc, 'span', 'cover-section-peek', firstLine(text, doc)));
+    summary.append(element(doc, 'span', 'cover-section-peek', fieldPeek(parseBlocks(text), doc)));
     body.append(...formatNodes(text, { doc }));
     line('cover-field', [key, text]).append(section);
   }

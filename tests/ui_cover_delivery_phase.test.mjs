@@ -8,7 +8,12 @@ const base = { owner: 'owner', writer: 'builder', waiting: [], stands: 'How do w
 const fields = [{ key: 'log', text: 'First update' }, { key: 'why', text: 'For readers' }, { key: 'who', text: '  ' }, { key: 'what', text: '| Item | State |\n| --- | --- |\n| Cover | Ready |' }];
 const proposal = { kind: 'release', text: 'Cover release', link: 'https://example.test/release', message_id: 'm-delivery', seq: 8 };
 const find = (sheet, cls) => [...sheet.descendants()].filter(node => node.classList.contains(cls));
-const sheet = cover => coverSheet(miniDocument(), cover, context);
+const sheet = cover => {
+  const doc = miniDocument();
+  const create = doc.createElement;
+  doc.createElement = tag => Object.assign(create(tag), { style: { setProperty() {} } });
+  return coverSheet(doc, cover, context);
+};
 
 test('the shared cover puts payload first, folds ordered authored fields, and keeps the words and the delivery link', () => {
   const cover = { ...base, owner_name: 'Tony', sections: fields, payload: proposal };
@@ -20,12 +25,25 @@ test('the shared cover puts payload first, folds ordered authored fields, and ke
   assert.equal(coverSummary(cover), 'Cover release');
   assert.deepEqual(find(view, 'cover-section-label').map(node => node.text), ['Why', 'What', 'Log']);
   assert.equal(find(view, 'cover-section-peek')[0].text, 'For readers');
+  assert.equal(find(view, 'cover-section-peek')[1].text, 'Item, State · 1 row');
   assert.ok(find(view, 'cover-structured-section').every(node => node.open === false));
   assert.equal(find(view, 'md-table').length, 1);
   assert.match(copyOfCover(view)(), /^Payload: Cover release.*\n\nHow do we ship\?/);
   assert.match(copyOfCover(view)(), /\n\nLog\nFirst update$/);
   assert.notEqual(coverKey(cover, context), coverKey({ ...cover, owner_name: 'Tonia' }, context));
   assert.notEqual(coverKey(cover, context), coverKey({ ...cover, sections: [] }, context));
+});
+
+test('field peeks summarize the first block in plain words', () => {
+  const view = sheet({ ...base, sections: [
+    { key: 'why', text: 'Preserve this sentence. The rest stays folded.' },
+    { key: 'what', text: '- [x] Measure the path\n- [ ] Add the route\n- [ ] Print the guide\n- [x] Check the scale' },
+    { key: 'how', text: '1. Check the legend\n2. Update the map' },
+    { key: 'log', text: '- [x] Checked the scale\n- [x] Printed the guide' },
+  ] });
+  assert.deepEqual(find(view, 'cover-section-peek').map(node => node.text), [
+    'Preserve this sentence.', '2 of 4 done · Add the route', 'Check the legend', '2 of 2 done',
+  ]);
 });
 
 test('phase follows persisted evidence, and tracking reads its checkpoint without phase bars', () => {
