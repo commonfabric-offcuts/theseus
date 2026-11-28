@@ -1345,7 +1345,7 @@ def unittest_log(listing, events=(), ran=None, summary=None):
     """A small verbose unittest log in the layout unittest writes it."""
     text = '\n'.join(listing) + '\n\n'
     for kind, name, subtest in events:
-        text += '%s\n%s: %s%s\n%s\nTraceback (most recent call last):\nAssertionError: scratch\n\n' % (
+        text += '%s\n%s: %s%s\n%s\nTraceback (most recent call last):\n  File \"scratch.py\", line 1, in test\n    self.fail()\nAssertionError: scratch\n\n' % (
             RULE, kind, name, ' ' + subtest if subtest else '', DASHES)
     fails = sum(kind == 'FAIL' for kind, _, _ in events)
     errors = sum(kind == 'ERROR' for kind, _, _ in events)
@@ -1439,11 +1439,15 @@ class UnitLog1389(unittest.TestCase):
                                          [('FAIL', 'test_a (m.C)', None), ('ERROR', 'test_a (m.C)', '(k=1)')], ran=4))
         self.assertEqual(mixed['rows'], [({'name': 'test_a (m.C)'}, 'FAIL'), ({'name': 'test_a (m.C)'}, 'ok'),
                                          ({'name': 'test_a (m.C)'}, 'ERROR'), ({'name': 'test_b (m.C)'}, 'ok')])
-        # Two subTest-only slots of one name, one FAIL and one ERROR event: each slot takes its own event, none twice.
+        # Two subTest-only slots of one name: events of one kind resolve both; one FAIL and one ERROR cannot be assigned.
         two = ci.unit_log(unittest_log(['test_a (m.C) ... test_a (m.C) ... test_b (m.C) ... ok'],
-                                       [('ERROR', 'test_a (m.C)', '(k=1)'), ('FAIL', 'test_a (m.C)', '(k=2)')], ran=3))
-        self.assertEqual(two['rows'], [({'name': 'test_a (m.C)'}, 'FAIL'), ({'name': 'test_a (m.C)'}, 'ERROR'),
+                                       [('FAIL', 'test_a (m.C)', '(k=1)'), ('FAIL', 'test_a (m.C)', '(k=2)')], ran=3))
+        self.assertEqual(two['rows'], [({'name': 'test_a (m.C)'}, 'FAIL'), ({'name': 'test_a (m.C)'}, 'FAIL'),
                                        ({'name': 'test_b (m.C)'}, 'ok')])
+        self.assertEqual(len(two['events']), 2)
+        with self.assertRaisesRegex(ci.Refused, 'ambiguous repeated subTest outcomes for test_a'):
+            ci.unit_log(unittest_log(['test_a (m.C) ... test_a (m.C) ... test_b (m.C) ... ok'],
+                                     [('ERROR', 'test_a (m.C)', '(k=1)'), ('FAIL', 'test_a (m.C)', '(k=2)')], ran=3))
         with self.assertRaisesRegex(ci.Refused, 'check outcome missing for test_a'):
             ci.unit_log(unittest_log(['test_a (m.C) ... test_a (m.C) ... test_b (m.C) ... ok'],
                                      [('FAIL', 'test_a (m.C)', '(k=1)')], ran=3))
@@ -1460,9 +1464,14 @@ class UnitLog1389(unittest.TestCase):
             'event for an unlisted method': (unittest_log(['test_a (m.C) ... FAIL'], [('FAIL', 'test_a (m.C)', None),
                                              ('FAIL', 'test_z (m.C)', None)]), 'names no listed method'),
             'event for a passing method': (unittest_log(['test_a (m.C) ... ok'], [('FAIL', 'test_a (m.C)', None)]), 'outcomes are ok'),
-            'event without its cause': (good.replace('Traceback (most recent call last):\nAssertionError: scratch\n\n', ''),
+            'event without its cause': (good.replace('Traceback (most recent call last):\n  File \"scratch.py\", line 1, in test\n    self.fail()\nAssertionError: scratch\n\n', ''),
                                         'without its cause for test_b'),
             'cause cut after Traceback': (good.replace('AssertionError: scratch\n', ''), 'without its cause for test_b'),
+            'cause cut after a frame': (good.replace('AssertionError: scratch\n', '  File "example.py", line 1, in test_b\n'),
+                                        'without its cause for test_b'),
+            'cause cut after a frame source line': (good.replace('AssertionError: scratch\n',
+                                                    '  File "example.py", line 1, in test_b\n    self.fail()\n'),
+                                                    'without its cause for test_b'),
             'repeated FAIL with one event': (unittest_log(['test_a (m.C) ... FAIL', 'test_a (m.C) ... FAIL'],
                                              [('FAIL', 'test_a (m.C)', None)], summary='FAILED (failures=2)'), 'without its detail event'),
             'retained event body removed': (live.replace(

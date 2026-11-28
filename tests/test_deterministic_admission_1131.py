@@ -25,7 +25,7 @@ def py(text):
     and the '-' rule precedes Ran. Item 1389's whole-log reader requires both, as real unittest output has."""
     ran = re.search(r'^Ran \d+ tests? in ', text, re.M)
     listing, tail = text[:ran.start()].rstrip('\n'), text[ran.start():]
-    details = ''.join('%s\n%s: %s\n%s\nTraceback (most recent call last):\nAssertionError: scratch\n\n'
+    details = ''.join('%s\n%s: %s\n%s\nTraceback (most recent call last):\n  File \"scratch.py\", line 1, in test\n    self.fail()\nAssertionError: scratch\n\n'
                       % ('=' * 70, found[2], found[1], '-' * 70)
                       for found in re.finditer(r'^(\S+ \([^)]+\)) \.\.\. (FAIL|ERROR)$', listing, re.M))
     return (listing + '\n\n' if listing else '') + details + '-' * 70 + '\n' + tail
@@ -822,7 +822,7 @@ else:
         for side, steps in (('base', base_steps), ('carry', carry_steps)):
             run = json.loads(Path(pair[side]['path']).read_text())
             details = ''.join("%s\nFAIL: test_chain (test_migrations.Scratch) (step='%s')\n%s\n"
-                              "Traceback (most recent call last):\nAssertionError: scratch\n\n" % ('=' * 70, step, '-' * 70)
+                              "Traceback (most recent call last):\n  File \"scratch.py\", line 1, in test\n    self.fail()\nAssertionError: scratch\n\n" % ('=' * 70, step, '-' * 70)
                               for step in steps)
             run['files'][0].update(stderr=self.raw('test_chain (test_migrations.Scratch) ... \n\n' + details + '-' * 70 +
                                                    '\nRan 1 test in 0.01s\n\nFAILED (failures=%d)\n' % len(steps)),

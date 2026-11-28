@@ -389,10 +389,13 @@ def unit_log(text):
     events = []
     for n, i in enumerate(starts):
         event = header(i)
-        # Every event keeps its cause: a traceback with content after it, before the next event or the final rule.
+        # Every event keeps its complete cause, before the next event or the final rule: a traceback header, at least one
+        # '  File "..."' frame, and after the last frame the exception line, which unittest writes at column 0 (any
+        # message or diff follows it).
         body = lines[i + (3 if lines[i + 2] == DASHES else 4):starts[n + 1] if n + 1 < len(starts) else end]
         trace = [k for k, line in enumerate(body) if line == 'Traceback (most recent call last):']
-        require(bool(trace) and any(line.strip() for line in body[trace[0] + 1:]),
+        frames = [k for k, line in enumerate(body) if trace and k > trace[0] and line.startswith('  File "')]
+        require(bool(frames) and any(line and not line[0].isspace() for line in body[frames[-1] + 1:]),
                 'python-units: failure event without its cause for ' + event[2])
         events.append((event[2], event[3], event[1]))
     kinds = Counter(kind for _, _, kind in events)
@@ -414,17 +417,17 @@ def unit_log(text):
         require(found['FAIL'] + found['ERROR'] >= failing, 'python-units: check outcome missing for ' + name)
         require(failing or not found, 'python-units: failure event for a method whose outcomes are ' +
                 ', '.join(sorted(slot)))
-    # Each subTest-only slot takes one event not already witnessing another slot of its name: FAIL events first, in
-    # listing order; no event is used for two slots.
-    spare = {name: named.get(name, Counter()) - Counter({'FAIL': slot['FAIL'], 'ERROR': slot['ERROR']})
-             for name, slot in slots.items()}
+    # A subTest-only slot takes its outcome from the events its name has beyond those of its FAIL/ERROR slots. A single
+    # such slot owns all of them (FAIL when any is FAIL). Several such slots of one name resolve only when those events
+    # are all of one kind; mixed kinds cannot be assigned to slots from the log and refuse as ambiguous.
     final = []
     for case, status in rows:
         if status == 'subtests':
-            left = spare[case['name']]
-            status = 'FAIL' if left['FAIL'] else 'ERROR'
-            require(left[status] > 0, 'python-units: check outcome missing for ' + case['name'])
-            left[status] -= 1
+            name, slot = case['name'], slots[case['name']]
+            spare = named[name] - Counter({'FAIL': slot['FAIL'], 'ERROR': slot['ERROR']})
+            require(slot['subtests'] == 1 or len(spare) == 1,
+                    'python-units: ambiguous repeated subTest outcomes for ' + name)
+            status = 'FAIL' if spare['FAIL'] else 'ERROR'
         final.append((case, status))
     require(len(final) == ran, 'python-units: %d method outcomes but Ran %d' % (len(final), ran))
     require(summary.get('failures', 0) == kinds['FAIL'] and summary.get('errors', 0) == kinds['ERROR'],
