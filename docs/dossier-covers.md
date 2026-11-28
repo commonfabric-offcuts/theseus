@@ -175,6 +175,13 @@ links to the durable request. Reload does not end the wait. A reply, the owner's
 Done, delivery acknowledgement or a timer never ends it. The state, routing,
 retry identity and preview limitations are in [cover-refresh.md](cover-refresh.md).
 
+In the dossier and Reader, **How this card works** opens the maintenance
+instructions at the foot of the cover. It names the keeper when one is recorded
+and explains when to refresh, how message edits relate to the cover and how the
+owner accepts a payload. The Maintenance prompt label reserves space for future
+readable guidance. Opening this fold uses the same reading preference as the
+other cover sections and only changes the reader's view.
+
 A dossier's cover is drawn first in the folder, directly under its name row
 and above the first message's card, both closed and open (`web/dossier-cover.mjs`).
 It has the folder's own colour (`--stack-folder`) in light and dark, with readable

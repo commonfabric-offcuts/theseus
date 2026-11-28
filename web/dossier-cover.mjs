@@ -213,6 +213,41 @@ function revisionLine(doc, cover, context) {
   return line;
 }
 
+function coverFooter(doc, cover, context, previous) {
+  const footer = previous ?? (() => {
+    const row = element(doc, 'div', 'cover-footer');
+    const title = element(doc, 'span', '', 'How this card works');
+    const { section, body } = coverDisclosure(title, {
+      ...context, doc, sectionId: JSON.stringify(['cover-help']), initiallyOpen: false,
+    });
+    section.classList.add('cover-help');
+    const keeper = element(doc, 'p');
+    body.append(
+      keeper,
+      element(doc, 'p', '', 'Ask the writer to refresh the cover when the status, open asks, or payload changes.'),
+      element(doc, 'p', '', 'Edits revise a message in place. Refresh the cover separately if its summary needs to change.'),
+      element(doc, 'p', '', 'The outcome owner accepts the payload with a 👍 on its message or a reply to it that the writer records as acceptance.'),
+      element(doc, 'p', 'cover-help-prompt', 'Maintenance prompt'),
+      element(doc, 'p', 'cover-help-placeholder', 'No prompt has been added.'),
+    );
+    row.append(section);
+    return { row, keeper, revision: null, revisionKey: null };
+  })();
+  const keeper = cover.writer ?? cover.by;
+  const keeperWords = !keeper ? 'The cover writer keeps this card current.'
+    : keeper === context.viewer ? 'You keep this card current.'
+    : `${context.nameOf(keeper)} keeps this card current.`;
+  if (footer.keeper.textContent !== keeperWords) footer.keeper.textContent = keeperWords;
+  const revisionKey = JSON.stringify([cover.by, cover.at_ms, cover.by && context.nameOf(cover.by)]);
+  if (footer.revisionKey !== revisionKey) {
+    footer.revision?.remove();
+    footer.revision = revisionLine(doc, cover, context);
+    if (footer.revision) footer.row.append(footer.revision);
+    footer.revisionKey = revisionKey;
+  }
+  return footer;
+}
+
 const sheetRows = new WeakMap();
 export const copyOfCover = sheet => sheetRows.get(sheet)?.copy;
 export function coverQuoteSource(words) {
@@ -403,8 +438,10 @@ export function coverSheet(doc, cover, context, previous = null) {
   }
   const request = coverRequestLine(doc, cover, ctx);
   if (request) sheet.append(remember(request, ['request', coverKey(cover, context)]));
-  const revised = revisionLine(doc, cover, ctx);
-  if (revised) sheet.append(remember(revised, ['revision', cover.by, cover.at_ms]));
+  const footer = coverFooter(doc, cover, ctx, sameScope ? kept.footer : null);
+  const footerRow = sameScope ? element(doc, 'div', 'cover-footer') : footer.row;
+  sheet.append(remember(footerRow, ['footer']));
+  if (sameScope) preferred.set(footerRow, footer.row);
   sheet.dataset.done = String(Boolean(payload?.done) && !(cover.waiting ?? []).length);
   if (sameScope) {
     // A revision is not removal. Keep the reading sheet and unchanged rows,
@@ -424,10 +461,10 @@ export function coverSheet(doc, cover, context, previous = null) {
     previous.dataset.done = sheet.dataset.done;
     if (view) previous.dataset.coverLayout = sheet.dataset.coverLayout;
     else delete previous.dataset.coverLayout;
-    sheetRows.set(previous, { scope, rows: desired, items, copy, quote });
+    sheetRows.set(previous, { scope, rows: desired, items, footer, copy, quote });
     return previous;
   }
-  sheetRows.set(sheet, { scope, rows, items, copy, quote });
+  sheetRows.set(sheet, { scope, rows, items, footer, copy, quote });
   return sheet;
 }
 

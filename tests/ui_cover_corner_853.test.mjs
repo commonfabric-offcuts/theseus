@@ -16,7 +16,7 @@ function fixture(t) {
   doc.createTextNode = text => Object.assign(doc.createElement('text'), { nodeType: 3, data: text, textContent: text });
   const root = doc.createElement('div'); root.root = true;
   doc.querySelectorAll = selector => root.querySelectorAll(selector);
-  doc.defaultView = { localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) } };
+  doc.defaultView = { addEventListener() {}, localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) } };
   const sent = [], instance = 'cover853-' + crypto.randomUUID();
   configureCoverRefresh(() => ({ bootstrap: { instance_id: instance, actor: 'owner', authority: { authority_id: 'a', authority_epoch: 1 } },
     api: { command: async command => { sent.push(command); throw Error('synthetic interrupted transport'); } }, changed() {} }));
@@ -40,7 +40,8 @@ test('853 sheets put the existing refresh beside the final content row, without 
     const lines = sheet.querySelectorAll('.cover-line');
     assert.equal(sheet.querySelectorAll('.cover-heading').length, extra.stands ? 1 : 0);
     assert.equal(refresh.style.gridRow, String(lines.length), 'same row as the final actual content');
-    assert.equal(sheet.children.length, lines.length + 1);
+    assert.equal(sheet.children.length, lines.length + 2);
+    assert.equal(sheet.children.at(-1).className, 'cover-footer');
     assert.equal(refresh.querySelector('.cover-refresh-glyph').tag, 'button');
     assert.equal(refresh.querySelector('.cover-refresh-status').parent, refresh);
   }
