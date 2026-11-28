@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { OutlineRail, Opened } from '../web/outline-rail.mjs';
 import { Element, matches } from './fixtures/mini_dom.mjs';
-import { book } from '../web/outline-order.mjs';
+import { book, scopeOf } from '../web/outline-order.mjs';
 import { KEY_WORDS } from '../web/pane-keys.mjs';
 import { RULES } from '../web/interaction-guide.mjs';
 import { OutcomeColorPicker } from '../web/outcome-color-picker.mjs';
@@ -396,6 +396,41 @@ test('902 disclosure arrows and Command arrows act in place while Return on a ph
   }
   assert.deepEqual(f.moves, []);
   f.click(second.name, { detail: 0 }); assert.equal(f.moves.length, 1);
+});
+
+test('46 an outcome badge follows the first unread topic in the loaded rail order', async t => {
+  const topics = [
+    { id: 'read', title: 'Read', unread: 0, list_position: 3 },
+    { id: 'unread-a', title: 'Unread A', unread: 2, list_position: 2 },
+    { id: 'unread-b', title: 'Unread B', unread: 1, list_position: 1 },
+  ].map(row => ({ ...row, workspace_id: 'w2', state: 'active' }));
+  const f = await fixture(t, { topicRows: { w2: topics } }), outcome = f.outcome('w2');
+  f.click(outcome.disclosure); await f.flush();
+  book.learn(scopeOf('w2'), { ids: ['read', 'unread-b', 'unread-a'], revision: 1 });
+  assert.deepEqual(outcome.parts.host.children.map(link => link.dataset.topicId), ['read', 'unread-b', 'unread-a']);
+  f.click(outcome.disclosure); await f.flush();
+  const beforeReads = f.reads.length, beforeWrites = f.storage.writes.length;
+  const badge = outcome.title.querySelector('.unread-count');
+  f.click(badge);
+  f.click(outcome.name, { detail: 0 });
+  f.click(outcome.title);
+  assert.deepEqual(f.moves, [
+    [{ kind: 'topic', id: 'unread-b', at: 'unread' }, 'Unread B'],
+    [{ kind: 'topic', id: 'unread-b', at: 'unread' }, 'Unread B'],
+    [{ kind: 'workspace', id: 'w2' }, 'Outcome w2'],
+  ]);
+  assert.equal(f.reads.length, beforeReads);
+  assert.equal(f.storage.writes.length, beforeWrites);
+});
+
+test('46 a phone outcome badge opens its home when no eligible unread topic is loaded', async t => {
+  const f = await fixture(t, { phone: true }), outcome = f.outcome('w2');
+  const beforeReads = f.reads.length, beforeWrites = f.storage.writes.length;
+  f.click(outcome.title.querySelector('.unread-count'));
+  assert.deepEqual(f.moves, [[{ kind: 'workspace', id: 'w2' }, 'Outcome w2']]);
+  assert.equal(outcome.topics.hidden, true);
+  assert.equal(f.reads.length, beforeReads);
+  assert.equal(f.storage.writes.length, beforeWrites);
 });
 
 test('902 a refused topic read keeps the disclosed outcome and exposes the existing retry', async t => {
