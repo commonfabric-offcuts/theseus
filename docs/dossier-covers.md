@@ -35,21 +35,27 @@ A cover with every field clear is no cover, and the page shows none.
 ### Ordered sections
 
 A cover write can add `sections` as an object with any of `why`, `what`,
-`how`, `when`, `who`, and `where`. Words use the same line handling as
-standing words, with up to 32,000 characters across the sections. Each
-supplied key changes that section. Null or empty words clear it. The same
-cover revision fences the whole write.
+`how`, `when`, `who`, `where`, and `log`. Each section holds short Markdown
+such as a sentence, list, or table. Line endings become LF. Indentation and
+trailing spaces keep their Markdown meaning. All sections together may
+contain up to 32,000 characters. Each supplied key changes that section.
+Null or blank words clear it. The same cover revision fences the whole write.
 
 ```sh
 aim-next cover ROOT --expected 2 --why "Keep the north beds watered" \
-  --what "Two beds are ready" --when "Saturday morning"
+  --what "Two beds are ready" --when "Saturday morning" --log "Checked Tuesday"
 ```
 
 Readers see the written sections as an ordered array of `key` and `text`
-objects. It is present when there are sections. The CLI prints each under
-its heading. The existing standing words, waits, payload, and acceptance
-remain readable through their usual fields. The following page slice uses
-this contract for the cover header, sections, and delivery phase.
+objects, skipping blank fields and placing optional Log last. The plain CLI
+shows the first nonempty line of each section. Use `aim-next --json cover ROOT`
+to read the full Markdown. Standing words are the lead for a structured
+cover. Use one or two plain sentences there.
+
+With a payload, `owner_name` gives the current owner's display name. A
+pending payload has `done: null`. An accepted payload carries its existing
+`done.by` and `done.at_ms`. When an earlier owner accepted it, the cover also
+provides `accepted_by_name` so the receipt stays attributed to that person.
 
 ## Done
 

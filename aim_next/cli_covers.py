@@ -77,7 +77,8 @@ def cover_lines(root, revision, cover, owner):
         # supplied line separately so the terminal readback retains the breaks.
         lines.extend(("  stands: " + cover["stands"]).split("\n"))
     for section in cover.get("sections", ()):
-        lines.extend(("  %s: %s" % (section["key"].title(), section["text"])).split("\n"))
+        peek = section["text"].strip().split("\n", 1)[0].rstrip()
+        lines.append("  %s: %s" % (section["key"].title(), peek))
     for wait in cover["waiting"]:
         details = []
         if 'options' in wait:

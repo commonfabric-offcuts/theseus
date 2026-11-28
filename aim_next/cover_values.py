@@ -9,7 +9,7 @@ and is fenced like any other act. Each field can be set or cleared on its own:
 - `stands`: lines of where things stand (item 769);
 - `waiting`: what waits on the outcome's owner, each with the default that holds if they say nothing;
 - `payload`: what the dossier produced, in words, optionally a link and a kind, and the message that delivered it.
-- `sections`: optional text for Why, What, How, When, Who and Where, shown in that order.
+- `sections`: optional Markdown for Why, What, How, When, Who, Where and Log, shown in that order.
 
 Done is never written by anyone. It is read from the owner's record whenever a cover is written or the owner gives or
 takes back a 👍 on the payload's message: their 👍 on it, or a reply of theirs to it that the cover's writer names as
@@ -25,7 +25,7 @@ from .whispers import VISIBLE
 # What an empty cover stands at: the act's value before anyone wrote one, and after every field is cleared.
 EMPTY_COVER = {"stands": None, "waiting": [], "payload": None}
 FIELDS = ("stands", "waiting", "payload", "sections")
-COVER_SECTIONS = ("why", "what", "how", "when", "who", "where")
+COVER_SECTIONS = ("why", "what", "how", "when", "who", "where", "log")
 STANDS_CHARS = 32000
 WAIT_CHARS = 300
 DEFAULT_CHARS = 200
@@ -121,10 +121,21 @@ def written(args):
     if "sections" in args:
         sections = args["sections"]
         if not isinstance(sections, dict) or not sections or set(sections) - set(COVER_SECTIONS):
-            raise Refusal("INVALID_ARGUMENT", "Cover sections are Why, What, How, When, Who and Where")
-        fields["sections"] = {key: _line(text, key.title(), STANDS_CHARS, required=False, keep_lines=True)
-                              for key, text in sections.items()}
+            raise Refusal("INVALID_ARGUMENT", "Cover sections are Why, What, How, When, Who, Where and Log")
+        fields["sections"] = {key: _section_markdown(key, text) for key, text in sections.items()}
     return fields
+
+
+def _section_markdown(key, value):
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise Refusal("INVALID_ARGUMENT", "%s is Markdown text" % key.title())
+    # Keep indentation and trailing spaces. Both can change Markdown rendering.
+    text = value.replace("\r\n", "\n").replace("\r", "\n")
+    if len(text) > STANDS_CHARS:
+        raise Refusal("INVALID_ARGUMENT", "%s is at most %d characters" % (key.title(), STANDS_CHARS))
+    return text if text.strip() else None
 
 
 def stored_value(raw):
@@ -162,7 +173,7 @@ def done_of(db, owner, message_id, done_by=None):
     return min(found, key=lambda each: each[:2])[2] if found else None
 
 
-def shown(db, actor, value, by, at_ms, owner, archived=False):
+def shown(db, actor, value, by, at_ms, owner, archived=False, *, owner_name=None):
     """The cover as actor reads it, or None when every field is clear: its fields, who wrote it last and when, and the
     outcome's owner (whose 👍 or word gives Done). A word given in a whisper actor is outside shows as given, with no
     message to open."""
@@ -211,6 +222,12 @@ def shown(db, actor, value, by, at_ms, owner, archived=False):
             wait.update(go_ahead=True, answer_revision=answer[0] if answer else 0)
     cover = {"stands": value["stands"], "waiting": waiting,
              "payload": dict(payload) if payload is not None else None, "by": by, "at_ms": at_ms, "owner": owner}
+    if payload is not None:
+        cover["owner_name"] = owner_name or owner
+        done = payload.get("done")
+        if done and done["by"] != owner:
+            acceptor = db.execute("SELECT name FROM actors WHERE id=?", (done["by"],)).fetchone()
+            cover["accepted_by_name"] = acceptor["name"] if acceptor else done["by"]
     if birth:
         cover["birth"] = {key: birth[key] for key in ("nature", "done_when") if key in birth}
     if value.get("sections"):

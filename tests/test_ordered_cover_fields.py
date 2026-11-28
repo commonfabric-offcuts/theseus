@@ -27,6 +27,10 @@ class OrderedCoverCase(test_agent_verbs.AgentVerbCase):
     def test_ordered_section_patch_keeps_the_existing_cover_and_owner_acceptance(self):
         self.committed(self.write({"stands": "Existing cover", "waiting": [{"text": "Plant?", "default": "Saturday"}],
                                    "payload": {"text": "The north beds", "message_id": self.answer, "kind": "answer"}}))
+        owner_name = self.sql("SELECT name FROM actors WHERE id='owner'")[0][0]
+        proposed = self.read()["cover"]
+        self.assertEqual(proposed["owner_name"], owner_name)
+        self.assertIsNone(proposed["payload"]["done"])
         self.committed(self.command("message.thumb", {"thumbed": True}, target={"message_id": self.answer},
                                    expected={"thumb_revision": 0}))
         old = self.read()["cover"]
@@ -38,6 +42,7 @@ class OrderedCoverCase(test_agent_verbs.AgentVerbCase):
                                                "why": "Prepare for winter"}}, revision=2))
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         found = self.read()["cover"]
+        self.assertEqual(found["owner_name"], owner_name)
         self.assertEqual(found["sections"], [{"key": key, "text": text} for key, text in [
             ("why", "Prepare for winter"), ("what", "Two beds\n\nSix trays"), ("how", "Water before planting"),
             ("when", "Saturday"), ("who", "Garden crew"), ("where", "North beds")]])
@@ -81,13 +86,46 @@ class OrderedCoverCase(test_agent_verbs.AgentVerbCase):
 
     def test_cli_reads_sections_in_order_and_sets_each_field_on_the_cover_root(self):
         code, out, err = self.run_cli("cover", self.answer, "--expected", "0", "--where", "North beds",
-                                      "--why", "Water before planting", "--what", "Two beds\nSix trays")
+                                      "--why", "Water before planting", "--what", "Two beds\nSix trays", "--log", "Checked Tuesday")
         self.assertEqual((code, err), (0, ""), (code, out, err))
-        expected = ("  Why: Water before planting", "  What: Two beds\nSix trays", "  Where: North beds")
+        expected = ("  Why: Water before planting", "  What: Two beds", "  Where: North beds", "  Log: Checked Tuesday")
         self.assertEqual(sorted(expected, key=out.index), list(expected))
+        self.assertNotIn("Six trays", out)
         receipt = self.read()
         self.assertEqual(receipt["root_id"], self.root)
         self.assertEqual(receipt["cover_revision"], 1)
+        self.assertEqual(receipt["cover"]["sections"][1]["text"], "Two beds\nSix trays")
+        code, raw, err = self.run_cli("--json", "cover", self.root)
+        self.assertEqual((code, err), (0, ""), (code, raw, err))
+        self.assertEqual(json.loads(raw)["cover"]["sections"], receipt["cover"]["sections"])
+
+    def test_short_markdown_is_preserved_and_log_is_optional_and_last(self):
+        text = "- First step  \r\n    - Nested step\r\n\r\n| Bed | Status |\r\n| --- | --- |\r\n| North | Ready |"
+        self.committed(self.write({"sections": {"log": "Earlier plan", "where": "North garden", "what": text,
+                                               "who": " \n \t"}}))
+        self.assertEqual(self.read()["cover"]["sections"], [
+            {"key": "what", "text": text.replace("\r\n", "\n")},
+            {"key": "where", "text": "North garden"},
+            {"key": "log", "text": "Earlier plan"}])
+        self.committed(self.write({"sections": {"log": ""}}, 1))
+        self.assertEqual([part["key"] for part in self.read()["cover"]["sections"]], ["what", "where"])
+
+    def test_acceptance_keeps_its_display_attribution_after_an_owner_transfer(self):
+        self.committed(self.write({"payload": {"text": "The north beds", "message_id": self.answer}}))
+        self.committed(self.command("message.thumb", {"thumbed": True}, target={"message_id": self.answer},
+                                   expected={"thumb_revision": 0}))
+        before = self.read()["cover"]
+        target = {"workspace_id": "w1"}
+        revision = self.store.view("owner", "workspace", target)["workspace"]["version"]
+        self.committed(self.command("workspace.member_set", {"actor_id": "other-reader", "present": True},
+                                    target=target, expected={"workspace_revision": revision}))
+        revision = self.store.view("owner", "workspace", target)["workspace"]["version"]
+        self.committed(self.command("workspace.owner_set", {"owner_id": "other-reader"}, target=target,
+                                    expected={"workspace_revision": revision}))
+        after = self.read()["cover"]
+        self.assertEqual((after["owner"], after["owner_name"]), ("other-reader", "Other fixture reader"))
+        self.assertEqual(after["payload"]["done"], before["payload"]["done"])
+        self.assertEqual(after["accepted_by_name"], before["owner_name"])
 
     def test_sections_only_complete_a_refresh_when_there_are_still_cover_words(self):
         self.committed(self.write({"sections": {"what": "Plant Saturday"}}))
