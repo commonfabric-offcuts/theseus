@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { OlderFeed } from '../web/older-feed.mjs';
 const turn=()=>new Promise(r=>setImmediate(r));
 function fixture(){
- const handlers=new Map(),body={closest:()=>null},doc={body,documentElement:{}},win={scrollY:0,innerHeight:900,getComputedStyle:n=>({overflowY:n.overflow??'visible'}),addEventListener:(n,fn)=>handlers.set(n,fn),removeEventListener:n=>handlers.delete(n)};
+ const handlers=new Map(),body={closest:()=>null},doc={body,documentElement:{}},win={scrollY:0,innerHeight:900,getComputedStyle:n=>({overflowY:n.overflow??'visible',overscrollBehaviorY:n.overscroll??'auto'}),addEventListener:(n,fn)=>handlers.set(n,fn),removeEventListener:n=>handlers.delete(n)};
  const feed={isConnected:true,hidden:false,top:150,getBoundingClientRect(){return{top:this.top,height:2500};}},reads=[];let allowed=true,resolve,reject;
  const owner=new OlderFeed({win,doc,feed,ready:()=>allowed,load:()=>{reads.push(1);return new Promise((a,b)=>{resolve=a;reject=b;});},failed:e=>reads.push(e)});
  return{owner,win,feed,reads,handlers,body,allow:v=>allowed=v,emit:(n,e={})=>handlers.get(n)?.({target:body,...e}),resolve:()=>resolve(),reject:()=>reject(Error('read refused'))};
@@ -29,6 +29,41 @@ for(const name of ['end','authority','unavailable','another flight'])test(`1045 
 });
 test('1045 writing and nested scrollers keep their own upward input',async()=>{
  const f=fixture();f.emit('wheel',{deltaY:-200,target:{closest:()=>({})}});f.emit('wheel',{deltaY:-200,target:{closest:()=>null,scrollHeight:300,clientHeight:100,overflow:'auto'}});await turn();assert.equal(f.reads.length,0);
+});
+function scrollCard(f,{scrollTop=0,overscroll='auto',outside=false,outer=f.body}={}){
+ const card={scrollHeight:300,clientHeight:100,scrollTop,overflow:'auto',overscroll,parentElement:outer,
+  inFeed:!outside,matches:s=>s==='.message-card.scroll-in-place'};
+ f.feed.contains=node=>node.inFeed===true;
+ return{target:{closest:()=>null,parentElement:card},card};
+}
+test('55 an upward wheel can reach the older feed through a card at its top edge',async()=>{
+ const f=fixture(),{target}=scrollCard(f);
+ f.emit('wheel',{target,deltaY:-120});await turn();
+ assert.equal(f.reads.length,1);f.resolve();await turn();
+});
+test('55 an upward wheel through a card can admit a read when the document reaches the feed top',async()=>{
+ const f=fixture(),{target}=scrollCard(f);
+ f.feed.top=-100;f.win.scrollY=260;f.emit('scroll');f.emit('wheel',{target,deltaY:-120});await turn();
+ assert.equal(f.reads.length,0);
+ f.feed.top=20;f.win.scrollY=140;f.emit('scroll');await turn();
+ assert.equal(f.reads.length,1);f.resolve();await turn();
+});
+test('55 the card exception respects remaining scroll owners and applies only to an uncancelled wheel',async()=>{
+ const f=fixture(),scrollable={scrollHeight:400,clientHeight:200,overflow:'auto',parentElement:f.body};
+ for(const target of [
+   scrollCard(f,{scrollTop:.5}).target,
+   scrollCard(f,{overscroll:'contain'}).target,
+   scrollCard(f,{overscroll:'none'}).target,
+   scrollCard(f,{outside:true}).target,
+   scrollCard(f,{outer:scrollable}).target,
+   {...scrollable,closest:()=>null,parentElement:scrollCard(f).card},
+ ])f.emit('wheel',{target,deltaY:-120});
+ const {target}=scrollCard(f);
+ f.emit('wheel',{target,deltaY:-120,defaultPrevented:true});
+ f.emit('keydown',{target,key:'ArrowUp'});
+ f.emit('touchstart',{target,touches:[{clientY:100}]});
+ f.emit('touchmove',{target,touches:[{clientY:200}]});
+ await turn();assert.equal(f.reads.length,0);
 });
 test('1045 a separate rail keeps its wheel; page keys on the body still work',async()=>{
  const f=fixture();f.feed.closest=()=>({contains:n=>n===f.body});f.emit('wheel',{deltaY:-200,target:{closest:()=>null}});await turn();assert.equal(f.reads.length,0);

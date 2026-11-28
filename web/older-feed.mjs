@@ -8,7 +8,7 @@ export class OlderFeed {
     on('pointerdown', () => { this.intent = false; });
     on('wheel', event => {
       if (event.deltaY >= 0) { this.intent = false; return; }
-      this.up(event.target);
+      this.up(event.target, { chainCardEdge: !event.defaultPrevented });
     });
     on('touchstart', event => { this.touching = true; this.touchY = event.touches.length === 1 ? event.touches[0].clientY : null; this.touchAsked = false; });
     on('touchend', () => { this.touching = false; });
@@ -35,17 +35,22 @@ export class OlderFeed {
     const box = this.feed.getBoundingClientRect();
     return this.feed.isConnected && !this.feed.hidden && box.height > 0 && box.top >= -1 && box.top < this.win.innerHeight;
   }
-  pageOwns(target) {
+  pageOwns(target, { chainCardEdge = false } = {}) {
     const region = this.feed.closest?.('main');
     if (region && target !== this.doc.body && target !== this.doc.documentElement && !region.contains(target)) return false;
     if (target?.closest?.('input,textarea,select,[contenteditable]')) return false;
     for (let node = target; node && node !== this.doc.body && node !== this.doc.documentElement; node = node.parentElement) {
-      if (node.scrollHeight > node.clientHeight && /^(auto|scroll)$/.test(this.win.getComputedStyle(node).overflowY)) return false;
+      if (!(node.scrollHeight > node.clientHeight)) continue;
+      const style = this.win.getComputedStyle(node);
+      if (!/^(auto|scroll)$/.test(style.overflowY)) continue;
+      // An upward wheel at a feed card's top can chain to its ancestors.
+      if (!(chainCardEdge && node.matches?.('.message-card.scroll-in-place') &&
+          this.feed.contains(node) && node.scrollTop <= 0 && style.overscrollBehaviorY === 'auto')) return false;
     }
     return true;
   }
-  up(target) {
-    if (this.disposed || this.pending || !this.pageOwns(target) || !this.ready()) return false;
+  up(target, options) {
+    if (this.disposed || this.pending || !this.pageOwns(target, options) || !this.ready()) return false;
     this.intent = true;
     return this.atTop() ? this.request() : false;
   }
