@@ -18,10 +18,12 @@ class FirstCoverPromptCase(test_agent_verbs.AgentVerbCase):
         return self.committed(self.command("message.post", dict(body=body, **args),
                                            target={"topic_id": "t1"}))["message_id"]
 
-    def reply(self, actor="agent-a"):
+    def reply(self, actor="agent-a", recent_edit=None):
         code, out, err = self.run_cli("reply", self.root, "--without-quote", "Fixture measures the first cover prompt.",
                                       "Checking cabin availability.", actor=actor)
-        self.assertEqual((code, err), (0, ""), (code, out, err))
+        expected = ("You posted in this dossier recently. aim-next edit %s --expected 1 - instead?\n" %
+                    recent_edit) if recent_edit else ""
+        self.assertEqual((code, err), (0, expected), (code, out, err))
         return self.latest()[0], out
 
     def test_actual_reply_prompts_birth_and_pinned_retry_returns_original_result(self):
@@ -41,7 +43,7 @@ class FirstCoverPromptCase(test_agent_verbs.AgentVerbCase):
         self.assertEqual(cover["cover"]["birth"], {"nature": "Decision", "done_when": "Owner confirms cabin"})
         self.assertEqual(cover["cover"]["stands"], "Check the cabin.\nConfirm the dates.")
         self.assertNotIn(" --root ", self.run_cli("birth", reply)[1])
-        self.assertNotIn(" --root ", self.reply()[1])
+        self.assertNotIn(" --root ", self.reply(recent_edit=reply)[1])
         self.assertIn("Owner confirms cabin", self.run_cli("cover", self.root)[1])
 
     def test_other_first_responder_gets_cover_prompt_and_coordinator_gets_mint(self):

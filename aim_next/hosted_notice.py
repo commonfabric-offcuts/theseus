@@ -37,6 +37,8 @@ def developer_instructions(actor_id, cli, profile_path, broker=None):
         "  read TOPIC --after SEQ     full messages",
         "  reply MESSAGE [--asks A | --tells A] [--part] -   reply in that message's stack (body on stdin);",
         "  post TOPIC [--asks A | --tells A] -   deliberately start a new subject, not a progress update;",
+        "The board is a set of documents, not a chat. Maintain the cover; messages are for asks and changes; "
+        "revise your own message rather than stacking.",
         "Keep progress, questions and completion about a request in its existing stack using reply MESSAGE.",
         "Reply to the relevant request or follow-up, never guess from the newest message or another active job.",
         "Every agent reply (reply, post --reply-to, whisper or prepared send) must name a passage or say why it has no quote.",

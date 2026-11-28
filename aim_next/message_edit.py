@@ -544,9 +544,53 @@ EMPTY = "A message needs writing or an attachment"
 TAKEN = "This edit is open on another device"
 CLOSED = "This edit is no longer open; its words are kept on this device"
 BASE = "base_revision is one of the message's revisions"
+EDIT_NUDGE_MS = 120_000
+EDIT_NUDGE_POSTS = 64
 
 
 class MessageEdit:
+    def _view_post_edit_hint(self, db, actor, args):
+        """Give the agent an edit fence using only message metadata."""
+        if set(args) not in ({"message_id"}, {"topic_id", "reply_to"}):
+            raise Refusal("INVALID_ARGUMENT", "Name the posted message or the topic and public message you are replying to")
+        result = {"instance_id": self.instance_id, "edit": None}
+        if self._actor(db, actor)["kind"] != "agent":
+            return result
+
+        def editable(message_id):
+            try:
+                self._editable(db, actor, message_id, people=False)
+            except Refusal:
+                return None
+            number = db.execute("SELECT " + revision() + " FROM messages m WHERE m.id=?", (message_id,)).fetchone()[0]
+            return {"message_id": message_id, "revision": number}
+
+        if "message_id" in args:
+            result["edit"] = editable(_identifier(args["message_id"], "message_id"))
+            return result
+
+        from .delivery import _now_ms
+        from .stacks import StackRoots
+        target, topic = self._acted_message(db, actor, {"message_id": args["reply_to"]})
+        if target["private_to"] is not None or topic["id"] != _identifier(args["topic_id"], "topic_id"):
+            return result
+        roots = StackRoots(db, actor)
+        root = roots.root(target["id"])
+        now = _now_ms()
+        # The existing public-writing index can seek to the newest own post
+        # directly. Bound the window before checking ancestry or timestamps.
+        recent = db.execute(
+            "SELECT id,sent_ms FROM messages INDEXED BY public_actor_writing "
+            "WHERE topic_id=? AND author_id=? AND private_to IS NULL ORDER BY seq DESC LIMIT ?",
+            (topic["id"], actor, EDIT_NUDGE_POSTS))
+        for row in recent:
+            if 0 <= now - row["sent_ms"] <= EDIT_NUDGE_MS and roots.root(row["id"]) == root:
+                hint = editable(row["id"])
+                if hint:
+                    result["edit"] = hint
+                    break
+        return result
+
     def _editable(self, db, actor, message_id, reached=True, people=True, removed=False):
         """The checks after the words' size, in order: the actor reaches the message (a whisper outside them, or a
         message they cannot read, is refused as an unknown id), is a person when people is true (an edit session's
