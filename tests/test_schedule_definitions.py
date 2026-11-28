@@ -36,6 +36,7 @@ class ScheduleDefinitionCase(ReaderCase):
         self.assertEqual(result, {"schedule_id": "room-check", "schedule_revision": 1, "due_ms": 1795887000500})
         self.assertEqual(self.store.command("owner", envelope), receipt)
         original = self.read()
+        self.assertEqual(original["instance_id"], "test-instance")
         for key, value in self.definition.items():
             self.assertEqual(original[key], value)
         self.assertEqual(self.public_state(), before)

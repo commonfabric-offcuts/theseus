@@ -134,5 +134,5 @@ class ScheduleDefinitions:
             raise Refusal("FORBIDDEN", "No readable schedule definition")
         definition = json.loads(row["definition"])
         self._schedule_reach(db, actor, definition, _now_ms())
-        return dict(definition, schedule_id=schedule_id, schedule_revision=row["revision"],
-                    registered_ms=row["registered_ms"], due_ms=row["due_ms"])
+        return dict(definition, instance_id=self.instance_id, schedule_id=schedule_id,
+                    schedule_revision=row["revision"], registered_ms=row["registered_ms"], due_ms=row["due_ms"])

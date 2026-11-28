@@ -42,7 +42,7 @@ The receipt names `schedule_id`, `schedule_revision` and `due_ms`.
 The owner reads the definition through `schedule_definition`, with
 `schedule_id` and optional `schedule_revision` (defaults to latest).
 The view rechecks reach and returns the saved inputs with the receipt
-fields and `registered_ms`. An unavailable identity or revision
+fields, `instance_id` and `registered_ms`. An unavailable identity or revision
 returns `FORBIDDEN`.
 
 Schema 72 → 73 uses `SCHEDULE_UP` to add schedule identities, immutable
