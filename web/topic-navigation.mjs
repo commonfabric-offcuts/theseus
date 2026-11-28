@@ -492,6 +492,13 @@ export class TopicRail {
     if (this.denied || list.details && (!list.details.open || !displayed(list.details))) return [];
     return [...list.host.children].filter(displayed).map(link => ({ link, item: this.rowItems.get(link) })).filter(row => row.item);
   }
+  firstUnread() {
+    for (const list of this.shownLists()) {
+      const row = this.shownRows(list).find(({ item }) => Number.isSafeInteger(item.unread) && item.unread > 0);
+      if (row) return row.item;
+    }
+    return null;
+  }
   // Values and acts are the boundary to another presentation. Only this
   // owner knows its DOM, CSS filter and held order; a card never reads them.
   presentation() {

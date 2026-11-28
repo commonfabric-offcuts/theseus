@@ -42,7 +42,7 @@ import { OutlineMenus } from './outline-menus.mjs';
 // it come from the run of the page that is up, and from nothing before it.
 // Each run's reads and drawing are its own: what a run read lands only while
 // it is still the page, and a run that has gone draws nothing.
-import { readTopicList, TopicRail, TopicPages, WorkspacePages, reread, routeHref, topicTarget, paintUnread, arrange, PAGE } from './topic-navigation.mjs';
+import { readTopicList, TopicRail, TopicPages, WorkspacePages, reread, routeHref, topicTarget, paintUnread, landsOnUnread, arrange, PAGE } from './topic-navigation.mjs';
 import { paintRowLight } from './outcome-light.mjs';
 import { OneLine, OutcomeStart, TopicStart, lineFromButton } from './quick-create.mjs';
 import { Superseded } from './in-place-navigation.mjs';
@@ -535,12 +535,13 @@ export class OutlineRail {
     };
     // On a phone a collapsed outcome first opens its topics here (item 654),
     // with no move and no drawer close; the next tap opens its home.
-    // On a laptop, and with Return, the name opens its home. Folding is the
-    // disclosure's action; the tree keeps its existing name-row keys.
+    // The unread count skips phone disclosure and uses a topic already
+    // drawn by the rail. Plain name presses keep their existing actions.
     name.onclick = event => {
       if (!plainClick(event)) return;
       event.preventDefault();
-      if (event.detail !== 0 && this.doc.defaultView.matchMedia('(max-width: 760px)').matches) {
+      const unread = landsOnUnread(event.target, event);
+      if (!unread && event.detail !== 0 && this.phone) {
         if (!this.isOpen(outcome.id)) {
           // This link expanded in place: the drawer's bubbling link listener
           // must not close it. The tree has already selected the pressed row.
@@ -549,6 +550,8 @@ export class OutlineRail {
           return;
         }
       }
+      const first = unread ? outcome.rail?.firstUnread() : null;
+      if (first) return this.open(topicTarget(first.id, null, 'unread'), first.title);
       this.open(this.nameTarget(outcome), outcome.item.title);
     };
     this.topicLine(outcome);
@@ -887,7 +890,11 @@ export class OutlineRail {
         outcome.title.textContent = item.title + (item.title_truncated ? '…' : '');
         // On hover, the whole name, which a one-line row may cut short.
         if (outcome.name.title !== item.title) outcome.name.title = item.title;
-        paintUnread(outcome.title, counted);
+        const badge = paintUnread(outcome.title, counted);
+        if (badge) {
+          badge.dataset.lands = 'unread';
+          outcome.title.append(element(this.doc, 'span', { className: 'sr-only', textContent: '. Return opens the first loaded unread topic when available' }));
+        }
         if (item.provisional) outcome.standing.replaceChildren(); else paintRowLight(outcome.standing, item.light);
         // The light leads the name; its words stay on the line under it.
         const lamp = outcome.standing.querySelector('.outcome-light');
