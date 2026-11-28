@@ -200,8 +200,9 @@ The Reader keeps its cover above the source body.
 The sheet shows:
 
 - where the dossier stands;
-- its payload, with its kind as a label, its words, its link, a pill, and the
-  number of the message that delivered it, which opens that message;
+- its payload, with its kind as a label, its words, its link, and a pill.
+  The number of the message that delivered it follows the pill inline and
+  opens that message;
 - each thing waiting on the owner. The owner sees "Waits on you" and anyone
   else sees "Waits on" the owner's name, with the default under it.
 

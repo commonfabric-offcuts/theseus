@@ -56,6 +56,10 @@ test('the sheet says where it stands, its payload with its label, pill and the m
   assert.deepEqual(glyphs(sheet), ['payload'], 'a proposed payload is a box');
   const cite = of(sheet, 'cover-src')[0];
   assert.equal(cite.text, '#12', 'the payload\'s message, by its number');
+  assert.equal(cite.getAttribute('aria-label'), 'Source message #12');
+  assert.equal(cite.title, 'Source message #12');
+  const acceptance = of(sheet, 'cover-payload-acceptance')[0];
+  assert.deepEqual(acceptance.children, [of(sheet, 'row-pill')[0], ' ', cite]);
   assert.match(cite.getAttribute?.('href') ?? cite.href, /m-answer/, 'a link that opens that message');
   const wait = sheet.children[2];
   assert.equal(of(wait, 'topic-state')[0].text, 'Waits on you', 'the owner reads "you"');
@@ -121,7 +125,10 @@ test('the pill says proposed until Core says done, then how and by whom in the r
   assert.equal(proposed.title, "Proposed: done by Ana's thumbs up on its message, or a reply of Ana's to it named as the word");
   // Done by a word the reader can open cites it; Core leaves a whisper's id out for a reader outside it, and nothing is cited.
   const word = coverSheet(doc, { ...COVER, payload: { ...COVER.payload, done: DONE_BY_WORD } }, context());
-  assert.deepEqual(of(word, 'cover-src').map(node => node.text), ['#12', '#14']);
+  assert.deepEqual(of(word, 'cover-src').map(node => [node.text, node.getAttribute('aria-label'), node.title]), [
+    ['#12', 'Source message #12', 'Source message #12'],
+    ['#14', 'Acceptance reply #14', 'Acceptance reply #14'],
+  ]);
   const unseen = coverSheet(doc, { ...COVER, payload: { ...COVER.payload, done: { how: 'word', by: 'owner', at_ms: 1 } } }, context('agent-b'));
   assert.deepEqual(of(unseen, 'cover-src').map(node => node.text), ['#12']);
   assert.match(of(unseen, 'row-pill')[0].text, /^done · Ana's word at /);

@@ -526,7 +526,6 @@
 .dossier-cover{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.38rem .4rem;font-size:.9rem;line-height:1.4;color:var(--ink);text-align:left;white-space:normal;max-height:100vh;max-height:100dvh;overflow-y:auto}
 .cover-line{display:block;grid-column:1;min-width:0}
 .cover-line>.row-pill,.cover-line>.topic-state{margin:0 .4rem 0 0}
-.cover-line>.cover-src{margin-left:.35rem}
 .cover-stands{font-size:.95rem;font-weight:550;white-space:pre-line}
 /* 963: formatted standing words use the message body face and reading size.
    Literal covers keep their existing type and pixels. */
@@ -621,7 +620,10 @@
 .cover-keeper{margin-inline-start:auto}
 .dossier-cover[data-cover-layout]>.cover-payload{background:var(--panel);border:1px solid var(--line);border-radius:.5rem;padding:.4rem .55rem}
 .cover-payload-copy{display:contents}
-.cover-payload>.cover-words>.cover-acceptance{margin:.15rem 0}
+.cover-payload-acceptance{display:inline-flex;align-items:center;vertical-align:middle;max-width:100%;gap:.25em}
+.cover-payload-acceptance>.row-pill{min-width:0}
+.cover-payload-acceptance>.cover-acceptance{margin:.15rem 0}
+.cover-payload-acceptance>.cover-src{flex:none}
 .row-pill.cover-acceptance{max-width:100%;border:1px dashed currentColor;border-radius:.85rem;padding:.1rem .45rem;color:var(--ink);white-space:normal;vertical-align:middle;line-height:1.25}
 .row-pill.cover-acceptance[data-state=done]{border-style:solid;background:var(--ink);color:var(--panel);border-color:var(--ink)}
 .row-pill.cover-acceptance[data-state=done] svg{color:inherit}
@@ -651,7 +653,7 @@
 @media(max-width:760px){
   .cover-structured-section>.cover-section-heading{min-height:44px}
   .cover-payload-copy{display:block}
-  .dossier-cover[data-cover-layout] .cover-payload a{display:inline-flex;align-items:center;min-height:44px}
+  .dossier-cover[data-cover-layout] .cover-payload a:not(.cover-src){display:inline-flex;align-items:center;min-height:44px}
   .stack-cover-preview{gap:.3rem}
 }
 @media(max-width:640px){
