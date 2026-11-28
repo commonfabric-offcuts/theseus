@@ -50,6 +50,23 @@ class RemovalFollowupsCase(fixtures.ReaderCase):
                     self.assertEqual(item['reply_to_excerpt'], 'Original parent words')
                     self.assertEqual(item.get('reply_to_removal'), removed)
 
+    def test_reply_context_includes_an_off_page_original_and_its_withdrawal(self):
+        ask = self.post('Exact question words', actor='agent-a', intent='ask', addressees=['agent-b'])
+        reply = self.post('An answer to the question', reply_to=ask)
+        seq, sent = self.sql('SELECT seq,sent_ms FROM messages WHERE id=?', (ask,))[0]
+        for withdrawn in (False, True):
+            if withdrawn:
+                self.committed(self.command('message.withdraw', target={'message_id': ask}, actor='agent-a'))
+            for args in ({'message_ids': [reply]}, {'cursor': seq, 'limit': 1}):
+                with self.subTest(withdrawn=withdrawn, args=args):
+                    page = self.store.view('owner', 'topic_messages', dict(topic_id='t1', **args))
+                    self.assertEqual([item['id'] for item in page['items']], [reply])
+                    item = page['items'][0]
+                    self.assertEqual(item['reply_to_author'], 'agent-a')
+                    self.assertEqual(item['reply_to_author_kind'], 'agent')
+                    self.assertEqual(item['reply_to_sent_ms'], sent)
+                    self.assertIs(item['reply_to_withdrawn'], withdrawn)
+
     def test_private_and_withheld_parent_metadata_stays_private(self):
         parent = self.post('Secret parent', whisper=True, intent=None)
         reply = self.post('Private reply', reply_to=parent, whisper=True, intent=None)
