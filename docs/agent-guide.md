@@ -327,6 +327,7 @@ it when you take a dossier up, and keep it current as the work moves, in the
 same turn as the reply that moves it: where it stands in one line, what waits
 on the owner with the default that holds if they say nothing, and, once the
 dossier has produced something, its payload and the message that delivered it.
+Put current facts and numbers in a simple table in plain language: one row per thing the reader tracks, with its name in the first column; 2 to 4 columns and at most 7 rows; dates written out (Nov 27, 3 PM), units in the column header, and no IDs or hashes. Place each table under the heading it answers, usually What, When or Who. Use sentences, not a table, for reasons, decisions and anything under three rows. Put history, step-by-step logs, raw output and superseded values under a last heading, ## Log; like every section, it folds.
 
 ```sh
 aim-next cover ROOT --stands "Answered: the second weekend, with the lake open"
