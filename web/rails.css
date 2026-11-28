@@ -240,7 +240,7 @@ body:has(#messages .lit) :is(#rail,#things,#main>.topic-header) :focus-visible{o
 .rail-hotkey-chips{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:3px}
 .message-menu-list .rail-hotkey-chips>button{display:block;width:100%;min-width:0;min-height:28px;margin:0;padding:2px 4px;border:1px solid var(--line);border-radius:5px;text-align:center;font-size:.78rem;font-weight:600;color:var(--ink)}
 .message-menu-list .rail-hotkey-chips>button.taken{border-style:dashed;color:var(--muted)}
-.message-menu-list .rail-hotkey-chips>button[aria-checked=true]{background:var(--soft);border-color:var(--accent)}
+.message-menu-list .rail-hotkey-chips>button[aria-checked=true]:not(:focus-visible){background:var(--row-current)}
 .rail-hotkey-guide{font-size:.75rem;line-height:1.5}
 @media(pointer:coarse){.message-menu-list .rail-hotkey-chips>button{min-height:44px}}
 

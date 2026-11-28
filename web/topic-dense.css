@@ -17,6 +17,7 @@
     background:transparent;color:var(--sheet-quiet);font-size:1rem}
   :is(.new-message,.settings-gear) svg{width:16px;height:16px}
   :is(.new-message,.settings-gear,.message-menu):hover{background:var(--soft);color:var(--ink)}
+  .message-menu[aria-expanded=true]{background:var(--row-current);color:var(--ink)}
   .topic-subtitle{margin-top:.15rem;font-size:.85rem}
   /* The topic's state: the Reader's small hairline chip. Its own colours (mine, review) stay. */
   .topic-subtitle .topic-state{height:1.25rem;display:inline-flex;align-items:center;padding:0 .45rem;border-radius:.4rem;font-size:.7rem;font-weight:600;line-height:1;vertical-align:.1em}

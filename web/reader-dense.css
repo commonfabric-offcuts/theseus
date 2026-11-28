@@ -18,7 +18,7 @@ dialog#reader[open]:not([data-card-reply]){
   .reader-header>button:hover,#reader-stepping>button:hover{background:var(--soft);color:var(--ink)}
   .reader-header>button:disabled,#reader-stepping>button:disabled{opacity:.35;background:transparent}
   #reader-menu{font-size:1rem;font-weight:700;letter-spacing:.02em}
-  #reader-menu[aria-expanded=true]{background:var(--soft);color:var(--ink);outline:0;box-shadow:none}
+  #reader-menu[aria-expanded=true]{background:var(--row-current);color:var(--ink);outline:0;box-shadow:none}
   #reader-stepping{display:flex;gap:1px}
   .reader-heading{padding-top:.05rem}
   .reader-title-row{gap:.3rem}

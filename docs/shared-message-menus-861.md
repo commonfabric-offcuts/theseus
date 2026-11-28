@@ -68,3 +68,11 @@ mutation failures and restored controls with final source hashes.
 No Core/schema changes. Handler and source checks do not claim native browser
 gesture, layout or focus acceptance. No browser, preview, full suite or hosted
 CI is part of this slice.
+
+## Menu highlights
+
+The phone action sheet uses the local neutral `--row-current` and
+`--ink` for the highlighted row. A pressed ellipsis uses the same
+tokens. On desktop, a keyboard-focused row keeps its two-pixel
+`--focus` ring and a transparent fill, including when the pointer
+rests over that row.
