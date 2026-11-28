@@ -100,8 +100,13 @@ class RequestCase(CoverRefreshCase):
         item = self.delivery(refresh)
         expected = ("Please rewrite this dossier's cover from its latest facts. "
                     "Read the whole dossier and its current cover, retain source attribution, waits and defaults, "
-                    "payload kind/link and the owner's Done record. Put current facts and numbers in a simple "
-                    "table in plain language; fold log-like details under a details fold. "
+                    "payload kind/link and the owner's Done record. "
+                    "Put current facts and numbers in a simple table in plain language: one row per thing the reader "
+                    "tracks, with its name in the first column; 2 to 4 columns and at most 7 rows; dates written out "
+                    "(Nov 27, 3 PM), units in the column header, and no IDs or hashes. Place each table under the "
+                    "heading it answers, usually What, When or Who. Use sentences, not a table, for reasons, decisions "
+                    "and anything under three rows. Put history, step-by-step logs, raw output and superseded values "
+                    "under a last heading, ## Log; like every section, it folds. "
                     "Use aim-next cover %s --expected N with the current cover revision. "
                     "This refresh observed revision 1; only a changed agent cover write "
                     "completes it, not a reply or acknowledgement." % self.root)
