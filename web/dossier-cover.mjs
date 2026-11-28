@@ -213,6 +213,49 @@ function revisionLine(doc, cover, context) {
   return line;
 }
 
+function coverFooter(doc, cover, context, previous) {
+  const footer = previous ?? (() => {
+    const row = element(doc, 'div', 'cover-footer');
+    const title = element(doc, 'span', '', 'How this card works');
+    const { section, body } = coverDisclosure(title, {
+      ...context, doc, sectionId: JSON.stringify(['cover-help']), initiallyOpen: false,
+    });
+    section.classList.add('cover-help');
+    const keeper = element(doc, 'p');
+    body.append(
+      keeper,
+      element(doc, 'p', '', 'Ask the writer to refresh the cover when the status, open asks, or payload changes.'),
+      element(doc, 'p', '', 'Edits revise a message in place. Refresh the cover separately if its summary needs to change.'),
+      element(doc, 'p', '', 'The outcome owner accepts the payload with a 👍 on its message or a reply to it that the writer records as acceptance.'),
+      element(doc, 'p', 'cover-help-prompt', 'Maintenance prompt'),
+      element(doc, 'p', '', 'No prompt has been added.'),
+    );
+    const meta = element(doc, 'div', 'cover-footer-meta');
+    row.append(section, meta);
+    return { row, keeper, meta, revision: null, revisionKey: null, refresh: null, refreshKey: null };
+  })();
+  const keeper = cover.writer ?? cover.by;
+  const keeperWords = !keeper ? 'The cover writer keeps this card current.'
+    : keeper === context.viewer ? 'You keep this card current.'
+    : `${context.nameOf(keeper)} keeps this card current.`;
+  if (footer.keeper.textContent !== keeperWords) footer.keeper.textContent = keeperWords;
+  const revisionKey = JSON.stringify([cover.by, cover.at_ms, cover.by && context.nameOf(cover.by)]);
+  if (footer.revisionKey !== revisionKey) {
+    footer.revision?.remove();
+    footer.revision = revisionLine(doc, cover, context);
+    if (footer.revision) footer.meta.insertBefore(footer.revision, footer.refresh);
+    footer.revisionKey = revisionKey;
+  }
+  const refreshKey = coverKey(cover, context);
+  if (footer.refreshKey !== refreshKey) {
+    footer.refresh?.remove();
+    footer.refresh = refreshControl(doc, cover, context);
+    if (footer.refresh) footer.meta.append(footer.refresh);
+    footer.refreshKey = refreshKey;
+  }
+  return footer;
+}
+
 const sheetRows = new WeakMap();
 export const copyOfCover = sheet => sheetRows.get(sheet)?.copy;
 export function coverQuoteSource(words) {
@@ -395,16 +438,12 @@ export function coverSheet(doc, cover, context, previous = null) {
     row.append(waitsLabel(doc, wait.actor_id ?? cover.owner, wait, ctx), ' ', quotable(words, `wait.${index}`, wait.text), note);
     const answers = coverAnswers(doc, wait, ctx); if (answers) row.append(answers);
   }
-  const refresh = refreshControl(doc, cover, ctx);
-  if (refresh) {
-    // The final content row owns the corner; no heading or extra row is needed.
-    refresh.style.gridRow = String(Math.max(1, sheet.children.length));
-    sheet.append(remember(refresh, ['control', coverKey(cover, context)]));
-  }
   const request = coverRequestLine(doc, cover, ctx);
   if (request) sheet.append(remember(request, ['request', coverKey(cover, context)]));
-  const revised = revisionLine(doc, cover, ctx);
-  if (revised) sheet.append(remember(revised, ['revision', cover.by, cover.at_ms]));
+  const footer = coverFooter(doc, cover, ctx, sameScope ? kept.footer : null);
+  const footerRow = sameScope ? element(doc, 'div', 'cover-footer') : footer.row;
+  sheet.append(remember(footerRow, ['footer']));
+  if (sameScope) preferred.set(footerRow, footer.row);
   sheet.dataset.done = String(Boolean(payload?.done) && !(cover.waiting ?? []).length);
   if (sameScope) {
     // A revision is not removal. Keep the reading sheet and unchanged rows,
@@ -424,10 +463,10 @@ export function coverSheet(doc, cover, context, previous = null) {
     previous.dataset.done = sheet.dataset.done;
     if (view) previous.dataset.coverLayout = sheet.dataset.coverLayout;
     else delete previous.dataset.coverLayout;
-    sheetRows.set(previous, { scope, rows: desired, items, copy, quote });
+    sheetRows.set(previous, { scope, rows: desired, items, footer, copy, quote });
     return previous;
   }
-  sheetRows.set(sheet, { scope, rows, items, copy, quote });
+  sheetRows.set(sheet, { scope, rows, items, footer, copy, quote });
   return sheet;
 }
 

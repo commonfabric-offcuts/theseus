@@ -26,7 +26,7 @@ function sync(doc, key, choices) {
 function preferences(doc) {
   if (documents.has(doc)) return documents.get(doc);
   const kept = new Map(); documents.set(doc, kept);
-  doc.defaultView?.addEventListener('storage', event => {
+  doc.defaultView?.addEventListener?.('storage', event => {
     if (event.key !== null && !event.key.startsWith(PREFIX)) return;
     for (const key of kept.keys()) if (event.key === null || event.key === key) {
       const choices = readChoices(doc, key); kept.set(key, choices); sync(doc, key, choices);

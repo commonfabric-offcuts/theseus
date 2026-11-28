@@ -15,9 +15,14 @@ const quoted = text => text.split('\n').flatMap(line => [...line.matchAll(/(['"`
 
 test('only the approved cover rewrite strings may say refresh; other pages reread themselves', () => {
   const said = sources.flatMap(([name, text]) => quoted(text).filter(words => /\brefresh/i.test(words)).map(words => `${name}: ${words}`));
+  const coverHelp = [
+    "dossier-cover.mjs: Ask the writer to refresh the cover when the status, open asks, or payload changes.",
+    "dossier-cover.mjs: Edits revise a message in place. Refresh the cover separately if its summary needs to change.",
+  ];
+  assert.deepEqual(said.filter(words => coverHelp.includes(words)), coverHelp);
   // Item 738 explicitly adds a cover rewrite act. No module-wide exemption:
   // every permitted instruction, import, selector and storage identifier is exact.
-  assert.deepEqual(said, [
+  assert.deepEqual(said.filter(words => !coverHelp.includes(words)), [
     "app.mjs: ./cover-refresh.mjs",
     "cover-refresh.mjs: aim-next-cover-refresh:${JSON.stringify([binding.instance_id, binding.actor, root])}",
     "cover-refresh.mjs: The saved refresh request could not be read safely.",

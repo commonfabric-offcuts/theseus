@@ -51,7 +51,7 @@ test('757 an answer without a cover clock clears the former root projection afte
 
 test('757 sheet preserves manual lines before and after two independently linked item rows', () => {
   const sheet = coverSheet(miniDocument(), cover, context);
-  assert.deepEqual(sheet.children.map(n => n.className), ['cover-line cover-heading', 'cover-line cover-payload', 'cover-line cover-items', 'cover-line cover-wait']);
+  assert.deepEqual(sheet.children.map(n => n.className), ['cover-line cover-heading', 'cover-line cover-payload', 'cover-line cover-items', 'cover-line cover-wait', 'cover-footer']);
   assert.equal(sheet.querySelector('.cover-linked-items').open, false, '1262 groups the same original rows under an initially closed disclosure');
   assert.equal(sheet.querySelector('.cover-section-heading').text, '2 items: 1 build, 1 review');
   assert.deepEqual(of(sheet, 'cover-item').map(n => n.text), ['Make the reader clearer · Build', 'Speed up the feed · Review']);

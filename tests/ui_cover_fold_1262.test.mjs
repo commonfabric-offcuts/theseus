@@ -39,7 +39,7 @@ function fixture(storage = new Map(), denied = false) {
   };
   return { doc, host, paint, storage, events };
 }
-const sections = sheet => sheet.querySelectorAll('.cover-section');
+const sections = sheet => sheet.querySelector('.cover-stands')?.querySelectorAll('.cover-section') ?? [];
 const group = sheet => sheet.querySelector('.cover-linked-items');
 const summary = section => section.children[0];
 const rows = sheet => sheet.querySelectorAll('.cover-item');

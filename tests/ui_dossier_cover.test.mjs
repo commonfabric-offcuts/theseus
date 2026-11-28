@@ -8,7 +8,7 @@
 // theme in both engines, is tests/stack_native.mjs ("reading covers …").
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { coverSheet, coverPills, doneWords, payloadPill, coverKey, coverOf } from '../web/dossier-cover.mjs';
+import { copyOfCover, coverSheet, coverPills, doneWords, payloadPill, coverKey, coverOf } from '../web/dossier-cover.mjs';
 import { laterActs, stackCover } from '../web/stack-order.mjs';
 import { StackFeed } from '../web/stack-feed.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
@@ -49,7 +49,7 @@ test('item 769 the shared sheet draws literal stands lines without parsing label
 test('the sheet says where it stands, its payload with its label, pill and the message that delivered it, and what waits on the owner with its default', () => {
   const doc = miniDocument(), sheet = coverSheet(doc, COVER, context());
   assert.equal(sheet.className, 'dossier-cover');
-  assert.deepEqual(sheet.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-payload', 'cover-line cover-wait', 'cover-revision-line'], 'stands, then the payload, then each wait, then the revision footer');
+  assert.deepEqual(sheet.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-payload', 'cover-line cover-wait', 'cover-footer']);
   assert.equal(sheet.children[0].text, 'Answered: the second weekend');
   assert.equal(of(sheet, 'cover-label')[0].text, 'Payload · answer');
   assert.equal(of(sheet, 'row-pill')[0].dataset.state, 'proposed');
@@ -71,13 +71,39 @@ test('the sheet says where it stands, its payload with its label, pill and the m
 test('a sheet holds only the lines its cover says, and one done with nothing waiting says so', () => {
   const doc = miniDocument();
   const bare = coverSheet(doc, { ...COVER, stands: null, waiting: [], payload: { ...COVER.payload, kind: null, done: DONE_BY_THUMB } }, context());
-  assert.deepEqual(bare.children.map(line => line.className), ['cover-line cover-payload', 'cover-revision-line']);
+  assert.deepEqual(bare.children.map(line => line.className), ['cover-line cover-payload', 'cover-footer']);
   assert.equal(of(bare, 'cover-label')[0].text, 'Payload', 'no kind, no kind in the label');
   assert.equal(bare.dataset.done, 'true');
   const waits = coverSheet(doc, { ...COVER, payload: null }, context());
-  assert.deepEqual(waits.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-wait', 'cover-revision-line']);
+  assert.deepEqual(waits.children.map(line => line.className), ['cover-line cover-heading', 'cover-line cover-wait', 'cover-footer']);
   assert.equal(waits.dataset.done, 'false');
   assert.equal(of(waits, 'row-pill').length, 0, 'no payload, no pill');
+});
+
+test('the maintenance fold stays open through a revision and leaves copied cover words intact', () => {
+  const doc = miniDocument(), ctx = context();
+  const original = { ...COVER, writer: 'agent-b', root_id: 'm-root' };
+  const sheet = coverSheet(doc, original, ctx);
+  const help = sheet.querySelector('.cover-help');
+  const summary = help.querySelector('summary');
+  assert.equal(summary.text, 'How this card works');
+  assert.equal(help.open, false);
+  assert.match(help.text, /Pilot keeps this card current/);
+  assert.match(help.text, /The outcome owner accepts the payload/);
+  assert.match(help.text, /Maintenance prompt/);
+  assert.match(sheet.querySelector('.cover-revision-line').text, /^Scout refreshed the cover/);
+  assert.doesNotMatch(copyOfCover(sheet)(), /accepts the payload|Maintenance prompt/);
+
+  help.open = true;
+  summary.focus();
+  const changed = { ...original, writer: 'owner', by: 'agent-b', at_ms: original.at_ms + 5000, stands: 'New date' };
+  assert.equal(coverSheet(doc, changed, ctx, sheet), sheet);
+  assert.equal(sheet.querySelector('.cover-help'), help);
+  assert.equal(help.open, true);
+  assert.equal(doc.activeElement, summary);
+  assert.match(help.text, /You keep this card current/);
+  assert.match(sheet.querySelector('.cover-revision-line').text, /^Pilot refreshed the cover/);
+  assert.equal(coverSheet(doc, { ...changed, root_id: 'm-other' }, ctx, sheet).querySelector('.cover-help').open, false);
 });
 
 test('the pill says proposed until Core says done, then how and by whom in the reader\'s words; a word the reader can open is cited', () => {

@@ -17,7 +17,7 @@ function fixture(storage=new Map()) {
   const paint=(stands=raw,ctx=context,input={})=>{const sheet=coverSheet(doc,{...cover,stands,...input},ctx);host.append(sheet);return sheet;};
   return {doc,host,paint,storage};
 }
-const sections=sheet=>sheet.querySelectorAll('.cover-section');
+const sections=sheet=>sheet.querySelector('.cover-stands')?.querySelectorAll('.cover-section') ?? [];
 const toggle=(section,open)=>{section.open=open;section.listeners.toggle({target:section});};
 const tree=n=>({tag:n.tagName,cl:n.className,text:n.textContent,href:n.href??null,children:n.children.map(x=>typeof x==='string'?x:tree(x))});
 const unwrap=n=>n.classList?.contains('cover-section') ? [n.children[0].children[0],...n.children[1].children.flatMap(unwrap)] : [n];
