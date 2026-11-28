@@ -79,6 +79,7 @@ COMMANDS = {
     "stack.aside": "_command_stack_aside", "stack.place": "_command_stack_place", "stack.level": "_command_stack_level", "stack.name": "_command_stack_name", "stack.join": "_command_stack_join",
     "stack.trash": "_command_stack_act",
     "stack.cover": "_command_stack_cover", "stack.move": "_command_stack_move",
+    "stack.birth": "_command_stack_birth",
     "stack.cover_refresh": "_command_stack_cover_refresh",
     "tool.use": "_command_tool_use", "tool.link": "_command_tool_link", "tool.record": "_command_tool_record",
 }
@@ -130,6 +131,7 @@ EXPECTED = {"release_card.create": set(), "release_card.update": {"message_revis
             "stack.place": {"place_revision"}, "stack.level": {"level_revision"}, "stack.name": {"name_revision"}, "stack.join": {"join_revision"},
             "stack.trash": {"trash_revision"},
             "stack.cover": {"cover_revision"}, "stack.cover_refresh": {"cover_revision"},
+            "stack.birth": {"name_revision", "cover_revision"},
             "stack.move": {"move_revision", "source_topic_id"},
             "tool.use": set(), "tool.link": set(), "tool.record": set()}
 REQUIRED_EXPECTED = {"release_card.update": "message_revision", "current_rule.update": "rule_revision","workspace.link_set": "link_revision","agent.execution": "execution_revision", "draft.save": "draft_revision", "note.save": "note_revision",
@@ -158,6 +160,7 @@ REQUIRED_EXPECTED = {"release_card.update": "message_revision", "current_rule.up
 EXPECTED["pipeline.clock_record"] = {"clock_revision"}
 EXPECTED["performance.record"] = set()
 REQUIRED_EXPECTED["pipeline.clock_record"] = "clock_revision"
+REQUIRED_EXPECTED["stack.birth"] = "name_revision"
 VIEWS = {
     "release_card": {"message_id", "workspace_id", "release"},
     "current_rule": {"workspace_id", "history"},
