@@ -175,8 +175,9 @@ links to the durable request. Reload does not end the wait. A reply, the owner's
 Done, delivery acknowledgement or a timer never ends it. The state, routing,
 retry identity and preview limitations are in [cover-refresh.md](cover-refresh.md).
 
-In the dossier and Reader, **How this card works** opens the maintenance
-instructions at the foot of the cover. It names the keeper when one is recorded
+In the dossier and Reader, **How this card works** starts folded and opens the
+maintenance instructions at the foot of the cover, beside the revision and
+refresh control. It names the keeper when one is recorded
 and explains when to refresh, how message edits relate to the cover and how the
 owner accepts a payload. The Maintenance prompt label reserves space for future
 readable guidance. Opening this fold uses the same reading preference as the

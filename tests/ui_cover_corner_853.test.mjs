@@ -26,7 +26,7 @@ function fixture(t) {
   return { doc, root, context, cover, sent, storage };
 }
 
-test('853 sheets put the existing refresh beside the final content row, without an empty heading', t => {
+test('sheets put the existing refresh beside the revision in the footer without a separate row', t => {
   const f = fixture(t);
   for (const extra of [
     { waiting: [{ text: 'Pick a date', options: [], default: null }] },
@@ -34,14 +34,16 @@ test('853 sheets put the existing refresh beside the final content row, without 
     { payload: { text: 'The result', kind: 'answer' } },
     { stands: 'Ready', waiting: [{ text: 'Pick a date', default: 'Friday' }] },
   ]) {
-    const sheet = coverSheet(f.doc, { ...f.cover, ...extra }, f.context); f.root.append(sheet);
+    const sheet = coverSheet(f.doc, { ...f.cover, by: 'writer', at_ms: 1_700_000_000_000, ...extra }, f.context); f.root.append(sheet);
     const refresh = sheet.querySelector('.cover-refresh'); assert.ok(refresh);
-    assert.ok(refresh.parent === sheet, 'refresh belongs to the sheet, not its heading');
+    const footer = sheet.querySelector('.cover-footer');
+    assert.equal(refresh.parent, footer.querySelector('.cover-footer-meta'));
+    assert.equal(refresh.parent.children[0], footer.querySelector('.cover-revision-line'));
+    assert.equal(refresh.parent.children[1], refresh);
     const lines = sheet.querySelectorAll('.cover-line');
     assert.equal(sheet.querySelectorAll('.cover-heading').length, extra.stands ? 1 : 0);
-    assert.equal(refresh.style.gridRow, String(lines.length), 'same row as the final actual content');
-    assert.equal(sheet.children.length, lines.length + 2);
-    assert.equal(sheet.children.at(-1).className, 'cover-footer');
+    assert.equal(sheet.children.length, lines.length + 1);
+    assert.equal(sheet.children.at(-1), footer);
     assert.equal(refresh.querySelector('.cover-refresh-glyph').tag, 'button');
     assert.equal(refresh.querySelector('.cover-refresh-status').parent, refresh);
   }
@@ -73,7 +75,8 @@ test('853 moved refresh keeps an interrupted request and retries its exact envel
   assert.equal(f.sent[0].expected.cover_revision, 4);
   assert.equal(f.storage.size, 1);
   const refresh = sheet.querySelector('.cover-refresh');
-  assert.ok(refresh.parent === sheet); assert.match(refresh.querySelector('.cover-refresh-status').text, /not confirmed/);
+  assert.equal(refresh.parent, sheet.querySelector('.cover-footer-meta'));
+  assert.match(refresh.querySelector('.cover-refresh-status').text, /not confirmed/);
   await sheet.querySelector('.cover-refresh-glyph').onclick({ stopPropagation() {} });
   assert.deepEqual(f.sent[1], f.sent[0]);
 });
@@ -84,10 +87,10 @@ test('853 CSS declares one sheet grid, a keyboard-reachable hover control and a 
   assert.ok(/\.reply-stack>\.dossier-cover\{display:grid/.test(css), 'feed sheet uses the grid');
   assert.ok(/#reader-cover>\.dossier-cover\{display:grid/.test(reader), 'Reader sheet uses the same grid');
   assert.ok(/\.dossier-cover\{[^}]*grid-template-columns:minmax\(0,1fr\) auto/.test(css), 'content and corner share columns');
-  assert.ok(/\.dossier-cover>\.cover-refresh\{[^}]*grid-column:2[^}]*align-self:end/.test(css), 'corner aligns to the final row bottom');
+  assert.match(css, /\.cover-footer-meta\{[^}]*display:flex[^}]*align-items:center/, 'revision and refresh share a line');
   assert.ok(/@media\(hover:hover\) and \(pointer:fine\)/.test(css), 'only a fine hover pointer hides the idle control');
-  assert.ok(/\.dossier-cover:is\(:hover,:focus-within\)>\.cover-refresh\{opacity:1;pointer-events:auto\}/.test(css), 'hover and keyboard focus reveal the control');
-  assert.ok(!/\.dossier-cover>\.cover-refresh\{[^}]*(?:visibility:hidden|display:none)/.test(css), 'the keyboard stop remains');
+  assert.match(css, /\.dossier-cover:is\(:hover,:focus-within\) \.cover-footer-meta>\.cover-refresh\{opacity:1;pointer-events:auto\}/, 'hover and keyboard focus reveal the control');
+  assert.doesNotMatch(css, /\.cover-footer-meta>\.cover-refresh\{[^}]*(?:visibility:hidden|display:none)/, 'the keyboard stop remains');
   const sheet = css.match(/(?:^|\n)\.dossier-cover\{([^}]+)\}/)?.[1];
   assert.ok(sheet, '913 uses the shared sheet rule for feed and Reader');
   assert.match(sheet, /max-height:100vh/, 'viewport fallback keeps long cards bounded');
@@ -118,7 +121,7 @@ function activityRule() {
   const css = readFileSync(new URL('../web/stack-look.css', import.meta.url), 'utf8');
   const hover = css.match(/@media\(hover:hover\) and \(pointer:fine\)\{([\s\S]*?)\n\}/)?.[1];
   assert.ok(hover, 'the override belongs to the existing fine-pointer media query');
-  const rule = hover.match(/\.dossier-cover>\.cover-refresh:has\(([^{}]+)\)\{([^{}]+)\}/);
+  const rule = hover.match(/\.cover-footer-meta>\.cover-refresh:has\(([^{}]+)\)\{([^{}]+)\}/);
   return { hover, rule };
 }
 
@@ -152,6 +155,6 @@ test('869 an idle refresh still waits for hover or focus on a fine pointer', t =
   assert.notEqual(sheet.querySelector('.cover-refresh-glyph').dataset.pending, 'true');
   assert.equal(sheet.querySelector('.cover-refresh-status').text, '');
   const { hover } = activityRule();
-  assert.match(hover, /\.dossier-cover>\.cover-refresh\{opacity:0;pointer-events:none\}/);
-  assert.match(hover, /\.dossier-cover:is\(:hover,:focus-within\)>\.cover-refresh\{opacity:1;pointer-events:auto\}/);
+  assert.match(hover, /\.cover-footer-meta>\.cover-refresh\{opacity:0;pointer-events:none\}/);
+  assert.match(hover, /\.dossier-cover:is\(:hover,:focus-within\) \.cover-footer-meta>\.cover-refresh\{opacity:1;pointer-events:auto\}/);
 });

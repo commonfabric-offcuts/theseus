@@ -228,10 +228,11 @@ function coverFooter(doc, cover, context, previous) {
       element(doc, 'p', '', 'Edits revise a message in place. Refresh the cover separately if its summary needs to change.'),
       element(doc, 'p', '', 'The outcome owner accepts the payload with a 👍 on its message or a reply to it that the writer records as acceptance.'),
       element(doc, 'p', 'cover-help-prompt', 'Maintenance prompt'),
-      element(doc, 'p', 'cover-help-placeholder', 'No prompt has been added.'),
+      element(doc, 'p', '', 'No prompt has been added.'),
     );
-    row.append(section);
-    return { row, keeper, revision: null, revisionKey: null };
+    const meta = element(doc, 'div', 'cover-footer-meta');
+    row.append(section, meta);
+    return { row, keeper, meta, revision: null, revisionKey: null, refresh: null, refreshKey: null };
   })();
   const keeper = cover.writer ?? cover.by;
   const keeperWords = !keeper ? 'The cover writer keeps this card current.'
@@ -242,8 +243,15 @@ function coverFooter(doc, cover, context, previous) {
   if (footer.revisionKey !== revisionKey) {
     footer.revision?.remove();
     footer.revision = revisionLine(doc, cover, context);
-    if (footer.revision) footer.row.append(footer.revision);
+    if (footer.revision) footer.meta.insertBefore(footer.revision, footer.refresh);
     footer.revisionKey = revisionKey;
+  }
+  const refreshKey = coverKey(cover, context);
+  if (footer.refreshKey !== refreshKey) {
+    footer.refresh?.remove();
+    footer.refresh = refreshControl(doc, cover, context);
+    if (footer.refresh) footer.meta.append(footer.refresh);
+    footer.refreshKey = refreshKey;
   }
   return footer;
 }
@@ -429,12 +437,6 @@ export function coverSheet(doc, cover, context, previous = null) {
     }
     row.append(waitsLabel(doc, wait.actor_id ?? cover.owner, wait, ctx), ' ', quotable(words, `wait.${index}`, wait.text), note);
     const answers = coverAnswers(doc, wait, ctx); if (answers) row.append(answers);
-  }
-  const refresh = refreshControl(doc, cover, ctx);
-  if (refresh) {
-    // The final content row owns the corner; no heading or extra row is needed.
-    refresh.style.gridRow = String(Math.max(1, sheet.children.length));
-    sheet.append(remember(refresh, ['control', coverKey(cover, context)]));
   }
   const request = coverRequestLine(doc, cover, ctx);
   if (request) sheet.append(remember(request, ['request', coverKey(cover, context)]));

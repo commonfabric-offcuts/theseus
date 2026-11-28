@@ -543,8 +543,6 @@
   /* Let labels take their natural width up to a phone-sized limit. */
   .dossier-cover .md-table :is(th,td):first-child .md-cell{width:max-content;max-width:min(8rem,25vw)}
 }
-/* A full-width heading leaves no corner for the refresh control in that row. */
-.dossier-cover>.cover-heading:has(.md-table-wrap)+.cover-refresh{grid-row:auto!important}
 .cover-section{display:block;min-width:0;margin-top:.45rem}
 .cover-section-heading{display:flex;align-items:baseline;gap:.4em;cursor:pointer;list-style:none;min-width:0}
 .cover-section-heading::-webkit-details-marker{display:none}
@@ -556,16 +554,7 @@
 .cover-section-body>.md-block:first-child{margin-top:.45rem}
 .cover-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:.4rem}
 .cover-refresh{display:inline-flex;align-items:center;gap:.25rem;min-width:0;flex-wrap:wrap;color:var(--muted);font-size:.78rem;font-weight:400}
-/* 853: the last content row shares its corner with the existing control.
-   Touch/no-hover stays visible; opacity keeps the keyboard stop on desktop. */
-.dossier-cover>.cover-refresh{grid-column:2;align-self:end;justify-self:end;flex-direction:row-reverse;flex-wrap:nowrap;max-width:min(40vw,16rem);text-align:right}
-.dossier-cover>.cover-refresh .cover-refresh-status{min-width:0}
 .cover-refresh-status:empty{display:none}
-@media(hover:hover) and (pointer:fine){
-  .dossier-cover>.cover-refresh{opacity:0;pointer-events:none}
-  .dossier-cover:is(:hover,:focus-within)>.cover-refresh{opacity:1;pointer-events:auto}
-  .dossier-cover>.cover-refresh:has(.cover-refresh-glyph[data-pending=true],.cover-refresh-status:not(:empty)){opacity:1;pointer-events:auto}
-}
 .cover-refresh-glyph{display:inline-flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;
   width:2rem;min-height:2rem;padding:.3rem;border:0;border-radius:.35rem;background:transparent;color:var(--muted);cursor:pointer}
 .cover-refresh-glyph:hover{color:var(--ink);background:var(--soft)}
@@ -591,24 +580,36 @@
 /* Structured covers share the same reading order on the feed and in Reader. */
 .dossier-cover[data-cover-layout]{overflow-wrap:anywhere}
 .dossier-cover[data-cover-layout]>.cover-line{grid-column:1 / -1}
-.dossier-cover[data-cover-layout]>.cover-refresh{grid-row:auto!important}
-.cover-footer{grid-column:1 / -1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);align-items:center;gap:.25rem .65rem}
-.cover-footer>.cover-revision-line{grid-column:2;justify-self:end;text-align:end;max-width:16rem}
+.cover-footer{grid-column:1 / -1;display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);
+  align-items:center;gap:0 .55rem;color:var(--muted);font-size:.85rem}
+.cover-footer-meta{grid-column:2;display:flex;align-items:center;justify-content:flex-end;gap:.35rem;min-width:0}
+.cover-footer-meta:empty{display:none}
+.cover-footer-meta>.cover-revision-line{min-width:0;font-size:inherit;text-align:end}
+.cover-footer-meta>.cover-refresh{flex-direction:row-reverse;flex-wrap:nowrap;min-width:2rem;max-width:100%;text-align:end}
+.cover-footer-meta .cover-refresh-status{min-width:0}
 .cover-footer:has(>.cover-help[open])>.cover-help{grid-column:1 / -1}
 .cover-help{margin:0}
 .cover-help>.cover-section-heading{align-items:center;width:fit-content;min-height:2rem;padding:0 .28rem;
-  border-radius:.25rem;color:var(--muted);font-size:.8rem;-webkit-tap-highlight-color:transparent}
+  border-radius:.25rem;-webkit-tap-highlight-color:transparent}
 .cover-help>.cover-section-heading::before{order:1}
 @media(hover:hover) and (pointer:fine){
+  /* Keep keyboard access and pending or failed requests visible on desktop. */
+  .cover-footer-meta>.cover-refresh{opacity:0;pointer-events:none}
+  .dossier-cover:is(:hover,:focus-within) .cover-footer-meta>.cover-refresh{opacity:1;pointer-events:auto}
+  .cover-footer-meta>.cover-refresh:has(.cover-refresh-glyph[data-pending=true],.cover-refresh-status:not(:empty)){opacity:1;pointer-events:auto}
   .cover-help>.cover-section-heading:hover{background:var(--row-hover);color:var(--ink)}
 }
 .cover-help>.cover-section-body{max-width:66ch;padding:0 .28rem .28rem;overflow-wrap:anywhere}
 .cover-help p{margin:.35rem 0 0}
-.cover-help .cover-help-prompt{margin-top:.65rem;font-weight:600}
-.cover-help-placeholder{color:var(--muted)}
+.cover-help .cover-help-prompt{margin-top:.65rem;font-size:.78rem;font-weight:600}
 @media(max-width:760px),(pointer:coarse){
+  .cover-footer{grid-template-columns:minmax(0,1fr)}
+  .cover-footer-meta{grid-column:1;justify-content:space-between}
+  .cover-footer-meta>.cover-revision-line,.cover-footer-meta>.cover-refresh{text-align:start}
+  .cover-footer-meta>.cover-revision-line{padding-inline-start:.28rem}
+  .cover-footer-meta>.cover-refresh{min-width:44px;margin-inline-start:auto}
+  .cover-footer-meta .cover-refresh-glyph{width:44px;min-height:44px}
   .cover-help>.cover-section-heading{min-height:44px}
-  .cover-footer>.cover-revision-line{max-width:min(38vw,16rem)}
 }
 .cover-header-content{display:flex;align-items:center;flex-wrap:wrap;gap:.25rem .75rem}
 .cover-nature{font-weight:650}
