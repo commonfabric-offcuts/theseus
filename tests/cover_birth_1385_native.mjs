@@ -30,7 +30,7 @@ export async function coverBirth1385Checks({ check, until, control, shot, observ
       const topic = `birth1385-${name}-${device}-${theme}`;
       const ids = await seed(topic, [
         ['root', { sender: 'aim-core', join: true, divergence_reason: 'A distinct fixture dossier for 1385', body: 'Which weekend suits the cabin trip?' }],
-        ['answer', { sender: 'aim-core', reply_to: 'root', body: 'Either works; Friday is easier for the drive.' }],
+        ['answer', { sender: 'aim-core', reply_to: 'root', reply_without_quote: 'Fixture reply for 1385 birth facts.', body: 'Either works; Friday is easier for the drive.' }],
       ]);
       await write(topic, ids);
       const p = await open(topic, device, topic, ids.root);
