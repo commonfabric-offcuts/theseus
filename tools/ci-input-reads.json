@@ -1414,6 +1414,20 @@
       "scope": "generated/system/product"
     }
   },
+  "tests/test_deterministic_admission_1131.py": {
+    "be377e839de6ce5a8f688f634ff1a711c8affe52d338a5b5cc59ca14b13820fd:1": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "be377e839de6ce5a8f688f634ff1a711c8affe52d338a5b5cc59ca14b13820fd:2": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    },
+    "bf77df3bd19fd9bdcda9186803806443c1b5c90be57c280f634641e466a3a388": {
+      "inputs": [],
+      "scope": "generated/system/product"
+    }
+  },
   "tests/test_effects_runner.py": {
     "11502846fcd3511011ffedaf9a262b99e019d9880d6f1e94790c62ef230155f3": {
       "inputs": [],
