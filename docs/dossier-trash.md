@@ -22,3 +22,17 @@ Schema 71 adds Trash to the immutable act log and indexes the new kind. The
 70 → 71 → 70 rehearsal uses a verified pre-merge backup copy. A down
 migration with Trash history refuses before changing the instance. Both
 the initial move and a later restore keep their history.
+
+## Trash below Archived
+
+The same fold appears at the foot of Archived on a laptop and in the phone
+rail, including a topic with no archives. It starts closed and makes no
+read of its own until opened. Opening asks for at most 24 current rows from
+`dossier_trash` for the loaded topic. More follows only that view's cursor,
+including a cursor on an otherwise empty page. Retry repeats the same
+page. An exhausted empty list says “Trash is empty.”
+
+The fold owns only its displayed pages. Closing it, leaving the topic, or
+losing access discards those rows and ignores earlier responses. Opening
+it again reads the first page. The fold adds no Archive reads and leaves
+archive counts and controls with the existing shelf.

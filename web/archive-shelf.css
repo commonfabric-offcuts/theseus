@@ -41,6 +41,7 @@ body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden])
 
 /* The shelf's views (1055): the switch, in the look picker's shape, at the heading's right. */
 .shelf-views{display:inline-flex;gap:1px;margin-left:auto;padding:1px;border:1px solid var(--line);border-radius:.4rem;background:var(--panel);align-self:center}
+.shelf-views[hidden]{display:none}
 :root .shelf-views .shelf-view{display:inline-grid;place-items:center;min-width:0;min-height:0;height:1.25rem;padding:0 .45rem;border:0;border-radius:.3rem;background:transparent;color:var(--muted);font-size:.68rem;line-height:1;cursor:pointer}
 :root .shelf-views .shelf-view:hover{color:var(--ink);background:transparent}
 :root .shelf-views .shelf-view[aria-pressed=true]{background:var(--soft);color:var(--ink);font-weight:600}
@@ -71,3 +72,16 @@ body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden])
 
 /*1053: the feed’s New/count mark, quiet on the replica in either view. */
 .shelf-new{flex:none;color:var(--accent);font-size:.7rem;font-weight:700;white-space:nowrap}
+
+.archive-trash{margin:.55rem 0 0;border-top:1px solid var(--line)}
+.archive-trash>summary{display:flex;align-items:center;gap:.32rem;min-height:2rem;padding:0 .2rem;color:var(--muted);
+  list-style:none;font-size:.8rem;font-weight:600;cursor:pointer;border-radius:.35rem;-webkit-tap-highlight-color:transparent}
+.archive-trash>summary::-webkit-details-marker{display:none}
+.archive-trash>summary:hover{color:var(--ink)}
+.archive-trash>summary:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.archive-trash[open]>summary>svg{transform:rotate(90deg)}
+.archive-trash-rows{margin:0;padding:0;list-style:none}
+.archive-trash-rows li{padding:.28rem .35rem .28rem 1.35rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:.78rem;color:var(--ink)}
+.archive-trash>.archive-shelf-notice{margin:.2rem .35rem .35rem 1.35rem}
+@media (pointer:coarse){.archive-trash>summary{min-height:44px}}

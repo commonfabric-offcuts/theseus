@@ -1164,6 +1164,19 @@ export class StackFeed {
     if (!this.shelf && !this.list.ownerDocument.getElementById('things')) return null;
     // Brought back from the shelf, the dossier keeps the keys, as the feed's own Bring back does.
     this.shelf ??= new ArchiveShelf({ doc: this.list.ownerDocument, unread: this.unread, afterRead: () => this.press.over(),
+      readTrash: this.archiveTopic && this.readNamed ? async cursor => {
+        const topicId = this.archiveTopic, limit = 24;
+        const page = checkedView(await this.readNamed('dossier_trash', {
+          topic_id: topicId, limit, ...(cursor === null ? {} : { cursor }),
+        }), this.instanceId);
+        const next = page.next_cursor;
+        if (page.topic_id !== topicId || !Array.isArray(page.items) || page.items.length > limit ||
+            page.items.some(item => !item || typeof item.message_id !== 'string' || !item.message_id ||
+              typeof item.name !== 'string' || typeof item.excerpt !== 'string' || typeof item.withheld !== 'boolean') ||
+            next !== null && (!Number.isSafeInteger(next) || next < 1 || cursor !== null && next >= cursor))
+          throw Error('Could not confirm the trashed dossiers.');
+        return page;
+      } : null,
       read: this.archiveTopic && this.readNamed ? async cursor => {
         const topicId = this.archiveTopic;
         const page = checkedView(await this.readNamed('dossier_archive', {
