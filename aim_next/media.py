@@ -24,6 +24,9 @@ MEDIA_SCHEMA = [
     "CREATE TRIGGER immutable_media_delete BEFORE DELETE ON media_intents BEGIN SELECT RAISE(ABORT, 'immutable media intent'); END",
 ]
 INLINE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+PDF_TYPE = "application/pdf"
+PDF_HEADER = re.compile(rb"%PDF-(?:1\.[0-7]|2\.0)[\r\n]")
+PDF_TRAILER = re.compile(rb"[\r\n]%%EOF[\x00\t\n\f\r ]*\Z")
 
 
 def _png_structure(data):
@@ -192,6 +195,12 @@ class VerifiedMedia:
         data = self._data[self._position:self._position + max_bytes]
         self._position += len(data)
         return data
+
+    def is_pdf(self):
+        # Type admission on the already digest-verified buffer also covers
+        # ready PDFs uploaded while the generic download policy was in force.
+        return (self.descriptor["content_type"] == PDF_TYPE and self._data is not None
+                and bool(PDF_HEADER.match(self._data[:9]) and PDF_TRAILER.search(self._data[-1024:])))
 
     def close(self):
         self._data = None
