@@ -46,6 +46,24 @@ uses the destination topic index, latest joins and visibility of effective
 parents, never unrelated history. Invisible ancestry terminates a dossier.
 A recorded refusal is historical; reread current roots before replying.
 
+After a plain CLI `post` receives this refusal, it can also show open Asks
+addressed to the acting seat. Each choice identifies the Ask, its author, and
+its current dossier. The CLI gives the command to read the Ask and a reply
+command with the exact message ID. Replace `TEXT` with a passage from the Ask,
+or use `--without-quote` with a reason. Copied commands include identifiers
+only when their terminal display preserves them. The reply command includes
+`--tells` when its recipient syntax represents that asker exactly and the
+asker can receive a Tell there. For a deliberate new subject, supply a
+divergence reason and start a fresh operation.
+
+The CLI uses the bound `open_ask_replies` view with `{topic_id}`. It returns
+up to ten current public Asks still waiting on the agent in that readable
+topic, oldest first, with a `more` flag. Each item has `message_id`, `seq`,
+`asker`, `may_tell`, `root_id`, and `dossier_name`. This is metadata only.
+The view uses the existing open-Ask rule and the current dossier ancestry.
+The CLI leaves the existing refusal, structured output, and saved request
+intact.
+
 Message, first cover, deliveries and immutable operation receipt commit in the
 same Core transaction. A refusal leaves no message/cover/delivery half-commit.
 Retry the exact request once with the same identity: it returns its original

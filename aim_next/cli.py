@@ -12,6 +12,7 @@ import mimetypes
 import os
 from pathlib import Path
 import re
+import shlex
 import stat
 import sys
 import time
@@ -739,6 +740,9 @@ class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs,
             else:
                 # Sending the same request again would be refused again.
                 self.out.problem("not recorded %s: %s (operation %s)" % (error.get("code"), error.get("message"), envelope["operation_id"]))
+            if (not self.out.as_json and self.options.verb == "post" and envelope["kind"] == "message.post"
+                    and error.get("code") == "DIVERGENCE_REASON_REQUIRED"):
+                self.open_ask_reply_hints(envelope["target"]["topic_id"])
             raise Failed(code, recorded=receipt.get("recorded") is True)
         return receipt["result"]
 
@@ -1657,6 +1661,37 @@ class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs,
                 self.out.problem("You posted in this dossier recently. %s instead?" % command)
             else:
                 self.out.plain("to add or correct: " + command)
+
+    def open_ask_reply_hints(self, topic_id):
+        try:
+            found = self.store.view(self.actor, "open_ask_replies", {"topic_id": topic_id})
+        except (StoreError, OSError):
+            return
+        error = found.get("error") or {}
+        if error.get("code") in ("AUTHORITY_CHANGED", "BINDING_MISMATCH"):
+            self.out.problem("%s: %s" % (error["code"], error.get("message", "")))
+            return
+        asks = found.get("items", [])
+        if not asks:
+            return
+        topic_arg = None if CONTROL.search(topic_id) else shlex.quote(topic_id)
+        self.out.problem("Choose the Ask you mean." if len(asks) > 1 else "There is an open Ask addressed to you.")
+        for ask in asks:
+            name = _one_line(ask["dossier_name"], 100)
+            dossier = '%s (%s)' % (name, ask["root_id"]) if name else ask["root_id"]
+            self.out.problem("  Ask #%s from %s in dossier %s" % (ask["seq"], ask["asker"], dossier))
+            if topic_arg is not None:
+                self.out.problem("    aim-next read --after %s --limit 1 -- %s" % (ask["seq"] - 1, topic_arg))
+            # The recipient option parses a comma list, and terminal output
+            # escapes controls. Include the flag only if both preserve the ID.
+            asker = ask["asker"]
+            can_address = ask["may_tell"] and _names(asker) == [asker] and not CONTROL.search(asker)
+            tell = " --tells=" + shlex.quote(asker) if can_address else ""
+            self.out.problem("    aim-next reply %s%s --quote=TEXT -" % (shlex.quote(ask["message_id"]), tell))
+        if found.get("more"):
+            self.out.problem("More open Asks are in this topic. Read the topic for more choices.")
+        self.out.problem("Replace TEXT with a passage from the Ask, or use --without-quote with your reason.")
+        self.out.problem("For a new subject, supply --divergence-reason with a fresh operation.")
 
     def default_ask_wait(self, args, operation):
         """Keep ordinary CLI asks usable without inventing choices or promises.

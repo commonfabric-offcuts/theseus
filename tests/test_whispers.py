@@ -922,6 +922,8 @@ VIEW_PATHS = {
                    "so a whisper never names one",
     "post_edit_hint": "the posted message must be editable by the agent through _editable and _message_access; the recent "
                       "lookup requires an admitted public reply target and considers only the agent's public posts in its topic",
+    "open_ask_replies": "the topic is admitted first; _iter_waiting_asks applies READABLE and VISIBLE, and the view "
+                        "returns only addressed public Ask metadata with current visible dossier roots",
     "dossier_cover": "the message named through _acted_message, which applies visible(); its dossier's root walked up through parents "
                      "each checked by visible(), and the root's cover as message_acts reads it, under the whisper rule; a word that made "
                      "its payload Done shows its message only to a reader who may see it",
