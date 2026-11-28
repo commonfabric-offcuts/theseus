@@ -83,6 +83,9 @@ try {
       await rows.last().waitFor();
       assert.deepEqual(await rows.allTextContents(), ['Previous route', 'Duplicate handout', 'First map sketch']);
       assert.equal(await summary.locator('.archive-shelf-count').textContent(), '3');
+      const countStyles = await shelf.locator('.archive-shelf-count').evaluateAll(counts =>
+        counts.map(node => { const style = getComputedStyle(node); return [style.color, style.fontSize, style.fontWeight]; }));
+      assert.deepEqual(countStyles[0], countStyles[1]);
       assert.equal(await fold.locator('li svg[data-glyph=trash][aria-hidden=true]').count(), 3);
       const lookOfRows = await rows.evaluateAll(elements => {
         const muted = getComputedStyle(elements[0].closest('details').querySelector('.archive-shelf-count')).color;

@@ -80,6 +80,7 @@ body[data-archive-shelf=on] .stack-controls:not(:has(>:not(.stack-more,[hidden])
 .archive-trash>summary:hover{color:var(--ink)}
 .archive-trash>summary:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .archive-trash[open]>summary>svg{transform:rotate(90deg)}
+.archive-trash>summary>.archive-shelf-count{font-weight:400}
 .archive-trash-rows{margin:0;padding:0;list-style:none}
 .archive-trash-rows li{display:flex;align-items:center;gap:.35rem;padding:.28rem .35rem .28rem .65rem;
   font-size:.78rem;color:var(--muted)}
