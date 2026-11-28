@@ -74,6 +74,7 @@ test('78 table Light keeps exact Markdown row spans and copies rendered cells', 
     table.rows = byTag(table,'tr');
     for (const row of table.rows) row.cells = row.childNodes;
     host.contains = node => walk(host).includes(node);
+    assert.equal(tableRowAt(host, { closest: () => table.rows[0] }), null, 'header is never a Light hit');
     const chosen = tableRowAt(host, { closest: () => a });
     assert.equal(source.slice(chosen.start, chosen.end), first);
     const light = new LightTableRows();
@@ -89,6 +90,8 @@ test('78 table Light keeps exact Markdown row spans and copies rendered cells', 
     assert.equal(source.slice(from, end), first + '\n' + second);
     assert.equal(light.copied(), 'North\tA | B\nSouth\t');
     assert.deepEqual(table.rows.filter(row => row.classList.contains('light-table-row')), [a,b]);
+    light.paint(host, { start: source.indexOf(header), end });
+    assert.equal(table.rows[0].classList.contains('light-table-row'), false, 'header stays unlit when source spans it');
     light.paint(host, format.tableSourceSpan(c));
     assert.deepEqual(table.rows.filter(row => row.classList.contains('light-table-row')), [c]);
     light.clear();
@@ -97,6 +100,15 @@ test('78 table Light keeps exact Markdown row spans and copies rendered cells', 
   }
 });
 
+test('78 TSV keeps the empty positions covered by a short row’s padding cell', () => {
+  const host = render('| A | B | C | D |\n| --- | --- | --- | --- |\n| North |');
+  const table = byTag(host, 'table')[0], body = byTag(table, 'tbody')[0], row = byTag(body, 'tr')[0];
+  host.querySelectorAll = () => [table];
+  table.rows = [row]; row.cells = row.childNodes;
+  const light = new LightTableRows();
+  light.paint(host, format.tableSourceSpan(row));
+  assert.equal(light.copied(), 'North\t\t\t');
+});
 test('item 758 native presentation oracle reads the actual quote renderer in feed and Reader', () => {
   const reason = 'This is a status update about the whole assignment.';
   for (const [kind, body] of [

@@ -717,16 +717,36 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 .md-table th,.md-table td{padding:.25rem .6rem;border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 .md-cell{display:inline-block;vertical-align:top;width:max-content;max-width:16rem}
 .md-table th{font-weight:650;background:color-mix(in srgb,var(--ink) 5%,transparent)}
-/* Light fills the cells, including padding and wrapped or empty cell space. */
-.md-table tr.light-table-row > :is(th,td) {
-  background: var(--pointer-lit-field,var(--lit-field,var(--light-field,#000)));
+/* The existing borders keep their width and take the Light fill. Only the perimeter gets a muted ring. */
+.md-table tr.light-table-row { position: relative; }
+.md-table tr.light-table-row > td {
+  --row-light-fill: var(--pointer-lit-field,var(--lit-field,var(--light-field,#000)));
+  background-color: var(--row-light-fill);
+  border-color: var(--row-light-fill);
   color: var(--light-words,#fff);
 }
-.own-message .md-table tr.light-table-row > :is(th,td) { color: var(--light-words,var(--ink)); }
-.notebook-reading-words .md-table tr.light-table-row > :is(th,td) {
+.md-table tr.light-table-row::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: solid var(--muted);
+  border-width: 0 1px;
+}
+.md-table tr.light-table-row:not(.light-table-row + .light-table-row)::after { border-top-width: 1px; }
+.md-table tr.light-table-row:not(:has(+ .light-table-row))::after { border-bottom-width: 1px; }
+.own-message .md-table tr.light-table-row > td { color: var(--light-words,var(--ink)); }
+.notebook-reading-words .md-table tr.light-table-row > td {
   color: var(--light-words,var(--notebook-lit-ink));
 }
 .md-table tr.light-table-row a { color: inherit; }
+/* A mixed prose range can cross the header without lighting its words. */
+.message-preview .md-table thead ::highlight(lit-passage),
+.notebook-reading-words .md-table thead ::highlight(notebook-lit-passage),
+.dossier-cover .md-table thead ::highlight(cover-lit-passage) {
+  background-color: transparent;
+  color: var(--ink);
+}
 
 /* A box that scrolls sideways fades at each edge with more beyond it (message-format.mjs sets the classes on scroll and resize). The mask takes away the box's own pixels, so the fade sits over whatever fill the card has. */
 .md-scrolls.md-more-right{-webkit-mask-image:linear-gradient(to left,transparent,#000 1.75rem);mask-image:linear-gradient(to left,transparent,#000 1.75rem)}

@@ -2,7 +2,7 @@
 import { DossierSelectionQuote } from './dossier-selection-quote.mjs';
 import { coverPeekSpan, coverQuoteSource } from './dossier-cover.mjs';
 import { passageAt } from './feed-passages.mjs';
-import { drawnText, rangeOf, sourcePosition } from './message-format.mjs';
+import { drawnText, sourcePosition } from './message-format.mjs';
 import { LightTableRows } from './light-table-rows.mjs';
 import { observePointerLight, pointerLight } from './pointer-light.mjs';
 import { copyKey, onMac } from './writing-input.mjs';
@@ -82,7 +82,7 @@ export function installCoverQuote({ host, template, available, quote, copy }) {
 
   const highlights = win.CSS?.highlights;
   const mac = onMac(win.navigator);
-  let lit = null;
+  let lit = null, shiftPress = false;
   const tableLight = new LightTableRows();
   const changes = new win.MutationObserver(() => clear());
   function clear() {
@@ -93,10 +93,10 @@ export function installCoverQuote({ host, template, available, quote, copy }) {
     changes.disconnect();
   }
   observePointerLight(doc, clear);
-  doc.addEventListener('pointermove', event => {
+  function point(event, pressing = false) {
     const target = element(event.target), words = target?.closest(FIELD + ',' + PEEK);
     if (!words || !host.contains(words)) { clear(); return; }
-    if (event.pointerType === 'touch' || event.buttons || !pointerLight(doc) ||
+    if (event.pointerType === 'touch' || (!pressing && event.buttons) || !pointerLight(doc) ||
         !highlights || typeof win.Highlight !== 'function' || !uncovered() ||
         doc.getSelection()?.isCollapsed === false) { clear(); return; }
     const cover = words.closest('.dossier-cover'), source = coverQuoteSource(words);
@@ -106,14 +106,20 @@ export function installCoverQuote({ host, template, available, quote, copy }) {
     const row = hit.span.row;
     const anchor = event.shiftKey && row && lit?.words === words &&
       lit.anchor.row?.closest('.md-table') === row.closest('.md-table') ? lit.anchor : hit.span;
+    if (pressing && anchor === hit.span) { clear(); return false; }
     const start = Math.min(anchor.start, hit.span.start), end = Math.max(anchor.end, hit.span.end);
     const body = drawnText(words), selection = body.slice(start, end);
     const text = row ? selection : selection.trimEnd();
     if (!text.trim()) { clear(); return; }
     if (lit?.words === words && lit.excerpt.start === start && lit.excerpt.end === start + text.length &&
-        lit.excerpt.revision === source.revision && lit.anchor.start === anchor.start) return;
-    const range = anchor === hit.span ? hit.range : rangeOf(words, start, end);
-    if (!range) { clear(); return; }
+        lit.excerpt.revision === source.revision && lit.anchor.start === anchor.start) return Boolean(row);
+    const range = hit.range;
+    if (anchor !== hit.span) {
+      const first = anchor.start <= hit.span.start ? anchor.row : row;
+      const last = first === row ? anchor.row : row;
+      range.setStartBefore(first);
+      range.setEndAfter(last);
+    }
     clear();
     lit = { words, anchor, range, excerpt: { start, end: start + text.length, text,
       revision: source.revision, section: selectionSection(words, range) } };
@@ -121,8 +127,19 @@ export function installCoverQuote({ host, template, available, quote, copy }) {
     highlights.set(LIGHT, new win.Highlight(range));
     changes.observe(cover, { subtree: true, childList: true, attributes: true, attributeFilter: ['open', 'data-cover-quote-revision'] });
     changes.observe(cover.parentElement, { childList: true, attributes: true, attributeFilter: ['data-cover-closed', 'hidden', 'inert'] });
-  }, { passive: true });
-  doc.addEventListener('pointerdown', clear, true);
+    return Boolean(row);
+  }
+  doc.addEventListener('pointermove', event => point(event), { passive: true });
+  doc.addEventListener('pointerdown', event => {
+    shiftPress = event.shiftKey && event.button === 0 && lit?.anchor.row && point(event, true);
+    if (shiftPress) event.preventDefault(); else clear();
+  }, true);
+  doc.addEventListener('click', event => {
+    if (!shiftPress) return;
+    shiftPress = false;
+    event.preventDefault(); event.stopPropagation();
+  }, true);
+  doc.addEventListener('pointercancel', () => { shiftPress = false; clear(); }, true);
   doc.addEventListener('pointerleave', clear);
   doc.addEventListener('focusin', clear);
   doc.addEventListener('scroll', clear, { capture: true, passive: true });

@@ -2,9 +2,11 @@
 // exact source span. Keep Markdown offsets for quoting and visible cells for Copy.
 import { tableSourceSpan } from './message-format.mjs';
 
+const bodyRowSpan = row => row?.parentNode?.nodeName === 'TBODY' ? tableSourceSpan(row) : null;
+
 export function tableRowAt(words, target) {
   const row = target?.closest?.('.md-table tr');
-  const span = row && words.contains(row) && tableSourceSpan(row);
+  const span = row && words.contains(row) && bodyRowSpan(row);
   return span && span.start < span.end ? { row, ...span } : null;
 }
 
@@ -14,7 +16,7 @@ function rowsIn(words, { start, end }) {
     const span = tableSourceSpan(table);
     if (!span || span.end <= start || span.start >= end) continue;
     for (const row of table.rows) {
-      const span = tableSourceSpan(row);
+      const span = bodyRowSpan(row);
       if (span?.start >= end) break;
       if (span?.end > start) rows.push({ row, table, ...span });
     }
@@ -56,7 +58,8 @@ export class LightTableRows {
 
   copied() {
     if (!this.whole) return null;
-    return this.rows.map(({ row }) => [...row.cells].map(cell => cellWords(cell).trim()).join('\t')).join('\n');
+    return this.rows.map(({ row }) => [...row.cells].map(cell =>
+      cellWords(cell).trim() + '\t'.repeat((cell.colSpan || 1) - 1)).join('\t')).join('\n');
   }
 
   clear() {
