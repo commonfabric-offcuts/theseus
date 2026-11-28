@@ -61,6 +61,9 @@ def developer_instructions(actor_id, cli, profile_path, broker=None):
         "    lands in a dossier nobody has named, the outcome's coordinator names it if it takes part in the topic",
         "    (else the first agent that replies), in two to five words for what it is about; a name a person",
         "    typed is never replaced, and Core refuses any other mint (ALREADY_NAMED, NOT_THE_NAMER)",
+        "  birth REPLY               read the first-cover prompt for your existing reply",
+        "If your public reply prints a birth command, use its exact root and revisions in the same turn.",
+        "Give the nature, what counts as done, and a rough cover within a minute or two. Include a name only if offered.",
         "  edit MESSAGE --expected N -   fix words you wrote, in place: a correction to your own words is an edit",
         "    of them, not a follow-up message; N is the revision you read (read shows \"(edited, revision N)\", else 1);",
         "    Core refuses a message you did not write (FORBIDDEN) and a stale N (REVISION_CONFLICT)",
@@ -154,6 +157,7 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True, work_context=
                                             "delivery" if count == 1 else "deliveries", actor_id)]
     # Each dossier to name is said once, on its first delivery listed.
     to_name = set()
+    public_message = False
     for number, item in enumerate(listed, 1):
         if item.get('retraction'):
             removed = item['retraction']
@@ -186,6 +190,9 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True, work_context=
                              ' This is a whisper; keep its source and answer private.' if message.get('whisper') else ''))
             if _named(item['topic']['id']) != UNNAMED:
                 lines.append('Read: aim-next read %s --after %d --limit 1' % (item['topic']['id'], recovered['seq'] - 1))
+            reply_id = _named(recovered['message_id'])
+            if not message.get('whisper') and reply_id != UNNAMED:
+                lines.append("Check for first-cover work still owed: aim-next birth " + reply_id)
             continue
         if item.get("correction"):
             # Core's words: its author edited a message this agent was sent (docs/message-edit.md). It is not new work, and
@@ -207,6 +214,7 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True, work_context=
                              sender, sender, sender))
             continue
         name_it = item.get("name_it")
+        public_message = True
         if name_it and name_it["root_id"] in to_name:
             name_it = None
         elif name_it:
@@ -230,6 +238,9 @@ def notice(items, handed_seq, actor_id, attempt_id, complete=True, work_context=
             first[topic] = min(first.get(topic, item["message"]["seq"]), item["message"]["seq"])
     for topic, seq in first.items():
         lines.append("Read: aim-next read %s --after %d" % (topic, seq - 1))
+    if public_message:
+        lines.append("After the first public agent reply, the CLI gives its responder a birth command. "
+                     "Use it in the same turn to write the nature, what counts as done, and a rough cover.")
     context = None
     if PREVIEWS_IN_CONTEXT:
         previews = "\n".join("%s: %s" % (_named(item["id"]), json.dumps(

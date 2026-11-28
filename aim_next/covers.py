@@ -21,7 +21,7 @@ import re
 
 from .contract import Refusal
 from .cover_values import DONE_REFUSED, _line, done_of, owners_word, shown, stored_value, written
-from .stacks import EMPTY, MEMBERS, NOT_THE_NAMER, StackRoots, _value, current_acts, dossier_namer
+from .stacks import EMPTY, MEMBERS, NOT_THE_NAMER, StackRoots, _value, current_acts, dossier_namer, first_public_agent_reply
 from .whispers import STAYS, VISIBLE
 
 
@@ -162,12 +162,7 @@ class Covers:
         before = stored_value(self._act_value(db, root["id"], "cover", ""))
         if before.get("birth"):
             raise Refusal("BIRTH_RECORDED", "The dossier already has its birth facts")
-        first = db.execute(
-            MEMBERS + " SELECT m.id FROM members p CROSS JOIN messages m ON m.id=p.id "
-            "JOIN actors a ON a.id=m.author_id WHERE m.id<>:root AND m.reply_to IS NOT NULL "
-            "AND a.kind='agent' ORDER BY m.seq LIMIT 1",
-            {"root": root["id"], "actor": ""}).fetchone()
-        if reply["author_id"] != actor or first is None or first["id"] != reply["id"]:
+        if reply["author_id"] != actor or first_public_agent_reply(db, root["id"]) != reply["id"]:
             raise Refusal("NOT_FIRST_RESPONDER", "The first agent to reply on the record writes the birth facts")
 
         birth = {"reply_id": reply["id"]}

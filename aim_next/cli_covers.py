@@ -19,6 +19,17 @@ def _at(ms):
 
 
 def register(verb):
+    birth = verb("birth")
+    birth.add_argument("reply")
+    birth.add_argument("--root")
+    birth.add_argument("--expected-name", type=int)
+    birth.add_argument("--expected-cover", type=int)
+    birth.add_argument("--name")
+    birth.add_argument("--nature")
+    birth.add_argument("--done-when")
+    birth.add_argument("--stands")
+    birth.add_argument("--operation")
+
     cover = verb("cover")
     cover.add_argument("message")
     cover.add_argument("--expected", type=int)
@@ -54,6 +65,11 @@ def cover_lines(root, revision, cover, owner):
     if cover is None:
         return ["no cover on the dossier of %s (revision %d)" % (root, revision)]
     lines = ["cover of the dossier of %s (revision %d, by %s at %s)" % (root, revision, cover["by"], _at(cover["at_ms"]))]
+    birth = cover.get("birth", {})
+    if "nature" in birth:
+        lines.append("  nature: " + birth["nature"])
+    if "done_when" in birth:
+        lines.append("  done when: " + birth["done_when"])
     if cover["stands"]:
         # Output.plain sanitizes embedded controls, including LF. Emit each
         # supplied line separately so the terminal readback retains the breaks.
@@ -75,6 +91,38 @@ def cover_lines(root, revision, cover, owner):
 
 
 class CoverVerbs:
+    def birth_hint(self, found):
+        hint = found.get("birth_it")
+        if hint is None:
+            return False
+        self.out.plain("Write its first cover in the same turn. Aim for a minute or two.")
+        self.out.plain('  aim-next birth %s --root %s --expected-name %d --expected-cover %d%s '
+                       '--nature "What kind of dossier" --done-when "What counts as done" --stands "Rough first cover"' %
+                       (hint["reply_id"], hint["root_id"], hint["name_revision"], hint["cover_revision"],
+                        ' --name "Two to five words"' if hint["can_name"] else ''))
+        return True
+
+    def do_birth(self):
+        options = self.options
+        args = {field: getattr(options, field) for field in ("name", "nature", "done_when", "stands")
+                if getattr(options, field) is not None}
+        fences = (options.root, options.expected_name, options.expected_cover)
+        if not args and all(value is None for value in fences) and options.operation is None:
+            found = self.view("stack_namer", {"message_id": options.reply})
+            if not self.birth_hint(found):
+                self.out.plain("No first cover is due from you for this reply.")
+            return
+        if not args or any(value is None for value in fences):
+            self.refuse("INVALID_ARGUMENT", "A birth write needs --root, --expected-name, --expected-cover and cover facts")
+        if args.get("stands") == "-":
+            args["stands"] = self.bounded_text(self.stdin)
+        args["reply_id"] = options.reply
+        result = self.command("stack.birth", {"message_id": options.root}, args,
+                              {"name_revision": options.expected_name, "cover_revision": options.expected_cover},
+                              operation=self.operation_of())
+        self.out.plain("wrote the first cover of %s (name revision %d, cover revision %d)" %
+                       (result["message_id"], result["name_revision"], result["cover_revision"]))
+
     def cover_args(self):
         """The fields this run sets or clears, from its options; {} when it only reads."""
         options, args = self.options, {}
