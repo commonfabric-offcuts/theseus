@@ -37,10 +37,20 @@ MARK_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_marks)"
 # The person's marked messages by others, each counted while no eligible delivery
 # (pending in an active group) already counts the same message. Read with
 # message_marks k, topics t and workspaces w; k.actor_id is the reader.
-MARKED = ("k.revision%2=1 AND " + READABLE.replace(":actor", "k.actor_id") + " AND NOT EXISTS ("
-          "SELECT 1 FROM messages o WHERE o.id=k.message_id AND o.author_id=k.actor_id) AND NOT EXISTS ("
-          "SELECT 1 FROM deliveries d CROSS JOIN delivery_groups g ON g.id=d.group_id "
-          "WHERE d.message_id=k.message_id AND d.recipient_id=k.actor_id AND d.revision=1 AND d.state='pending' AND g.active=1)")
+def _marked(*, indexed=False):
+    # Answer deliveries only name the recipient's own message. The check
+    # above the pending lookup already excludes that message from a mark.
+    index = " INDEXED BY ordinary_message_delivery" if indexed else ""
+    ordinary = " AND d.answer_id IS NULL" if indexed else ""
+    return ("k.revision%2=1 AND " + READABLE.replace(":actor", "k.actor_id") + " AND NOT EXISTS ("
+            "SELECT 1 FROM messages o WHERE o.id=k.message_id AND o.author_id=k.actor_id) AND NOT EXISTS ("
+            "SELECT 1 FROM deliveries d" + index + " CROSS JOIN delivery_groups g ON g.id=d.group_id "
+            "WHERE d.message_id=k.message_id AND d.recipient_id=k.actor_id AND d.revision=1 AND d.state='pending' AND g.active=1" +
+            ordinary + ")")
+
+
+MARKED = _marked()
+MARKED_BY_MESSAGE = _marked(indexed=True)
 
 
 class Marks:

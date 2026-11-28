@@ -1539,6 +1539,11 @@ function paintViews(kind, reactionId = null) {
   // All but the header and the people, which repaint in place, move the list:
   // under a press held down they wait for it to end, so the click lands where it began.
   if (kind !== 'topic' && pressHold.down) { pressHold.after(kind, () => paintViews(kind)); return; }
+  if (kind === 'acts' || kind === 'edited') stackFeed?.shelf?.refresh();
+  if (kind === 'messages' && stackFeed && stackFeed.archiveNewest !== views.newest) {
+    if (stackFeed.archiveNewest !== undefined) stackFeed.shelf?.refresh();
+    stackFeed.archiveNewest = views.newest;
+  }
   if (kind === 'starred') { keepListAnchor(paintStarredStatus); return; }
   if (kind === 'window') { keepListAnchor(paintWindowGaps); return; }
   // A thumbs-up reads its message (card-reading.mjs, readNow): its card, and its stack's count of new replies, read so.
@@ -1944,6 +1949,10 @@ function feedOf() {
     nameOf: id => (id === bootstrap.actor ? 'You' : displayActor(id)),
     newest: (stack, mark) => run(() => openDossierNew(stack, mark)),
     landReply: id => run(() => landOnMessage(id, undefined, undefined, false, true)),
+    archiveTopic: topic?.id, landArchive: (id, loaded) => {
+      panes.things?.leave();
+      return run(() => landOnMessage(id, undefined, undefined, !loaded, true));
+    },
     refreshPositions: () => views.readPositions((name, args) => api.view(name, args)), arranged: stacksRedrawn,
     hold: (paint, act) => keepListAnchor(paint, act), navigate: () => releaseTopArrivals(), press: pressHold, status, line: () => $('app-status'), reread: () => { freshness?.invalidate('acts', 0, true); freshness?.request(); }, reply: (id, card) => run(() => replyInCard(id, card)),
     thumb: (item, on) => menu?.thumb(item, on), thumbPending: id => reactions?.pending.get(id) ?? null,
@@ -1968,6 +1977,10 @@ function feedOf() {
 // (arrangeStacks, which takes it back above More once the feed is drawn).
 function drawFeed(on, ...parts) {
   const sheet = $('new-message-sheet'), inFeed = $('messages').contains(sheet);
+  if (stackFeed) {
+    stackFeed.archiveAvailable = on;
+    stackFeed.shelf?.setAvailable(on);
+  }
   for (const id of ['messages', 'topic-people', ...parts]) $(id).hidden = !on;
   if (!on && windowGapHost) windowGapHost.hidden = true;
   reader?.keepReplyVisible();
@@ -3163,6 +3176,7 @@ function learnMessageRemoval({ message_id, removal }) {
   // or its pending read then sees the same fact as the loaded page.
   dossierHeads?.sync(views.messages, views.removals);
   views?.learnRemoval(message_id, removal);
+  if (typeof stackFeed !== 'undefined') stackFeed?.shelf?.removed(message_id);
   const item = feedMessages().get(message_id), entry = messageEntries.get(message_id), card = cardIn(entry);
   if (entry) dropCardDocuments(entry);
   if (removal.kind === 'unsent') { if (entry) dropCardImages(entry); entry?.remove(); messageEntries.delete(message_id); clearVisitNew(message_id); }

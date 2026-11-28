@@ -17,6 +17,7 @@ function fixture(unreadIds = []) {
     visibility: 'visible', display: 'block', position: 'static', getPropertyValue: () => '',
   }) };
   const feed = { list: r.list, state: {}, unread: item => unread.has(item.id),
+    press: { over: async () => {} }, pending: new Map(), standIns: new Map(), arrange() {}, moreChanged() {},
     setAside: (stack, below) => calls.push([stack.id, below]), newest: (stack, mark) => opens.push([stack.id, mark]), undo: () => calls.push('undo') };
   const shelf = StackFeed.prototype.archiveShelf.call(feed);
   return { shelf, unread, doc, calls, feed, opens };
@@ -86,4 +87,45 @@ test('1053 an unavailable restoration does not start the exact-message read', ()
   const section = f.doc.createElement('section'), feedMark = f.doc.createElement('span'); feedMark.className = 'stack-new-action'; section.append(feedMark);
   f.feed.state.sections = new Map([['a', section]]); f.feed.setAside = () => false;
   f.shelf.replicas.get('a').onclick({ detail: 1 }); assert.deepEqual(f.opens, []);
+});
+
+const projected = (items = []) => ({ topic_id: 'topic', items, next_cursor: null, remaining: 0 });
+const oldArchive = { message_id: 'remote', excerpt: 'An off-page excerpt', count: 3, unread: 0, seq: 1, latest: 3,
+  through: 3, aside_revision: 1, order_key: 1, order_tie: 1 };
+
+test('removing an off-page root rejects an older archive response', async () => {
+  const { shelf } = fixture();
+  shelf.started = true;
+  shelf.read = async () => projected([oldArchive]);
+  await shelf.readPage(true);
+  assert.equal(shelf.replicas.get('remote').querySelector('.shelf-title').textContent, oldArchive.excerpt);
+  let resolve;
+  shelf.read = () => new Promise(done => { resolve = done; });
+  const pending = shelf.readPage(true);
+  shelf.read = async () => projected();
+  shelf.removed('remote');
+  assert.equal(shelf.replicas.has('remote'), false);
+  resolve(projected([oldArchive]));
+  await pending;
+  assert.equal(shelf.replicas.has('remote'), false);
+});
+
+test('topic denial clears both archive sources and fences a late page', async () => {
+  const f = fixture();
+  f.shelf.started = true;
+  f.shelf.read = async () => projected([oldArchive]);
+  paint(f, [dossier('loaded')]);
+  await f.shelf.readPage(true);
+  assert.equal(f.shelf.replicas.size, 2);
+  let resolve;
+  f.shelf.read = () => new Promise(done => { resolve = done; });
+  const pending = f.shelf.readPage(true);
+  f.shelf.setAvailable(false);
+  assert.equal(f.shelf.root.hidden, true);
+  assert.equal(f.shelf.replicas.size, 0);
+  paint(f, [dossier('loaded')]);
+  resolve(projected([oldArchive]));
+  await pending;
+  assert.equal(f.shelf.projected.size, 0);
+  assert.equal(f.shelf.replicas.size, 0);
 });

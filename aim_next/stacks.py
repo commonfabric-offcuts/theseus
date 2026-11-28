@@ -444,7 +444,7 @@ class StackRoots:
 # The messages of the dossier :root heads that :actor can see ('' sees only those on the record): the root, the
 # replies under it that no join took elsewhere, and the stacks joined into it, and theirs in turn. Both recursive arms
 # seek indexed children of the current member. The join arm accepts only the latest act; a nonempty join overrides
-# reply ancestry.
+# reply ancestry. The unary + drops the CTE column's affinity so SQLite can seek the JSON expression index.
 MEMBERS = """
         WITH RECURSIVE members(id) AS (
           SELECT :root
@@ -455,11 +455,17 @@ MEMBERS = """
             AND coalesce((SELECT json_extract(a.value,'$.into') FROM message_acts a
               WHERE a.message_id=m.id AND a.kind='join' AND a.owner='' ORDER BY revision DESC LIMIT 1),'')=''
           UNION
-          SELECT m.id FROM members p JOIN message_acts a ON json_extract(a.value,'$.into')=p.id AND a.kind='join'
+          SELECT m.id FROM members p CROSS JOIN message_acts a INDEXED BY stack_joins
+            ON json_extract(a.value,'$.into')=+p.id AND a.kind='join'
           JOIN messages m ON m.id=a.message_id JOIN messages parent ON parent.id=p.id AND parent.topic_id=m.topic_id
           WHERE a.owner='' AND a.revision=(SELECT max(b.revision) FROM message_acts b WHERE b.message_id=a.message_id AND b.kind='join' AND b.owner='')
             AND """ + VISIBLE + """
         )"""
+
+
+def _dossier_totals(db, actor, root):
+    return db.execute(MEMBERS + " SELECT max(m.seq), max(CASE WHEN m.author_id<>:actor THEN m.seq END), count(*)"
+                      " FROM members p CROSS JOIN messages m ON m.id=p.id", {"root": root, "actor": actor}).fetchone()
 
 
 def _dossier(db, actor, root, *, archive_roots=None):
@@ -502,8 +508,7 @@ def _dossier(db, actor, root, *, archive_roots=None):
         # absence; older/other dossiers keep the exact recursive calculation.
         if other is not None and roots.root(other['id']) == root or other is None and len(candidates) < 32:
             return latest['seq'], other['seq'] if other is not None else None
-    row = db.execute(MEMBERS + " SELECT max(m.seq), max(CASE WHEN m.author_id<>:actor THEN m.seq END) FROM members p JOIN messages m ON m.id=p.id",
-                     {"root": root, "actor": actor}).fetchone()
+    row = _dossier_totals(db, actor, root)
     return row[0], row[1]
 
 
@@ -1036,6 +1041,11 @@ class Stacks:
         found = current_acts(db, actor, [row["id"] for row in rows[:limit]])
         return _bounded_page({"instance_id": self.instance_id, "topic_id": topic["id"], "version": _seen_acts(db, actor, topic["id"])}, rows, limit,
                              lambda row: {"message_id": row["id"], "seq": row["seq"], "acts": found.get(row["id"], dict(EMPTY))}, "seq")
+
+    def _view_dossier_archive(self, db, actor, args):
+        from .archive_projection import archive_page
+        topic = self._topic(db, actor, args.get("topic_id"))
+        return archive_page(db, actor, topic["id"], self.instance_id, args)
 
     def _view_dossier_trash(self, db, actor, args):
         topic = self._topic(db, actor, args.get("topic_id"))
