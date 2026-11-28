@@ -670,12 +670,15 @@ class Conversation:
         # beginning of the message a reply answers is cut and marked by the helper.
         columns = ("m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind," + words("m", plain=True) + " AS body,"
                    + revision("m") + " AS revision," + edited("m") + " AS edited_ms,m.reply_to,m.exchange_id,m.addressees,m.attachments,m.sent_ms,m.intent,m.private_to,"
-                   "p.author_id AS reply_to_author," + words("p", chars=120) + " AS reply_to_excerpt,p.private_to AS reply_to_private,"
+                   "p.author_id AS reply_to_author,p.sent_ms AS reply_to_sent_ms,pw.kind AS reply_to_author_kind,"
+                   "px.message_id IS NOT NULL AS reply_to_withdrawn,"
+                   + words("p", chars=120) + " AS reply_to_excerpt,p.private_to AS reply_to_private,"
                    "CASE WHEN m.reply_to IS NOT NULL AND m.quotes<>'[]' THEN "
                    "(SELECT json_extract(q.value,'$.section') FROM json_each(m.quotes) q "
                    "WHERE json_extract(q.value,'$.source.kind')='cover' AND json_extract(q.value,'$.source.id')=m.reply_to "
                    "AND json_type(q.value,'$.section')='text' LIMIT 1) END AS reply_cover_section")
-        parent = " JOIN actors w ON w.id=m.author_id LEFT JOIN messages p ON p.id=m.reply_to"
+        parent = (" JOIN actors w ON w.id=m.author_id LEFT JOIN messages p ON p.id=m.reply_to"
+                  " LEFT JOIN actors pw ON pw.id=p.author_id LEFT JOIN message_withdrawals px ON px.message_id=p.id")
         # Every form reads only what the reader may see (whispers.VISIBLE), so a
         # page never stalls on, counts or folds a whisper between others.
         values = {"topic": topic["id"], "actor": actor, "cursor": cursor, "limit": limit + 1}
@@ -721,6 +724,11 @@ class Conversation:
             item["reply_to_withheld"] = not hidden and item["reply_to"] is not None and withheld(item["reply_to"])
             if item["reply_to_withheld"]:
                 item["reply_to_excerpt"] = None
+            if item["reply_to_author"] is None or item["reply_to_withheld"]:
+                for key in ("reply_to_sent_ms", "reply_to_author_kind", "reply_to_withdrawn"):
+                    item.pop(key)
+            else:
+                item["reply_to_withdrawn"] = bool(item["reply_to_withdrawn"])
             item['reply_to_removal'] = (removal_value(db, item['reply_to'])
                                         if item['reply_to'] and not hidden and not item['reply_to_withheld'] else None)
             cover_section = item.pop("reply_cover_section")

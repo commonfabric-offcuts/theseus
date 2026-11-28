@@ -1195,3 +1195,19 @@ the explicit named Join choice sends the existing join command. Changed
 source/neighbor/visit/authority/revision refuses. See [the contract](deliberate-join-1269.md).
 Historical native direct-join checks above need the extra deliberate step;
 this source change does not claim those native checks have executed.
+
+## Earlier reply context
+
+The existing `topic_messages` response carries `reply_to_sent_ms`,
+`reply_to_author_kind` and `reply_to_withdrawn` alongside the parent excerpt.
+These fields describe an authorized parent even when its card is outside the
+returned page. A private parent the reader cannot see, or a parent held in Edit
+from this reader, supplies none of the new fields. The bounded page query joins
+the existing author and withdrawal records. The schema and view arguments stay
+the same.
+
+A displayed reply uses a compact context button when its original is elsewhere
+in the feed. The button omits the excerpt for a withdrawn or removed original.
+The existing actor-scoped withdrawal event can update a reply's loaded context
+without fetching its off-page parent. The button uses starred landing for a
+readable original and focuses the dossier when Unsend removed the original.

@@ -335,9 +335,13 @@ class ReadPathCase(WhisperCase):
 
     def test_a_reply_says_how_its_parent_begins_only_to_a_reader_who_may_see_the_parent(self):
         asked = self.whisper("Secret words")
-        answer = self.whisper("Answer", actor="agent-a", to="owner", reply_to=asked)
+        answer = self.whisper("Answer", actor="agent-a", to="owner", reply_to=asked,
+                              reply_without_quote="Answering the full synthetic message")
         item = {entry["id"]: entry for entry in self.messages("owner")["items"]}[answer]
         self.assertEqual((item["reply_to_author"], item["reply_to_excerpt"]), ("owner", "Secret words"))
+        self.assertEqual(item["reply_to_author_kind"], "human")
+        self.assertIsInstance(item["reply_to_sent_ms"], int)
+        self.assertIs(item["reply_to_withdrawn"], False)
         # agent-b never sees the answer, and a page with a hidden parent of an on-record reply says nothing of it.
         self.assertNotIn(answer, self.ids(self.messages("agent-b")))
 

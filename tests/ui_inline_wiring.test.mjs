@@ -291,7 +291,10 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor(callbacks) { reader.callbacks = callbacks; return reader; } },
-    TopicViews: class { constructor({ paint, invalidate }) { Object.assign(views, { paint, invalidate }); return views; } }, Freshness: class { constructor(options) { fresh.options = options; return fresh; } },
+    TopicViews: class { constructor({ paint, invalidate }) {
+      Object.assign(views, { paint, invalidate, rememberParentWithdrawal: id => events.push(['parent-withdrawal', id]) });
+      return views;
+    } }, Freshness: class { constructor(options) { fresh.options = options; return fresh; } },
     initialViews: async () => ({}), actorBaseline: async () => null, readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
     openIntentJournal: async () => { events.push(['intent-journal']); throw Error('No browser intent storage in this fixture'); },
     openOpeningStore: async () => { events.push(['opening-store']); return { close() {} }; },
@@ -7621,6 +7624,23 @@ test('891 scoped withdrawal refresh reaches cached-only root and suppresses its 
   assert.equal(answer, true); assert.deepEqual(reads, [['source', 'q891']]);
   assert.deepEqual(p.ids(), [['r891']]); assert.doesNotMatch(p.words(), /WITHDRAWN QUESTION WORDS/);
   assert.equal(p.f.views.messages.has('q891'), false);
+});
+
+test('54 an off-page withdrawal updates the echo using the existing actor event', async () => {
+  const root = { id: 'root54', seq: 1, author_id: 'dan', body: 'Dossier root' };
+  const position = { ...sourcePosition891, root_id: root.id };
+  const reply = reply891('reply54', 8, { reply_to: 'offpage54', stack_position: position,
+    reply_to_author_kind: 'human', reply_to_sent_ms: TODAY, reply_to_withdrawn: false, reply_to_excerpt: 'Original off-page words' });
+  const p = await questionPage891([{ ...root, stack_position: position }, reply]);
+  const echo = () => walk(p.f.get('messages')).find(node => node.classList?.contains('reply-echo'));
+  assert.equal(p.f.views.messages.has('offpage54'), false);
+  assert.equal(echo().querySelector('.reply-echo-excerpt').dataset.words, 'Original off-page words');
+  const read = () => assert.fail('A known off-page reply context should update without a read');
+  const answer = await p.f.fresh.options.refresh('withdrawal:offpage54', 1, read, () => true);
+  assert.equal(answer, true);
+  assert.equal(p.f.views.messages.get(reply.id).reply_to_withdrawn, true);
+  assert.equal(echo().querySelector('.reply-echo-excerpt').dataset.words, '');
+  assert.match(echo().querySelector('.reply-echo-detail').dataset.words, /withdrawn/);
 });
 
 test('891 committed withdrawal updates same Reader but preserves writing and removes visible ask only after success', async () => {
