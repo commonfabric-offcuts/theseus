@@ -34,7 +34,6 @@ import { keyAction } from './pane-keys.mjs';
 import { revealSelection } from './reveal.mjs';
 import { nearest } from './arrow-reach.mjs';
 import { glyph } from './glyphs.mjs';
-import { openAttachment } from './attachment-open.mjs';
 import { lineText } from './lines.mjs';
 
 // A Notebook page's first words: its body's lines without Markdown marks, joined, after its own title when it opens with
@@ -827,8 +826,11 @@ export class ThingsRail {
         link.onclick = event => {
           if (!plainClick(event)) return;
           event.preventDefault();
-          const read = async () => (await api.media(bootstrap.instance_id, attachment, image.source_ref)).blob;
-          return openAttachment(link, { name, read, current, notice });
+          if (!current()) return;
+          try {
+            api.openPdfPreview(bootstrap.instance_id, attachment, image.source_ref, doc);
+            notice('');
+          } catch (error) { notice(error); }
         };
         return link;
       }

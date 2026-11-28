@@ -18,20 +18,22 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qsl, quote, unquote, urlsplit
 
 from .authority import AuthorityError
 from .contract import LIMITS, Refusal
 from .effects_watch import WatchError
 from . import invite
 from .live import LiveFeed
-from .media import INLINE_TYPES
+from .media import INLINE_TYPES, PDF_TYPE
 from . import web_build
 
 
 MEDIA_CHUNK = 65536
 MEDIA_HEADER_BYTES = 8192
 MEDIA_RATE = 256 * 1024
+PDF_PREVIEW_PATH = "/api/media/pdf-preview"
+PDF_FORM_BYTES = 4096
 HTML_SANDBOX_CSP = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
                     "connect-src 'none'; frame-src about:; form-action 'none'; base-uri 'none'; "
                     "sandbox allow-scripts; frame-ancestors 'self'")
@@ -512,15 +514,17 @@ class Handler(BaseHTTPRequestHandler):
             raise RequestError(403, "HOST_REFUSED", "Use an explicitly configured instance address.")
         return self.server.origins_by_authority[hosts[0]]
 
+    def _require_session(self, authorization):
+        if not hmac.compare_digest(authorization.encode("utf-8"),
+                                   ("Bearer " + self.server.session_token).encode("utf-8")):
+            raise RequestError(401, "SESSION_REQUIRED", "Open this instance to establish a session.")
+
     def _authorize(self, write=False):
         origin = self._host()
         authorizations = self.headers.get_all("Authorization", [])
         if len(authorizations) != 1:
             raise RequestError(401, "SESSION_REQUIRED", "Use exactly one instance session.")
-        authorization = authorizations[0]
-        if not hmac.compare_digest(authorization.encode("utf-8"),
-                                   ("Bearer " + self.server.session_token).encode("utf-8")):
-            raise RequestError(401, "SESSION_REQUIRED", "Open this instance to establish a session.")
+        self._require_session(authorizations[0])
         origins = self.headers.get_all("Origin", [])
         if (write or origins) and origins != [origin]:
             raise RequestError(403, "ORIGIN_REFUSED", "This request is not from the instance.")
@@ -648,8 +652,10 @@ class Handler(BaseHTTPRequestHandler):
         self._run(self._post)
 
     def _post(self):
-        self._authorize(write=True)
         path = urlsplit(self.path).path
+        if path == PDF_PREVIEW_PATH:
+            return self._preview_pdf()
+        self._authorize(write=True)
         if path == "/api/media/upload":
             return self._upload_media()
         if path == "/api/media/read":
@@ -737,14 +743,47 @@ class Handler(BaseHTTPRequestHandler):
         if self.body_consumed < length:
             self._discard_refused_upload()
 
-    def _read_media(self):
-        args = self._body()
+    def _preview_pdf(self):
+        # A native navigation cannot supply an Authorization header. Accept
+        # the same session proof in a bounded form on this read-only route.
+        if self.headers.get_all("Origin", []) != [self._host()]:
+            raise RequestError(403, "ORIGIN_REFUSED", "This request is not from the instance.")
+        lengths = self.headers.get_all("Content-Length", [])
+        if (self.headers.get_all("Transfer-Encoding", []) or len(lengths) != 1
+                or not re.fullmatch(r"[0-9]{1,20}", lengths[0])):
+            raise RequestError(400, "INVALID_BODY", "One bounded content length is required.")
+        length = int(lengths[0])
+        if length > PDF_FORM_BYTES:
+            raise RequestError(413, "ENVELOPE_TOO_LARGE", "The PDF preview form is too large.")
+        if (len(self.headers.get_all("Content-Type", [])) != 1
+                or self.headers.get_content_type() != "application/x-www-form-urlencoded"):
+            raise RequestError(415, "FORM_REQUIRED", "Use the Files PDF preview form.")
+        try:
+            raw = self.rfile.read(length)
+            self.body_consumed = len(raw)
+            fields = dict(parse_qsl(raw.decode("ascii"), strict_parsing=True, errors="strict", max_num_fields=5))
+            if len(raw) != length or set(fields) != {"token", "instance_id", "media_id", "message_id", "sha256"}:
+                raise ValueError("Invalid PDF form fields")
+        except (ValueError, UnicodeError):
+            raise RequestError(400, "INVALID_BODY", "A valid Files PDF preview form is required.")
+        except socket.timeout:
+            raise RequestError(408, "INCOMPLETE_BODY", "The request body did not finish.")
+        self._require_session("Bearer " + fields["token"])
+        if fields["instance_id"] != self.server.instance_id or not re.fullmatch(r"[a-f0-9]{64}", fields["sha256"]):
+            raise RequestError(409, "MEDIA_UNCONFIRMED", "The PDF no longer matches this instance or attachment.")
+        return self._read_media({"media_id": fields["media_id"],
+                                 "source_ref": {"kind": "message", "id": fields["message_id"]}},
+                                pdf_sha256=fields["sha256"])
+
+    def _read_media(self, args=None, *, pdf_sha256=None):
+        if args is None:
+            args = self._body()
         def output(store):
             with store.open_media(self.server.actor, args) as resource:
-                self._send_media(resource)
+                self._send_media(resource, pdf_sha256=pdf_sha256)
         return self._media_call(self.server.media_read_slots, output)
 
-    def _send_media(self, resource):
+    def _send_media(self, resource, *, pdf_sha256=None):
         descriptor = dict(resource.descriptor)
         try:
             encoded = json.dumps(descriptor, ensure_ascii=True, allow_nan=False,
@@ -759,7 +798,10 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("Invalid descriptor")
         except (KeyError, ValueError, TypeError, UnicodeError):
             raise RequestError(500, "MEDIA_UNCONFIRMED", "Verified media metadata could not be represented.")
-        inline = descriptor.get("inline") is True and content_type in INLINE_TYPES
+        pdf = content_type == PDF_TYPE and resource.is_pdf()
+        if pdf_sha256 is not None and (not pdf or pdf_sha256 != descriptor.get("sha256")):
+            raise RequestError(415, "PDF_PREVIEW_REFUSED", "This attachment could not be verified for PDF preview.")
+        inline = pdf or descriptor.get("inline") is True and content_type in INLINE_TYPES
         disposition = "inline" if inline else "attachment"
         filename = quote(name, safe="", encoding="utf-8", errors="strict")
         deadline = time.monotonic() + self.server.request_timeout + size / MEDIA_RATE
@@ -867,7 +909,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/live":
             self._live()
             return
-        if path in ("/api/command", "/api/view", "/api/media/upload", "/api/media/read"):
+        if path in ("/api/command", "/api/view", "/api/media/upload", "/api/media/read", PDF_PREVIEW_PATH):
             raise RequestError(405, "METHOD_REFUSED", "Use POST with the shared API contract.")
         # The build this server serves (aim_next/web_build.py): a page moving in
         # place reads it first, and loads afresh when it is not its own.

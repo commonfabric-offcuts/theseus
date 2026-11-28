@@ -417,6 +417,36 @@ export class Api {
   }
 
   media(instanceId, attachment, sourceRef) { return attempted(this, () => this.readMedia(instanceId, attachment, sourceRef)); }
+  openPdfPreview(instanceId, attachment, sourceRef, doc) {
+    const tab = doc.defaultView.open('about:blank', '_blank');
+    if (!tab) throw Error('Allow pop-ups to open the PDF.');
+    try {
+      tab.opener = null;
+      const preview = tab.document;
+      // Keep the origin on this same-origin form navigation. The main page
+      // and the PDF response keep their existing no-referrer policy.
+      const referrer = preview.createElement('meta');
+      referrer.name = 'referrer';
+      referrer.content = 'same-origin';
+      preview.head.append(referrer);
+      const form = preview.createElement('form');
+      form.method = 'POST';
+      form.action = new URL('/api/media/pdf-preview', doc.location.href).href;
+      form.autocomplete = 'off';
+      const fields = { token: this.token, instance_id: instanceId, media_id: attachment.id,
+        message_id: sourceRef.id, sha256: attachment.sha256 };
+      for (const [name, value] of Object.entries(fields)) {
+        const input = preview.createElement('input');
+        Object.assign(input, { type: 'hidden', name, value });
+        form.append(input);
+      }
+      preview.body.append(form);
+      form.submit();
+    } catch (error) {
+      tab.close();
+      throw error;
+    }
+  }
   async readMedia(instanceId, attachment, sourceRef) {
     let response;
     try {
