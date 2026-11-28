@@ -151,6 +151,7 @@ class CoverRefresh:
         db.execute("INSERT INTO cover_writers(message_id,actor_id,revision) VALUES (?,?,?) "
                    "ON CONFLICT(message_id) DO UPDATE SET actor_id=excluded.actor_id,revision=excluded.revision",
                    (message["id"], actor, revision))
-        if not (value["stands"] or value["waiting"] or value["payload"] or value.get("birth")):
+        wrote_birth = bool(value.get("birth")) and not before.get("birth")
+        if not (value["stands"] or value["waiting"] or value["payload"] or wrote_birth):
             return version
         return self._complete_refresh(db, actor, message, "cover_refresh", revision, version)

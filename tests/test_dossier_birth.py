@@ -32,9 +32,9 @@ class BirthCase(ReaderCase):
     def name(self):
         return self.store.view("owner", "stack_namer", {"message_id": self.root})
 
-    def write_cover(self, revision, **args):
+    def write_cover(self, revision, *, actor="owner", **args):
         return self.committed(self.command("stack.cover", args, target={"message_id": self.root},
-                                           expected={"cover_revision": revision}))
+                                           expected={"cover_revision": revision}, actor=actor))
 
     def test_birth_mints_name_and_records_cover_once_and_survives_reopen(self):
         facts = {"name": "Cabin booking decision", "nature": "Decision", "done_when": "Owner confirms the cabin.",
@@ -111,3 +111,14 @@ class BirthCase(ReaderCase):
             db.execute("DROP TRIGGER reject_birth_cover")
         result = self.committed(self.birth(op="birth-rollback", **facts))
         self.assertEqual((result["name_revision"], result["cover_revision"]), (1, 1))
+
+    def test_clearing_the_cover_with_retained_birth_facts_leaves_refresh_pending(self):
+        self.committed(self.birth(nature="Decision", stands="Need dates."))
+        self.committed(self.command("stack.cover_refresh", target={"message_id": self.root},
+                                   expected={"cover_revision": 1}))
+        self.write_cover(1, actor="agent-a", stands=None)
+        cleared = self.cover()
+        self.assertEqual(cleared["cover"]["birth"], {"nature": "Decision"})
+        self.assertEqual(cleared["refresh"]["state"], "pending")
+        self.write_cover(2, actor="agent-a", stands="Dates confirmed.")
+        self.assertEqual(self.cover()["refresh"]["state"], "completed")
