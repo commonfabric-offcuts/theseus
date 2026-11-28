@@ -89,11 +89,16 @@ try {
         const message = page.locator('#messages .message-card[data-id="' + sectioned + '"] .md-table');
         const ordinary = await measure(message);
         report.cases.push({ ...scope, covered, ordinary });
-        for (const dims of covered) {
-          assert.ok(Math.abs(dims.table - dims.wrapper) <= 1, JSON.stringify({ scope, dims }));
+        for (const [index, dims] of covered.entries()) {
+          // Baseline (old CSS) lets the long bare stress table exceed its max-width scroll wrapper:
+          // its geometry is recorded in the report, not held to the short-table fit/narrow characterization.
+          const oldLongStress = mode === 'baseline' && index === 1;
+          if (!oldLongStress) assert.ok(Math.abs(dims.table - dims.wrapper) <= 1, JSON.stringify({ scope, dims }));
           assert.equal(dims.layout, phone && mode === 'baseline' ? 'fixed' : 'auto');
           assert.ok(dims.pageOverflow <= 1);
-          if (!phone && mode === 'baseline') assert.ok(dims.wrapper + 30 < dims.row, JSON.stringify({ scope, dims }));
+          if (!phone && mode === 'baseline') {
+            if (!oldLongStress) assert.ok(dims.wrapper + 30 < dims.row, JSON.stringify({ scope, dims }));
+          }
           else if (mode === 'candidate') {
             assert.ok(Math.abs(dims.wrapper - dims.coverContent) <= 1 && dims.columns[0] < dims.columns[1],
               JSON.stringify({ scope, dims }));
