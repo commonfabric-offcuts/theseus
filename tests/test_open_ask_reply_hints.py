@@ -97,10 +97,12 @@ class OpenAskReplyHintsCase(test_agent_verbs.AgentVerbCase):
         self.assertNotIn("private edit", json.dumps(result))
 
     def test_copying_the_reply_command_cannot_address_somebody_else(self):
-        for actor in ("alpha", "beta", "alpha,beta", "-route-lead"):
+        control_id = "lead\u0085route"
+        escaped_id = r"lead\x85route"
+        for actor in ("alpha", "beta", "alpha,beta", "-route-lead", control_id, escaped_id):
             self.store.register_actor(actor, "human", actor)
             self.participation(actor, True)
-        for asker, expected in (("alpha,beta", []), ("-route-lead", ["-route-lead"])):
+        for asker, expected in (("alpha,beta", []), ("-route-lead", ["-route-lead"]), (control_id, [])):
             with self.subTest(asker=asker):
                 question = "Which route should we publish?"
                 ask = self.ask(question, actor=asker)
@@ -111,8 +113,7 @@ class OpenAskReplyHintsCase(test_agent_verbs.AgentVerbCase):
                 self.assertEqual(code, 0, (out, err))
                 self.assertEqual((json.loads(self.latest()[4]), self.latest()[-1]), (expected, ask))
 
-    def test_copying_the_read_command_works_for_a_topic_starting_with_a_dash(self):
-        topic = "-project"
+    def create_ask_topic(self, topic):
         target = {"opening_id": "fixture-opening"}
         saved = self.committed(self.command("opening.save", {
             "workspace_id": "w1", "topic_id": topic, "title": "Route planning", "participants": ["agent-a"],
@@ -120,15 +121,27 @@ class OpenAskReplyHintsCase(test_agent_verbs.AgentVerbCase):
         }, target=target, expected={"opening_revision": 0}))
         self.committed(self.command("opening.publish", {}, target=target,
                                     expected={"opening_revision": saved["opening_revision"]}))
-        ask = self.committed(self.command("message.post", {
+        return self.committed(self.command("message.post", {
             "body": "Which route?", "intent": "ask", "addressees": ["agent-a"], "go_ahead": False,
         }, target={"topic_id": topic}))["message_id"]
+
+    def test_copying_the_read_command_works_for_a_topic_starting_with_a_dash(self):
+        topic = "-project"
+        ask = self.create_ask_topic(topic)
         code, _, err = self.run_cli("post", "--", topic, "An answer.")
         self.assertEqual(code, 2, err)
         command = next(line for line in err.splitlines() if "aim-next read " in line)
         code, out, err = self.run_cli(*shlex.split(command)[1:])
         self.assertEqual((code, err), (0, ""), out)
         self.assertIn(ask, out)
+
+    def test_hint_does_not_print_a_read_command_with_a_changed_topic_id(self):
+        topic = "route\u0085planning"
+        ask = self.create_ask_topic(topic)
+        code, _, err = self.run_cli("post", "--", topic, "An answer.")
+        self.assertEqual(code, 2, err)
+        self.assertNotIn("aim-next read ", err)
+        self.assertIn("aim-next reply " + ask, err)
 
     def test_hint_read_failure_preserves_the_original_refusal(self):
         self.ask("Which route should we publish?")

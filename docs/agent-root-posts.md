@@ -50,7 +50,8 @@ After a plain CLI `post` receives this refusal, it can also show open Asks
 addressed to the acting seat. Each choice identifies the Ask, its author, and
 its current dossier. The CLI gives the command to read the Ask and a reply
 command with the exact message ID. Replace `TEXT` with a passage from the Ask,
-or use `--without-quote` with a reason. The generated command includes
+or use `--without-quote` with a reason. Copied commands include identifiers
+only when their terminal display preserves them. The reply command includes
 `--tells` when its recipient syntax represents that asker exactly and the
 asker can receive a Tell there. For a deliberate new subject, supply a
 divergence reason and start a fresh operation.
