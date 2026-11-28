@@ -39,7 +39,7 @@ try {
   await post('bare-reply', 'The beds are ready for planting.', bare);
   for (const [root, key, stands] of [
     [sectioned, 'sectioned', '## What\n\n' + table + '\n\n## Log\n\nChecked the garden on Tuesday.'],
-    [bare, 'bare', table],
+    [bare, 'bare', table + '\n| ' + 'Irrigation'.repeat(5) + ' | ' + 'IrrigationAdapter'.repeat(7) + ' |'],
   ]) {
     const saved = await control({ method: 'stack_act', kind: 'stack.cover', sender: agent,
       message_id: root, operation_id: '84-cover-' + key, args: { stands } });
@@ -70,10 +70,18 @@ try {
           const cover = el.closest('.dossier-cover');
           const coverStyle = cover && getComputedStyle(cover);
           const refresh = cover?.querySelector('.cover-refresh');
+          const lines = cell => {
+            const range = document.createRange();
+            range.selectNodeContents(cell.querySelector('.md-cell'));
+            return new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size;
+          };
           return { table: width(el), wrapper: width(wrapper), row: width(row),
             coverContent: cover ? cover.clientWidth - parseFloat(coverStyle.paddingLeft) - parseFloat(coverStyle.paddingRight) : null,
             refreshBelowTable: refresh ? box(refresh).top >= box(el).bottom - 1 : null,
             columns: [...el.tHead.rows[0].cells].map(width), layout: getComputedStyle(el).tableLayout,
+            firstRowLines: [...el.tBodies[0].rows[0].cells].map(lines),
+            lastRowLines: [...el.tBodies[0].rows[el.tBodies[0].rows.length - 1].cells].map(lines),
+            wrapperOverflow: wrapper.scrollWidth - wrapper.clientWidth,
             pageOverflow: document.documentElement.scrollWidth - innerWidth };
         });
         const scope = { width, colorScheme };
@@ -83,14 +91,19 @@ try {
         report.cases.push({ ...scope, covered, ordinary });
         for (const dims of covered) {
           assert.ok(Math.abs(dims.table - dims.wrapper) <= 1, JSON.stringify({ scope, dims }));
-          assert.equal(dims.layout, phone ? 'fixed' : 'auto');
+          assert.equal(dims.layout, phone && mode === 'baseline' ? 'fixed' : 'auto');
           assert.ok(dims.pageOverflow <= 1);
           if (!phone && mode === 'baseline') assert.ok(dims.wrapper + 30 < dims.row, JSON.stringify({ scope, dims }));
-          else if (!phone) {
+          else if (mode === 'candidate') {
             assert.ok(Math.abs(dims.wrapper - dims.coverContent) <= 1 && dims.columns[0] < dims.columns[1],
               JSON.stringify({ scope, dims }));
             assert.equal(dims.refreshBelowTable, true);
           }
+        }
+        if (phone && mode === 'candidate') {
+          assert.ok(covered.every(dims => dims.firstRowLines.every(count => count === 1)));
+          assert.ok(covered[1].lastRowLines.every(count => count > 1));
+          assert.ok(covered.every(dims => dims.wrapperOverflow <= 1));
         }
         assert.equal(ordinary.layout, phone ? 'fixed' : 'auto');
         if (!phone) assert.ok(ordinary.wrapper + 30 < ordinary.row, JSON.stringify({ scope, ordinary }));
