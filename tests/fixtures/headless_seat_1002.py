@@ -84,6 +84,7 @@ def main():
                     messages = case.sql('SELECT author_id,body,reply_to FROM messages WHERE topic_id IN (SELECT id FROM topics WHERE workspace_id=?) ORDER BY seq', (workspace,))
                     answer = {'seats': seats, 'messages': messages,
                         'templates': case.sql('SELECT template_id,plan FROM hosted_seats WHERE workspace_id=?', (workspace,)),
+                        'settings': case.sql('SELECT model,reasoning_effort FROM hosted_seats WHERE workspace_id=?', (workspace,)),
                         'starts': [row['in']['params'] for row in case.wire() if row.get('in', {}).get('method') == 'thread/start'],
                         'routes_unchanged': case.map.read_bytes() == case.route_bytes, 'events': events[-10:]}
                 elif method == 'templates':

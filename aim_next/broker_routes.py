@@ -53,9 +53,12 @@ HOSTED_FIELDS = frozenset(('v','kind','actor_id','profile','cli','codex_executab
 HOSTED_V2_FIELDS = HOSTED_FIELDS | {'permission_mode', 'reasoning_effort', 'instructions'}
 
 
+HOSTED_EFFORTS = ('low', 'medium', 'high', 'xhigh')
+
+
 def hosted_options(permission_mode, reasoning_effort, instructions):
     _require(permission_mode in ('workspace', 'full'), 'invalid_permission_mode')
-    _require(reasoning_effort is None or reasoning_effort in ('low', 'medium', 'high', 'xhigh'), 'invalid_reasoning_effort')
+    _require(reasoning_effort is None or reasoning_effort in HOSTED_EFFORTS, 'invalid_reasoning_effort')
     _require(isinstance(instructions, str) and len(instructions.encode('utf-8')) <= 16384 and '\x00' not in instructions,
              'invalid_instructions')
     return permission_mode, reasoning_effort, instructions

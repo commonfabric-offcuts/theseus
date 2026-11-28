@@ -187,7 +187,7 @@ HELD_WORDS = "(held: its author is editing it)"
 USAGE = ("usage: aim-next (--profile /absolute/profile.json | --broker /absolute/core.sock) [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes [--reached | --ended] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR | coordinator OUTCOME ACTOR|--none | participant TOPIC ACTOR "
-         "| seat-add OUTCOME NAME --role TEXT|- [--template ID] [--operation ID] | seat-retry OUTCOME SEAT_REQUEST [--template ID] [--operation ID] | seat-templates OUTCOME | seat-end OUTCOME SEAT_REQUEST [--operation ID] | seat-status OUTCOME [SEAT_REQUEST] "
+         "| seat-add OUTCOME NAME --role TEXT|- [--template ID] [--model MODEL] [--effort LEVEL] [--operation ID] | seat-retry OUTCOME SEAT_REQUEST [--template ID] [--operation ID] | seat-templates OUTCOME | seat-end OUTCOME SEAT_REQUEST [--operation ID] | seat-status OUTCOME [SEAT_REQUEST] "
          "| link-add OUTCOME URL [--title TITLE] | link-rename OUTCOME URL TITLE | link-remove OUTCOME URL "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | reply MESSAGE [--asks A,B (--go-ahead|--no-go-ahead) | --tells A,B] [--part] [--ask-wait JSON] [--subject KIND:REF,...] [--blocks piece:P|release:N] [--quote TEXT | --quote-revision N --quote-start S --quote-end E | --without-quote REASON] [--operation ID] [--attach FILE]... TEXT|- "
@@ -289,6 +289,10 @@ def _parser():
     seat_add.add_argument("name")
     seat_add.add_argument("--role", required=True)
     seat_add.add_argument("--template", help="template id from seat-templates")
+    from .hosted_seats import SEAT_MODELS
+    from .broker_routes import HOSTED_EFFORTS
+    seat_add.add_argument("--model", choices=SEAT_MODELS)
+    seat_add.add_argument("--effort", choices=HOSTED_EFFORTS)
     seat_add.add_argument("--operation")
     seat_retry = verb("seat-retry")
     seat_retry.add_argument("outcome")
@@ -875,6 +879,10 @@ class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs,
         args = {'name': options.name, 'role': role}
         if options.template is not None:
             args['template_id'] = options.template
+        if options.model is not None:
+            args['model'] = options.model
+        if options.effort is not None:
+            args['reasoning_effort'] = options.effort
         return self._seat_command(KIND, {'workspace_id': options.outcome}, args)
 
     def do_seat_retry(self):

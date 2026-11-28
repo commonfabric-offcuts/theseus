@@ -24,6 +24,12 @@ state through the ordinary API; there is no new polling loop.
 workspace.hosted_seat_add accepts optional template_id. The same command backs
 page and CLI. Core retains the resolved choice with the seat, includes it in
 status and enforces an explicit choice for a current multi-template catalogue.
+Add seat also accepts optional model and reasoning_effort overrides. The
+choices are GPT-6.2 Sol or GPT-6.1 Terra and low, medium, high or xhigh. Omitted
+settings inherit the current template. New requests retain both resolved
+settings, and the host plan and returned native thread settings must match.
+Existing records with no retained settings continue to resolve their template
+as before. The CLI accepts these overrides as --model and --effort.
 Exact retries keep the original command/choice. Same-name recovery cannot
 adopt a different recorded template. Legacy requests with no catalogue retain
 the existing pending behavior; a missing/stale explicit choice is refused,

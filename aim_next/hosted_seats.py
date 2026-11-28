@@ -59,6 +59,12 @@ END_OCCUPIED = 'SELECT EXISTS (SELECT 1 FROM hosted_seats WHERE end_state IS NOT
 TEMPLATE_SCHEMA = ["ALTER TABLE hosted_seats ADD COLUMN template_id TEXT"]
 TEMPLATE_DOWN = ["ALTER TABLE hosted_seats DROP COLUMN template_id"]
 TEMPLATE_OCCUPIED = 'SELECT EXISTS (SELECT 1 FROM hosted_seats WHERE template_id IS NOT NULL)'
+SETTINGS_SCHEMA = ["ALTER TABLE hosted_seats ADD COLUMN model TEXT",
+                   "ALTER TABLE hosted_seats ADD COLUMN reasoning_effort TEXT"]
+SETTINGS_DOWN = ["ALTER TABLE hosted_seats DROP COLUMN reasoning_effort",
+                 "ALTER TABLE hosted_seats DROP COLUMN model"]
+SETTINGS_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM hosted_seats WHERE model IS NOT NULL OR reasoning_effort IS NOT NULL)"
+SEAT_MODELS = ('gpt-6.2-sol', 'gpt-6.1-terra')
 TEMPLATE_KEY = 'hosted_seat_templates.v1'
 TEMPLATE_BYTES = 65536
 STAGES = ('profile', 'thread', 'starting', 'persist', 'persisting', 'pin', 'route', 'delivery', 'ready')
@@ -71,6 +77,7 @@ REASONS = frozenset(('host_not_configured', 'host_template_ambiguous', 'host_tem
 
 SUMMARY_FIELDS = ('id', 'workspace_id', 'agent_id', 'inviter_id', 'owner_id', 'state', 'stage', 'version',
                   'thread_id', 'reason', 'first_message_id', 'end_state', 'end_by', 'end_ms', 'end_version', 'template_id')
+SETTINGS_FIELDS = ('model', 'reasoning_effort')
 
 
 def _template_id(value):
@@ -104,6 +111,7 @@ def _retryable(row):
 
 def _record(row, *, private=False, role=True):
     result = {key: row[key] for key in SUMMARY_FIELDS}
+    result.update({key: row[key] for key in SETTINGS_FIELDS if row[key] is not None})
     result['state'] = row['end_state'] or row['state']
     result['retryable'] = _retryable(row)
     if role:
@@ -175,12 +183,13 @@ class HostedSeats:
         items = self._seat_templates(db)
         if requested is not None:
             identity = _template_id(requested)
-            if not any(item['id'] == identity for item in items):
+            selected = next((item for item in items if item['id'] == identity), None)
+            if selected is None:
                 raise Refusal('SEAT_TEMPLATE_UNAVAILABLE', 'The selected template is no longer available. Choose a current named template.')
-            return identity
+            return selected
         if len(items) > 1:
             raise Refusal('SEAT_TEMPLATE_REQUIRED', 'Choose an existing host template: ' + ', '.join(item['name'] for item in items))
-        return items[0]['id'] if items else None
+        return items[0] if items else None
 
     def _seat_schedule(self, db):
         return {'pending': bool(db.execute("SELECT EXISTS (SELECT 1 FROM hosted_seats INDEXED BY hosted_seats_setup WHERE end_state IS NULL AND state IN ('pending','preparing'))").fetchone()[0]),
@@ -229,7 +238,7 @@ class HostedSeats:
         if 'template_id' in args:
             if row['stage'] != 'profile' or row['plan'] is not None or row['thread_id'] is not None:
                 raise Refusal('SEAT_TEMPLATE_LOCKED', 'This seat already has its host plan. Its template cannot change.')
-            template = self._seat_choose_template(db, args['template_id'])
+            template = self._seat_choose_template(db, args['template_id'])['id']
         if not self._seat_access(db, row):
             raise Refusal('SEAT_ACCESS_CHANGED', 'The current human owner and enabled seat membership are required before setup can resume.')
         if row['reason'] == 'conversation_missing' and self._conversation_of(db, workspace['id']) is None:
@@ -243,10 +252,16 @@ class HostedSeats:
 
     def _command_workspace_hosted_seat_add(self, db, actor, envelope):
         target, args = envelope['target'], envelope['args']
-        if set(target) != {'workspace_id'} or not {'name', 'role'} <= set(args) or set(args) - {'name', 'role', 'template_id'}:
+        if set(target) != {'workspace_id'} or not {'name', 'role'} <= set(args) or set(args) - {'name', 'role', 'template_id', 'model', 'reasoning_effort'}:
             raise Refusal('INVALID_ARGUMENT', 'Name one outcome, a seat name and its role')
         if 'template_id' in args:
             _template_id(args['template_id'])
+        if 'model' in args and args['model'] not in SEAT_MODELS:
+            raise Refusal('INVALID_ARGUMENT', 'Choose GPT-6.2 Sol or GPT-6.1 Terra')
+        if 'reasoning_effort' in args:
+            from .broker_routes import HOSTED_EFFORTS
+            if args['reasoning_effort'] not in HOSTED_EFFORTS:
+                raise Refusal('INVALID_ARGUMENT', 'Choose low, medium, high or xhigh reasoning effort')
         workspace = self._workspace(db, actor, _identifier(target['workspace_id'], 'workspace_id'), organise=True)
         self._seat_owner(db, actor, workspace)
         _revision(envelope['expected'], 'workspace_revision', workspace['version'])
@@ -274,18 +289,25 @@ class HostedSeats:
                 raise Refusal('SEAT_ROLE_MISMATCH', 'This seat already has a recorded role. Keep that role or choose another name.')
             if 'template_id' in args and args['template_id'] != existing['template_id']:
                 raise Refusal('SEAT_TEMPLATE_MISMATCH', 'This seat already has a recorded template. Keep that choice or choose another name.')
+            if any(key in args and args[key] != existing[key] for key in SETTINGS_FIELDS):
+                raise Refusal('SEAT_SETTINGS_MISMATCH', 'This seat already has recorded settings. Keep them or choose another name.')
             return self._seat_invitation(workspace, existing, existing['name']), []
         # Manual invitations and other outcomes' seats are never adopted.
         if name and invite._holders(db, name, invite.agent_id(name)):
             raise Refusal('NAME_TAKEN', 'That name already belongs to someone here. Choose another name.')
         self._seat_capacity(db)
         template = self._seat_choose_template(db, args.get('template_id'))
+        if template is None and ('model' in args or 'reasoning_effort' in args):
+            raise Refusal('SEAT_TEMPLATE_UNAVAILABLE', 'Wait for a current host template before choosing seat settings.')
+        model = args.get('model', (template or {}).get('model'))
+        effort = args.get('reasoning_effort', (template or {}).get('reasoning_effort'))
         added, affected = self._command_workspace_agent_invite(db, actor,
             dict(envelope, args={'name': args['name'], 'harness': 'codex'}))
         identity = 'seat-' + uuid.uuid4().hex
-        db.execute('INSERT INTO hosted_seats(id,workspace_id,agent_id,inviter_id,owner_id,role,state,stage,version,created_ms,template_id) '
-                   "VALUES (?,?,?,?,?,?,'pending','profile',1,?,?)",
-                   (identity, workspace['id'], added['agent']['id'], actor, owner['id'], role, _now_ms(), template))
+        db.execute('INSERT INTO hosted_seats(id,workspace_id,agent_id,inviter_id,owner_id,role,state,stage,version,created_ms,template_id,model,reasoning_effort) '
+                   "VALUES (?,?,?,?,?,?,'pending','profile',1,?,?,?,?)",
+                   (identity, workspace['id'], added['agent']['id'], actor, owner['id'], role, _now_ms(),
+                    template['id'] if template else None, model, effort))
         seat = db.execute('SELECT * FROM hosted_seats WHERE id=?', (identity,)).fetchone()
         self._seat_event(db, seat)
         result = dict(added, seat_request_id=identity, seat=_record(seat))
@@ -322,7 +344,7 @@ class HostedSeats:
             raise Refusal('INVALID_ARGUMENT', 'Use the previous seat page cursor')
         # The team bounds this work even after years of departed-seat history;
         # status summaries never pull every seat's potentially16KiB role text.
-        fields = ','.join('s.' + key for key in SUMMARY_FIELDS)
+        fields = ','.join('s.' + key for key in SUMMARY_FIELDS + SETTINGS_FIELDS)
         rows = db.execute('SELECT ' + fields + ' FROM workspace_members m CROSS JOIN hosted_seats s ON s.agent_id=m.actor_id '
                           'WHERE m.workspace_id=? AND s.workspace_id=? AND s.id>? ORDER BY s.id LIMIT ?',
                           (workspace['id'], workspace['id'], cursor, limit + 1)).fetchall()
@@ -412,6 +434,9 @@ class HostedSeats:
             if 'plan' in step_details:
                 if plan is not None or next_stage != 'profile' or type(step_details['plan']) is not dict:
                     raise RunnerError('INVALID_ARGUMENT', 'A seat plan is recorded once before profile effects')
+                if any(row[key] is not None and row[key] != step_details['plan'].get(key)
+                       for key in SETTINGS_FIELDS):
+                    raise RunnerError('INVALID_ARGUMENT', 'The host plan must keep the recorded seat settings')
                 plan = json.dumps(step_details['plan'], sort_keys=True, separators=(',', ':'), ensure_ascii=False)
             thread = row['thread_id']
             if 'thread_id' in step_details:
