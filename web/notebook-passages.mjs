@@ -103,7 +103,7 @@ export class NotebookPassages {
         event.preventDefault(); this.open(entry, chosen);
       } else if (copyKey(event, mac) && selected?.isCollapsed !== false) {
         const words = this.passages.copied(entry);
-        if (words) { event.preventDefault(); copyText(words); }
+        if (words !== null) { event.preventDefault(); copyText(words); }
       }
     }, true);
     doc.addEventListener('focusin', () => { if (!this.returns(this.current)) this.clear(); });

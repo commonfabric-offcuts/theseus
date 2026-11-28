@@ -574,7 +574,7 @@ export class MessageMenu {
     event.preventDefault();
     // A passage lit in it is what is copied, as Return would quote it.
     const words = this.passages.copied(this.lit);
-    if (words) this.copy(item, words); else this.copy(item);
+    if (words !== null) this.copy(item, words); else this.copy(item);
     return true;
   }
   // Passage lighting follows the same visible promise as captured Return.

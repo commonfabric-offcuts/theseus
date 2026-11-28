@@ -717,6 +717,17 @@ dialog.interaction-guide{width:min(32rem,calc(100vw - 2rem));height:fit-content;
 .md-table th,.md-table td{padding:.25rem .6rem;border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 .md-cell{display:inline-block;vertical-align:top;width:max-content;max-width:16rem}
 .md-table th{font-weight:650;background:color-mix(in srgb,var(--ink) 5%,transparent)}
+/* Light fills the cells, including padding and wrapped or empty cell space. */
+.md-table tr.light-table-row > :is(th,td) {
+  background: var(--pointer-lit-field,var(--lit-field,var(--light-field,#000)));
+  color: var(--light-words,#fff);
+}
+.own-message .md-table tr.light-table-row > :is(th,td) { color: var(--light-words,var(--ink)); }
+.notebook-reading-words .md-table tr.light-table-row > :is(th,td) {
+  color: var(--light-words,var(--notebook-lit-ink));
+}
+.md-table tr.light-table-row a { color: inherit; }
+
 /* A box that scrolls sideways fades at each edge with more beyond it (message-format.mjs sets the classes on scroll and resize). The mask takes away the box's own pixels, so the fade sits over whatever fill the card has. */
 .md-scrolls.md-more-right{-webkit-mask-image:linear-gradient(to left,transparent,#000 1.75rem);mask-image:linear-gradient(to left,transparent,#000 1.75rem)}
 .md-scrolls.md-more-left{-webkit-mask-image:linear-gradient(to right,transparent,#000 1.75rem);mask-image:linear-gradient(to right,transparent,#000 1.75rem)}

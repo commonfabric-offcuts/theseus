@@ -23,6 +23,15 @@ test('962 reload keeps exact page revision, Markdown and destination until that 
   assert.equal(resumed.claim(kept), true);
   assert.equal(resumed.forSource('conversation-a', source), null);
 });
+test('78 only the pending quote’s exact topic, page and revision keep a Notebook Reader route', () => {
+  const f = fixture(), kept = f.transfer.keep('conversation-a', choice);
+  const route = { kind: 'topic', id: 'conversation-a', page: 'page-a', revision: '7' };
+  assert.deepEqual(f.transfer.forRoute(route), kept);
+  for (const change of [{ kind: 'workspace' }, { id: 'another-topic' }, { page: 'another-page' }, { revision: '8' }, { revision: undefined }])
+    assert.equal(f.transfer.forRoute({ ...route, ...change }), null);
+  assert.equal(f.transfer.claim(kept), true);
+  assert.equal(f.transfer.forRoute(route), null);
+});
 test('962 another instance or person cannot take a pending quote from the shared device store', () => {
   const f = fixture(); f.transfer.keep('conversation-a', choice);
   for (const binding of [{ ...bootstrap, actor: 'another-reader' }, { ...bootstrap, instance_id: 'another-instance' }])

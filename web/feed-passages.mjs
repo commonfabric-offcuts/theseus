@@ -1,6 +1,6 @@
 // A card's passages light under the pointer as the Reader's do
 // (docs/interaction.md, "The light"): a sentence of a paragraph, or a heading,
-// a list item, a quote, a code block or a table, read as the Reader reads them
+// a list item, a quote, a code block or a table row, read as the Reader reads them
 // (message-format.mjs, passageSpans), on a topic's card and a dossier's alike.
 // Moving with Shift held, or a Shift-click, lights from the passage lit first
 // to the one under the pointer, growing from words dragged over when there are
@@ -17,6 +17,7 @@
 // a table or an excerpt that clips them), which moves nothing on the card and
 // is clipped and scrolled with the words.
 import { drawnDisplayRules, drawnRevision, drawnText, passageSpans, rangeOf, sourcePosition } from './message-format.mjs';
+import { LightTableRows, rowAnchor, tableRowAt } from './light-table-rows.mjs';
 import { cardIn } from './fold.mjs';
 import { fieldLayers, readerField, wordLines } from './lit-field.mjs';
 import { pointerLight, observePointerLight } from './pointer-light.mjs';
@@ -26,9 +27,15 @@ const WORDS = ':scope > .message-preview';
 
 // A caret falls between characters. Use the range's geometry to choose the
 // actual passage under the pointer, including at a wrapped sentence boundary.
-export function passageAt(words, doc, x, y) {
+export function passageAt(words, doc, x, y, target = doc.elementFromPoint?.(x, y)) {
   const text = words && drawnText(words);
   if (text === undefined || !words || !words.getClientRects().length) return null;
+  const row = tableRowAt(words, target);
+  if (row) {
+    const range = doc.createRange(); range.selectNodeContents(row.row);
+    return { words, span: row, range };
+  }
+  if (target?.closest?.('.md-table-wrap')) return null;
   const caret = doc.caretPositionFromPoint?.(x, y), range = caret ? null : doc.caretRangeFromPoint?.(x, y);
   const node = caret ? caret.offsetNode : range?.startContainer, offset = caret ? caret.offset : range?.startOffset;
   if (!node || node.nodeType !== 3 || !words.contains(node)) return null;
@@ -51,7 +58,7 @@ export class FeedPassages {
   constructor({ host, lights, entryOf, doc = globalThis.document, wordsOf = entry => cardIn(entry)?.querySelector(WORDS), highlight = NAME, fieldOf = words => words.parentElement }) {
     Object.assign(this, { host, lights, entryOf, doc, wordsOf, highlight, fieldOf });
     this.win = doc.defaultView;
-    this.lit = null; this.pointer = null; this.shifted = false; this.fielded = [];
+    this.lit = null; this.pointer = null; this.shifted = false; this.fielded = []; this.tableLight = new LightTableRows();
     // An edit puts the light out: its old offsets cannot stand for other
     // words. Loading the rest of the same revision can keep a complete
     // passage already in its unchanged excerpt, rebuilding the highlight on
@@ -137,7 +144,7 @@ export class FeedPassages {
     if (!chosen) return;
     const touched = passageSpans(drawnText(words), this.doc, drawnDisplayRules(words)).filter(span => span.start < chosen.end && span.end > chosen.start);
     if (!touched.length) return;
-    const anchor = { start: touched[0].start, end: touched.at(-1).end };
+    const anchor = rowAnchor(words, chosen, { start: touched[0].start, end: touched.at(-1).end });
     this.lit = { entry, words, anchor, ...anchor };
     this.doc.getSelection()?.removeAllRanges();
   }
@@ -150,8 +157,9 @@ export class FeedPassages {
     const lit = this.lit;
     if (!lit) return;
     const range = this.range(lit);
-    if (!range) { this.clear(); return; }
-    this.win.CSS.highlights.set(this.highlight, new this.win.Highlight(range));
+    this.tableLight.paint(lit.words, lit);
+    if (!range && !this.tableLight.rows.length) { this.clear(); return; }
+    this.win.CSS.highlights.set(this.highlight, range ? new this.win.Highlight(range) : new this.win.Highlight());
     this.field(range);
     this.redrawn.disconnect();
     this.redrawn.observe(lit.words, { childList: true, subtree: true });
@@ -167,7 +175,7 @@ export class FeedPassages {
   // scrolls with them.
   field(range = this.range()) {
     this.unfield();
-    const card = this.lit?.words && this.fieldOf(this.lit.words), lines = range && card ? wordLines(range, card) : [];
+    const card = this.lit?.words && this.fieldOf(this.lit.words), lines = range && card && !this.tableLight.whole ? wordLines(range, card) : [];
     const height = lines.length && readerField(this.doc);
     if (!height) return;
     const boxes = new Map();
@@ -189,7 +197,7 @@ export class FeedPassages {
   clear() {
     this.lit = null; this.pointer = null;
     this.redrawn.disconnect(); this.sized.disconnect(); this.sizing = null;
-    this.unfield();
+    this.unfield(); this.tableLight.clear();
     if (this.supported) this.win.CSS.highlights.delete(this.highlight);
   }
   // The light follows the message's: lighting another message, or none, puts it out.
@@ -227,6 +235,6 @@ export class FeedPassages {
     const lit = this.lit;
     if (!entry || !lit || lit.entry !== entry || !lit.words.isConnected) return null;
     const text = drawnText(lit.words);
-    return text === undefined ? null : text.slice(lit.start, lit.end).trimEnd() || null;
+    return text === undefined ? null : this.tableLight.copied() ?? (text.slice(lit.start, lit.end).trimEnd() || null);
   }
 }

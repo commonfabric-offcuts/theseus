@@ -3997,8 +3997,8 @@ async function initialize() {
     if (list === 'addressable-names') refreshMembers();
   });
   let route = parseRoute(new URL(location.href));
-  const arrivalNavigation = landingSerial;
-  if(route.page) {
+  const arrivalNavigation = landingSerial, quotedNotebook = notebookQuoteRoute(route);
+  if(route.page && !quotedNotebook) {
     try {
       const resolved=await resolveTopicLink(route,{read:(name,args)=>api.view(name,args,{readClass:'foreground'}),instanceId:bootstrap.instance_id,current:()=>!retired});
       if(retired)return;
@@ -4016,7 +4016,7 @@ async function initialize() {
     colors.listen(paintAgentColors);
   }
   const colorsRead = colors.load('foreground').catch(() => {});
-  if (topicLinkNeedsLookup(route)) {
+  if (!quotedNotebook && topicLinkNeedsLookup(route)) {
     try { route = await resolveTopicLink(route, { read: (name, args) => api.view(name, args, { readClass: 'foreground' }), instanceId: bootstrap.instance_id }) ?? route; }
     catch { /* An unconfirmed label keeps the route's existing startup path. */ }
     if (!['topic', 'conversation'].includes(route.kind)) {
@@ -4900,7 +4900,7 @@ async function openDestination(target, title, from = null, writtenQuery = false)
   const localPage = !writtenQuery && target.page && !target.revision && ((topic && views &&
     (target.kind === 'topic' ? target.id === topic.id : target.kind === 'workspace' && target.id === topic.workspace_id)) ||
     (!topic && pageHere && target.kind === 'workspace' && target.id === pageHereOutcome));
-  if (!localPage && (writtenQuery || target.page) && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
+  if (!localPage && !notebookQuoteRoute(target) && (writtenQuery || target.page) && (target.kind === 'topic' || target.page || target.kind === 'cards')) {
     const original = target;
     topicNavigation?.cancelPending();
     try {
@@ -5355,6 +5355,13 @@ function notebookQuoteNotice(what) {
   const line = notebookSheet?.showing && notebookSheet.current?.pageNotice;
   if (line) showLine(line, what); else status(what);
 }
+// Links to Notebook pages follow the page's owner. A pending quote instead
+// opens its exact page revision in the Reader of its confirmed reply topic.
+function notebookQuoteRoute(route) {
+  if (route.kind !== 'topic' || !route.page || !route.revision) return false;
+  try { return Boolean(new NotebookQuoteTransfer(bootstrap).forRoute(route)); }
+  catch { return false; }
+}
 async function quoteNotebookPassage(choice, opener) {
   try {
     // Reuse the hosting topic's destination, or the Notebook's existing
@@ -5366,7 +5373,8 @@ async function quoteNotebookPassage(choice, opener) {
       const open = () => openSource(choice.source, opener);
       if (notebookSheet?.showing) await notebookSheet.quoteWith(open); else await open();
     } else {
-      await openDestination({ kind: 'topic', id: topicId, page: choice.source.id, revision: String(choice.source.revision) }, 'the page quote', opener);
+      await openDestination({ kind: 'topic', id: topicId, page: choice.source.id, revision: String(choice.source.revision) },
+        'the page quote', opener);
     }
   } catch (error) { notebookQuoteNotice(error); }
 }

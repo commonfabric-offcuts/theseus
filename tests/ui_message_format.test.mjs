@@ -7,6 +7,7 @@
 // hostile message costs work in proportion to its length.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { LightTableRows, rowAnchor, tableRowAt } from '../web/light-table-rows.mjs';
 import * as format from '../web/message-format.mjs';
 import { nameTopicsWith, openLinksWith, wordNodes } from '../web/links.mjs';
 import { routeHref } from '../web/topic-navigation.mjs';
@@ -62,6 +63,39 @@ const texts = nodes => nodes.map(n => n.textContent);
 const render = (text, options = {}) => format.formatWords(new Element('span'), text, options);
 const kinds = text => format.parseBlocks(text).map(block => block.kind);
 const webLinksOf = node => byTag(node, 'a').map(a => a.textContent);
+
+test('78 table Light keeps exact Markdown row spans and copies rendered cells', () => {
+  const header = '| Area | Owner |', first = '| **North** | A \\| B |', second = '| South | |', third = '| East | Mei |';
+  const source = ['🌱 Prior words.', '', header, '| --- | --- |', first, second, third, '', 'After.'].join('\n');
+  for (const drawing of [render, value => { const host = new Element('span'); format.drawPassages(host, value, doc); return host; }]) {
+    const host = drawing(source);
+    const table = byTag(host,'table')[0], [, a, b, c] = byTag(table,'tr');
+    host.querySelectorAll = selector => byClass(host, selector.slice(1));
+    table.rows = byTag(table,'tr');
+    for (const row of table.rows) row.cells = row.childNodes;
+    host.contains = node => walk(host).includes(node);
+    const chosen = tableRowAt(host, { closest: () => a });
+    assert.equal(source.slice(chosen.start, chosen.end), first);
+    const light = new LightTableRows();
+    light.paint(host, chosen);
+    assert.equal(light.copied(), 'North\tA | B');
+    assert.deepEqual(table.rows.filter(row => row.classList.contains('light-table-row')), [a]);
+
+    const end = format.tableSourceSpan(b).end;
+    const from = chosen.start;
+    assert.deepEqual(rowAnchor(host, { start: from + 3, end: end - 2 }, { start: 0, end: source.length }),
+      { start: from, end });
+    light.paint(host, { start: from, end });
+    assert.equal(source.slice(from, end), first + '\n' + second);
+    assert.equal(light.copied(), 'North\tA | B\nSouth\t');
+    assert.deepEqual(table.rows.filter(row => row.classList.contains('light-table-row')), [a,b]);
+    light.paint(host, format.tableSourceSpan(c));
+    assert.deepEqual(table.rows.filter(row => row.classList.contains('light-table-row')), [c]);
+    light.clear();
+    assert.equal(light.copied(), null);
+    assert.equal(table.rows.some(row => row.classList.contains('light-table-row')), false);
+  }
+});
 
 test('item 758 native presentation oracle reads the actual quote renderer in feed and Reader', () => {
   const reason = 'This is a status update about the whole assignment.';

@@ -25,6 +25,7 @@ import { copyText, copySelectedText, COPY_REFUSED, SELECTION_COPY_REFUSED } from
 import { paintWithdrawal } from './question-withdrawal.mjs';
 import { paintRemoval } from './message-removal.mjs';
 import { revisionOf, wasEdited } from './message-edit-writing.mjs';
+import { LightTableRows, rowAnchor, tableRowAt } from './light-table-rows.mjs';
 import { overhang } from './lit-field.mjs';
 import { coverSheet, coverKey, coverStatus, coverSummary, payloadPill, structuredCover } from './dossier-cover.mjs';
 import { paintReleaseCard, disposeReleaseCard } from './release-card.mjs';
@@ -90,7 +91,7 @@ export class Reader {
     this.mac = onMac();
     this.mode = 'reply';
     this.positions = new Map();
-    this.hover = null;
+    this.hover = null; this.tableLight = new LightTableRows();
     this.held = null;
     this.pointer = null;
     this.source = null;
@@ -613,13 +614,17 @@ export class Reader {
 
   light(target, extend, pressed = false) {
     if (!pointerLight(this.sourceBody?.ownerDocument ?? globalThis.document)) { this.disarm(); return; }
-    const span = target.closest('[data-start]');
-    if (!span || !this.sourceBody.contains(span)) return;
+    const row = tableRowAt(this.sourceBody, target), span = target.closest('[data-start]');
+    if (!row && (!span || !this.sourceBody.contains(span) || target.closest('.md-table-wrap'))) return;
     if (extend) this.adoptSelection();
-    const start = Number(span.dataset.start), end = Number(span.dataset.end);
+    const { start, end } = row ?? { start: Number(span.dataset.start), end: Number(span.dataset.end) };
     const anchor = extend && this.hover ? this.hover.anchor : { start, end };
     this.hover = { anchor, start: Math.min(anchor.start, start), end: Math.max(anchor.end, end), pressed: pressed || Boolean(extend && this.hover?.pressed) };
-    for (const part of this.sourceBody.children) part.classList.toggle('hover-quote', Number(part.dataset.start) < this.hover.end && Number(part.dataset.end) > this.hover.start);
+    this.tableLight.paint(this.sourceBody, this.hover);
+    for (const part of this.sourceBody.children) {
+      const lit = Number(part.dataset.start) < this.hover.end && Number(part.dataset.end) > this.hover.start;
+      part.classList.toggle('hover-quote', lit && !part.matches('.md-table-wrap') && !this.tableLight.whole);
+    }
     this.paintQuote();
   }
 
@@ -662,7 +667,7 @@ export class Reader {
     if (from === null || to === null) return;
     const parts = [...this.sourceBody.children].filter(part => Number(part.dataset.start) < to && Number(part.dataset.end) > from);
     if (!parts.length) return;
-    const anchor = { start: Number(parts[0].dataset.start), end: Number(parts.at(-1).dataset.end) };
+    const anchor = rowAnchor(this.sourceBody, { start: from, end: to }, { start: Number(parts[0].dataset.start), end: Number(parts.at(-1).dataset.end) });
     this.hover = { anchor, ...anchor };
     selection.removeAllRanges();
   }
@@ -686,6 +691,7 @@ export class Reader {
     this.hover = null;
     this.pointer = null;
     for (const span of this.sourceBody.querySelectorAll('.hover-quote')) span.classList.remove('hover-quote');
+    this.tableLight.clear();
     this.paintQuote();
   }
 
@@ -842,7 +848,7 @@ export class Reader {
   // code block, a long table.
   quotedPlace() {
     if (!this.compose) return null;
-    const selection = window.getSelection(), lit = [...this.sourceBody.querySelectorAll('.hover-quote')];
+    const selection = window.getSelection(), lit = [...this.sourceBody.querySelectorAll('.hover-quote,.light-table-row')];
     let passage = null, words = null;
     let measure = null;
     if (selection?.rangeCount && !selection.isCollapsed) {
@@ -1508,7 +1514,7 @@ export class Reader {
     // ⌘C with a passage lit and no words selected copies the passage's words,
     // as Return would quote them, as on the topic page (message-menu.mjs).
     if (!inEditor && copyKey(event, this.mac) && this.hover && window.getSelection()?.isCollapsed !== false && this.source) {
-      event.preventDefault(); copyText(this.passageParts(this.selectedPassage()).join('').trimEnd()).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
+      event.preventDefault(); copyText(this.tableLight.copied() ?? this.passageParts(this.selectedPassage()).join('').trimEnd()).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
     }
     if (!inEditor && event.metaKey && event.shiftKey && event.code === 'KeyC' && this.source?.source_ref.kind === 'message') {
       event.preventDefault(); copyText(this.source.body).then(copied => { if (!copied) this.notice(COPY_REFUSED); }); return;
