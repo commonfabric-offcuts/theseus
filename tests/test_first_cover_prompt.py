@@ -114,3 +114,21 @@ class FirstCoverPromptCase(test_agent_verbs.AgentVerbCase):
         self.assertEqual((code, err), (0, ""), (code, out, err))
         self.assertIn("--root " + self.root, out)
         self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE reply_to=?", (self.root,)), [(1,)])
+
+    def test_nonretryable_hint_read_refusal_retains_the_code_and_reason(self):
+        original = Store.view
+        reason = "Binding changed: activate a recovery copy at a new path"
+
+        def refused(store, actor, name, args):
+            if name == "stack_namer":
+                return {"error": {"code": "AUTHORITY_CHANGED", "message": reason, "retryable": False}}
+            return original(store, actor, name, args)
+
+        with mock.patch.object(Store, "view", refused):
+            code, out, err = self.run_cli("reply", self.root, "--without-quote", "Fixture checks the bound read.",
+                                          "Checking the cabin.")
+        self.assertEqual(code, 0, (out, err))
+        self.assertIn("posted " + self.latest()[0], out)
+        self.assertIn("AUTHORITY_CHANGED", err)
+        self.assertIn(reason, err)
+        self.assertNotIn("aim-next birth", err)

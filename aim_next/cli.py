@@ -1683,15 +1683,19 @@ class Agent(CurrentRuleVerbs, ClockVerbs, PipelineVerbs, TargetVerbs, ToolVerbs,
         try:
             found = self.store.view(self.actor, "stack_namer", {"message_id": message_id})
         except (StoreError, OSError):
-            found = {"error": {"code": "UNREAD"}}
-        if found.get("error"):
-            _diagnostic(self.out.stderr, "NAMER_UNREAD: the reply is posted. The first-cover and naming prompt could not be read (%s). "
-                        "Read it again with `aim-next birth %s`. If you are its namer, you can also run `aim-next mint %s WORDS`."
-                        % (found["error"]["code"], message_id, message_id))
-        else:
-            self.birth_hint(found)
-            if found["namer"] == self.actor:
-                self.out.plain("its dossier has no name, and you name it:%s" % self.name_it({"root_id": found["root_id"], "name_revision": found["name_revision"]}))
+            found = {"error": {"code": "UNREAD", "retryable": True}}
+        error = found.get("error")
+        if error:
+            detail = "NAMER_UNREAD: the reply is posted. The first-cover and naming prompt could not be read (%s)." % error["code"]
+            if error.get("message"):
+                detail += " " + error["message"]
+            if error.get("retryable"):
+                detail += " When the same bound read is available, use `aim-next birth %s`." % message_id
+            _diagnostic(self.out.stderr, _shown(detail))
+            return
+        self.birth_hint(found)
+        if found["namer"] == self.actor:
+            self.out.plain("its dossier has no name, and you name it:%s" % self.name_it({"root_id": found["root_id"], "name_revision": found["name_revision"]}))
 
     def do_mint(self):
         """The name of the dossier a message is in, minted by the agent that names it (docs/reply-stacks.md, "Minted
